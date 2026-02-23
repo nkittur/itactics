@@ -3,7 +3,7 @@ import { Button } from "@babylonjs/gui/2D/controls/button";
 import { Control } from "@babylonjs/gui/2D/controls/control";
 import type { AdvancedDynamicTexture } from "@babylonjs/gui/2D/advancedDynamicTexture";
 
-export type ActionType = "move" | "attack" | "wait" | "endTurn";
+export type ActionType = "undo" | "wait" | "endTurn";
 
 export class ActionBar {
   private panel: StackPanel;
@@ -18,15 +18,14 @@ export class ActionBar {
     this.panel.paddingBottom = "10px";
     gui.addControl(this.panel);
 
-    this.addButton("move", "Move", "#4a7c59");
-    this.addButton("attack", "Attack", "#8a3a3a");
+    this.addButton("undo", "Undo", "#6a5a3a");
     this.addButton("wait", "Wait", "#5a5a7a");
     this.addButton("endTurn", "End Turn", "#7a5a3a");
   }
 
   private addButton(id: string, label: string, bgColor: string): void {
     const btn = Button.CreateSimpleButton(id, label);
-    btn.width = "90px";
+    btn.width = "100px";
     btn.height = "50px";
     btn.color = "white";
     btn.background = bgColor;

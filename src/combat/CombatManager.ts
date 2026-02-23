@@ -12,21 +12,30 @@ import { findPath, reachableHexes } from "@hex/HexPathfinding";
 
 export type CombatPhase = "deployment" | "playerTurn" | "enemyTurn" | "battleEnd";
 export type PlayerTurnState =
-  | "selectUnit"
-  | "selectAction"
-  | "selectMoveTarget"
-  | "selectAttackTarget"
+  | "awaitingInput"
+  | "postMove"
   | "animating";
+
+interface UndoInfo {
+  entityId: EntityId;
+  oldQ: number;
+  oldR: number;
+  oldElevation: number;
+  path: Array<{ q: number; r: number }>;
+}
 
 export class CombatManager {
   turnOrder: TurnOrder;
   damageCalc: DamageCalculator;
   phase: CombatPhase = "playerTurn";
-  playerTurnState: PlayerTurnState = "selectUnit";
+  playerTurnState: PlayerTurnState = "awaitingInput";
   selectedUnit: EntityId | null = null;
 
   /** Movement range cache for the currently selected unit. */
-  private moveRange: Map<string, number> | null = null;
+  moveRange: Map<string, number> | null = null;
+
+  /** Undo info for reverting the last move. */
+  private undoInfo: UndoInfo | null = null;
 
   // Callbacks for the rendering/UI layer
   onPhaseChange?: (phase: CombatPhase) => void;
@@ -41,6 +50,8 @@ export class CombatManager {
     path: Array<{ q: number; r: number }>
   ) => void;
   onBattleEnd?: (victory: boolean) => void;
+  /** Fired whenever the player turn state changes so DemoBattle can update overlays. */
+  onPlayerStateChange?: (state: PlayerTurnState) => void;
 
   constructor(
     private world: World,
@@ -59,97 +70,89 @@ export class CombatManager {
   }
 
   /** Handle a hex being tapped during player turn. */
-  handleHexTap(q: number, r: number): void {
-    if (this.phase !== "playerTurn") return;
+  handleHexTap(q: number, r: number): boolean {
+    if (this.phase !== "playerTurn") return false;
+
+    const tile = this.grid.get(q, r);
 
     switch (this.playerTurnState) {
-      case "selectUnit": {
-        // If a friendly unit is on this hex, select it (only if it's the current turn unit)
-        const tile = this.grid.get(q, r);
-        const currentEntry = this.turnOrder.current();
+      case "awaitingInput": {
+        if (!this.selectedUnit) break;
+        const attackerPos = this.world.getComponent<PositionComponent>(
+          this.selectedUnit,
+          "position"
+        );
+        if (!attackerPos) break;
+
+        // Tap on adjacent enemy → attack directly
         if (
           tile?.occupant &&
-          currentEntry &&
-          tile.occupant === currentEntry.entityId
+          tile.occupant !== this.selectedUnit &&
+          this.isEnemyEntity(tile.occupant) &&
+          hexDistance({ q: attackerPos.q, r: attackerPos.r }, { q, r }) === 1
         ) {
-          this.selectedUnit = tile.occupant;
-          this.playerTurnState = "selectAction";
+          this.executeAttack(this.selectedUnit, tile.occupant);
+          return true;
         }
-        break;
-      }
 
-      case "selectMoveTarget": {
-        if (!this.selectedUnit) break;
+        // Tap on reachable hex → move
         const key = `${q},${r}`;
-        if (this.moveRange && this.moveRange.has(key)) {
+        if (this.moveRange && this.moveRange.has(key) && !tile?.occupant) {
           this.executeMove(this.selectedUnit, q, r);
+          return true;
         }
-        break;
+
+        return false;
       }
 
-      case "selectAttackTarget": {
+      case "postMove": {
         if (!this.selectedUnit) break;
-        const tile = this.grid.get(q, r);
-        if (tile?.occupant && tile.occupant !== this.selectedUnit) {
-          // Check if target is in melee range (adjacent)
-          const attackerPos = this.world.getComponent<PositionComponent>(
-            this.selectedUnit,
-            "position"
-          );
-          if (
-            attackerPos &&
-            hexDistance(
-              { q: attackerPos.q, r: attackerPos.r },
-              { q, r }
-            ) === 1
-          ) {
-            this.executeAttack(this.selectedUnit, tile.occupant);
-          }
+        const attackerPos = this.world.getComponent<PositionComponent>(
+          this.selectedUnit,
+          "position"
+        );
+        if (!attackerPos) break;
+
+        // Tap on adjacent enemy → attack
+        if (
+          tile?.occupant &&
+          tile.occupant !== this.selectedUnit &&
+          this.isEnemyEntity(tile.occupant) &&
+          hexDistance({ q: attackerPos.q, r: attackerPos.r }, { q, r }) === 1
+        ) {
+          this.undoInfo = null; // can't undo after attacking
+          this.executeAttack(this.selectedUnit, tile.occupant);
+          return true;
         }
-        break;
+
+        return false;
       }
 
       default:
         break;
     }
+
+    return false;
   }
 
   /** Handle action bar button press. */
-  handleAction(action: "move" | "attack" | "wait" | "endTurn"): void {
+  handleAction(action: "undo" | "wait" | "endTurn"): void {
     if (this.phase !== "playerTurn") return;
 
     switch (action) {
-      case "move":
-        if (this.selectedUnit) {
-          // Calculate reachable hexes (budget 4 for Phase 1)
-          const pos = this.world.getComponent<PositionComponent>(
-            this.selectedUnit,
-            "position"
-          );
-          if (pos) {
-            this.moveRange = reachableHexes(
-              this.grid,
-              { q: pos.q, r: pos.r },
-              4
-            );
-          }
-          this.playerTurnState = "selectMoveTarget";
-        }
-        break;
-
-      case "attack":
-        if (this.selectedUnit) {
-          this.playerTurnState = "selectAttackTarget";
-        }
+      case "undo":
+        this.undoMove();
         break;
 
       case "wait":
         this.turnOrder.wait();
         this.moveRange = null;
+        this.undoInfo = null;
         this.endPlayerUnitTurn();
         break;
 
       case "endTurn":
+        this.undoInfo = null;
         this.endPlayerUnitTurn();
         break;
     }
@@ -171,6 +174,15 @@ export class CombatManager {
     );
     if (!pathResult.found) return;
 
+    // Save undo info before moving
+    this.undoInfo = {
+      entityId,
+      oldQ: pos.q,
+      oldR: pos.r,
+      oldElevation: pos.elevation,
+      path: pathResult.path,
+    };
+
     this.playerTurnState = "animating";
 
     // Update occupancy on the grid
@@ -189,8 +201,44 @@ export class CombatManager {
 
     this.onUnitMoved?.(entityId, pathResult.path);
 
-    // After move, go back to selectAction so the unit can still attack
-    this.playerTurnState = "selectAction";
+    // After move, go to postMove so the unit can attack or undo
+    this.setPlayerState("postMove");
+  }
+
+  /** Undo the last move. */
+  private undoMove(): void {
+    if (!this.undoInfo) return;
+
+    const { entityId, oldQ, oldR, oldElevation } = this.undoInfo;
+    const pos = this.world.getComponent<PositionComponent>(entityId, "position");
+    if (!pos) return;
+
+    // Revert grid occupancy
+    const currentTile = this.grid.get(pos.q, pos.r);
+    if (currentTile) currentTile.occupant = null;
+
+    const oldTile = this.grid.get(oldQ, oldR);
+    if (oldTile) oldTile.occupant = entityId;
+
+    // Revert position
+    pos.q = oldQ;
+    pos.r = oldR;
+    pos.elevation = oldElevation;
+
+    this.undoInfo = null;
+
+    // Update rendering
+    this.unitRenderer_updatePosition(entityId, oldQ, oldR);
+
+    // Recalculate move range and go back to awaitingInput
+    this.calculateMoveRange(entityId);
+    this.setPlayerState("awaitingInput");
+  }
+
+  /** Callback for rendering layer to update unit position on undo. */
+  private unitRenderer_updatePosition(entityId: EntityId, q: number, r: number): void {
+    // Fire onUnitMoved with a single-step path to the old position
+    this.onUnitMoved?.(entityId, [{ q, r }]);
   }
 
   /** Execute an attack action. */
@@ -215,11 +263,24 @@ export class CombatManager {
     }
   }
 
+  /** Calculate and cache move range for a unit. */
+  private calculateMoveRange(entityId: EntityId): void {
+    const pos = this.world.getComponent<PositionComponent>(entityId, "position");
+    if (pos) {
+      this.moveRange = reachableHexes(
+        this.grid,
+        { q: pos.q, r: pos.r },
+        4
+      );
+    }
+  }
+
   /** End the current player unit's turn and advance. */
   private endPlayerUnitTurn(): void {
     this.selectedUnit = null;
     this.moveRange = null;
-    this.playerTurnState = "selectUnit";
+    this.undoInfo = null;
+    this.playerTurnState = "awaitingInput";
 
     const newRound = this.turnOrder.advance();
     if (newRound) {
@@ -234,14 +295,10 @@ export class CombatManager {
     if (this.checkBattleEnd()) return;
 
     const entry = this.turnOrder.current();
-    if (!entry) {
-      // No units left; shouldn't happen if checkBattleEnd passed
-      return;
-    }
+    if (!entry) return;
 
     this.onTurnAdvance?.(entry.entityId);
 
-    // Determine if this entity is player-controlled or AI
     const isEnemy = this.isEnemyEntity(entry.entityId);
 
     if (isEnemy) {
@@ -250,8 +307,20 @@ export class CombatManager {
     } else {
       this.setPhase("playerTurn");
       this.selectedUnit = entry.entityId;
-      this.playerTurnState = "selectAction";
+      this.calculateMoveRange(entry.entityId);
+      this.setPlayerState("awaitingInput");
     }
+  }
+
+  /** Set the player turn state and fire the callback. */
+  private setPlayerState(state: PlayerTurnState): void {
+    this.playerTurnState = state;
+    this.onPlayerStateChange?.(state);
+  }
+
+  /** Check if the current unit can undo its move. */
+  get canUndo(): boolean {
+    return this.undoInfo !== null;
   }
 
   /** Run simple enemy AI turn. */
@@ -273,7 +342,6 @@ export class CombatManager {
         if (pos && action.path.length > 0) {
           const dest = action.path[action.path.length - 1]!;
 
-          // Update grid occupancy
           const oldTile = this.grid.get(pos.q, pos.r);
           if (oldTile) oldTile.occupant = null;
 
@@ -287,7 +355,6 @@ export class CombatManager {
           this.onUnitMoved?.(entityId, action.path);
         }
 
-        // After moving, check if now adjacent to a player unit and attack
         const posAfterMove = this.world.getComponent<PositionComponent>(
           entityId,
           "position"
@@ -326,11 +393,9 @@ export class CombatManager {
       }
 
       case "wait":
-        // AI waits (does nothing)
         break;
     }
 
-    // Advance to next unit
     if (!this.checkBattleEnd()) {
       const newRound = this.turnOrder.advance();
       if (newRound) {
@@ -340,7 +405,6 @@ export class CombatManager {
     }
   }
 
-  /** Handle the death of an entity: remove from grid and turn order. */
   private handleDeath(entityId: EntityId): void {
     const pos = this.world.getComponent<PositionComponent>(
       entityId,
@@ -353,7 +417,6 @@ export class CombatManager {
     this.turnOrder.remove(entityId);
   }
 
-  /** Check if combat is over. Returns true if battle ended. */
   private checkBattleEnd(): boolean {
     const playerUnits = this.getPlayerUnits();
     const enemyUnits = this.getEnemyUnits();
@@ -373,47 +436,31 @@ export class CombatManager {
     return false;
   }
 
-  /** Set the combat phase and fire the callback. */
   private setPhase(phase: CombatPhase): void {
     this.phase = phase;
     this.onPhaseChange?.(phase);
   }
 
-  /**
-   * Determine if an entity is enemy-controlled.
-   * Entities with an "aiBehavior" component are considered enemies.
-   */
   private isEnemyEntity(entityId: EntityId): boolean {
     return this.world.getComponent(entityId, "aiBehavior") !== undefined;
   }
 
-  /** Get all living player units (no aiBehavior component). */
   private getPlayerUnits(): EntityId[] {
     const allCombatants = this.world.query("health", "position");
     return allCombatants.filter((id) => {
       const health = this.world.getComponent<HealthComponent>(id, "health");
-      return (
-        health &&
-        health.current > 0 &&
-        !this.isEnemyEntity(id)
-      );
+      return health && health.current > 0 && !this.isEnemyEntity(id);
     });
   }
 
-  /** Get all living enemy units (have aiBehavior component). */
   private getEnemyUnits(): EntityId[] {
     const allCombatants = this.world.query("health", "position");
     return allCombatants.filter((id) => {
       const health = this.world.getComponent<HealthComponent>(id, "health");
-      return (
-        health &&
-        health.current > 0 &&
-        this.isEnemyEntity(id)
-      );
+      return health && health.current > 0 && this.isEnemyEntity(id);
     });
   }
 
-  /** Find an adjacent enemy entity to the given position. */
   private findAdjacentEnemy(
     pos: PositionComponent,
     enemyIds: EntityId[]

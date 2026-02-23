@@ -22,7 +22,6 @@ import { UnitInfoPanel } from "@ui/UnitInfoPanel";
 import type { EntityId } from "@entities/Entity";
 import type { HealthComponent } from "@entities/components/Health";
 import type { PositionComponent } from "@entities/components/Position";
-import { reachableHexes } from "@hex/HexPathfinding";
 import { hexNeighbors } from "@hex/HexMath";
 
 // Terrain generation helpers
@@ -49,7 +48,6 @@ function createDemoGrid(): HexGrid {
   const width = 10;
   const height = 8;
 
-  // Simple seeded pseudo-random for reproducible maps
   let seed = 42;
   const rand = () => {
     seed = (seed * 16807 + 0) % 2147483647;
@@ -167,7 +165,6 @@ function spawnUnit(
     tint: null,
   });
 
-  // Tag for team identification
   world.addComponent(id, {
     type: "team",
     team,
@@ -184,7 +181,6 @@ function spawnUnit(
     });
   }
 
-  // Mark hex as occupied
   const tile = grid.get(q, r);
   if (tile) tile.occupant = id;
 
@@ -274,7 +270,6 @@ export class DemoBattle {
   }
 
   private spawnAllUnits(): void {
-    // Player units (left side)
     this.playerIds.push(
       spawnUnit(this.world, this.grid, 1, 2, "player", "Swordsman", {
         melee: 70, defense: 15, hp: 60, initiative: 100,
@@ -291,7 +286,6 @@ export class DemoBattle {
       })
     );
 
-    // Enemy units (right side)
     this.enemyIds.push(
       spawnUnit(this.world, this.grid, 8, 1, "enemy", "Brigand", {
         melee: 55, defense: 10, hp: 50, initiative: 95,
@@ -312,50 +306,31 @@ export class DemoBattle {
   private wireEvents(): void {
     // Touch -> Combat
     this.touchManager.onHexTap = (q: number, r: number) => {
-      const prevState = this.combat.playerTurnState;
       this.combat.handleHexTap(q, r);
-
-      // If state didn't change from selectMoveTarget/selectAttackTarget,
-      // the tap was outside valid range — cancel back to selectAction
-      if (this.combat.playerTurnState === prevState) {
-        if (prevState === "selectMoveTarget" || prevState === "selectAttackTarget") {
-          this.combat.playerTurnState = "selectAction";
-          this.overlayRenderer.clearOverlays();
-        }
-      } else if (this.combat.playerTurnState !== "selectMoveTarget" &&
-                 this.combat.playerTurnState !== "selectAttackTarget") {
-        this.overlayRenderer.clearOverlays();
-      }
-
+      // Overlays update automatically via onPlayerStateChange
       this.refreshUI();
     };
 
     // Action bar -> Combat
     this.actionBar.onAction = (action) => {
       this.combat.handleAction(action);
-
-      // Show overlays based on new state
-      if (action === "move" && this.combat.playerTurnState === "selectMoveTarget") {
-        this.showMoveOverlay();
-      } else if (action === "attack" && this.combat.playerTurnState === "selectAttackTarget") {
-        this.showAttackOverlay();
-      } else {
-        this.overlayRenderer.clearOverlays();
-      }
-
       this.refreshUI();
     };
 
-    // Combat callbacks -> Rendering
+    // Combat: unit moved → update rendering
     this.combat.onUnitMoved = (entityId: EntityId, path: Array<{ q: number; r: number }>) => {
       if (path.length > 0) {
         const dest = path[path.length - 1]!;
         this.unitRenderer.updatePosition(entityId, dest.q, dest.r);
+        // Move selection ring to new position
+        if (this.combat.selectedUnit === entityId) {
+          this.unitRenderer.setSelected(entityId);
+        }
       }
-      this.overlayRenderer.clearOverlays();
       this.refreshUI();
     };
 
+    // Combat: attack resolved → update rendering
     this.combat.onAttackResult = (_result, _attackerId, defenderId) => {
       if (_result.targetKilled) {
         this.unitRenderer.removeUnit(defenderId);
@@ -363,19 +338,15 @@ export class DemoBattle {
       this.refreshUI();
     };
 
+    // Combat: phase changed
     this.combat.onPhaseChange = (phase) => {
       if (phase === "enemyTurn") {
         this.actionBar.setVisible(false);
         this.unitInfoPanel.hide();
         this.overlayRenderer.clearOverlays();
-        // Enemy turn runs automatically from CombatManager.beginCurrentTurn()
-        // Just update the UI after a delay
-        setTimeout(() => {
-          this.refreshUI();
-        }, 300);
+        setTimeout(() => this.refreshUI(), 300);
       } else if (phase === "playerTurn") {
         this.actionBar.setVisible(true);
-        // Show selected unit info
         if (this.combat.selectedUnit) {
           this.unitRenderer.setSelected(this.combat.selectedUnit);
           this.showUnitInfo(this.combat.selectedUnit);
@@ -384,45 +355,71 @@ export class DemoBattle {
       } else if (phase === "battleEnd") {
         this.actionBar.setVisible(false);
         this.unitInfoPanel.hide();
+        this.overlayRenderer.clearOverlays();
       }
     };
 
+    // Combat: turn advanced → select new unit
     this.combat.onTurnAdvance = (entityId: EntityId) => {
       this.unitRenderer.setSelected(entityId);
       this.showUnitInfo(entityId);
     };
-  }
 
-  private showMoveOverlay(): void {
-    this.overlayRenderer.clearOverlays();
-    if (!this.combat.selectedUnit) return;
+    // Combat: player state changed → update overlays
+    this.combat.onPlayerStateChange = (state) => {
+      this.overlayRenderer.clearOverlays();
 
-    const pos = this.world.getComponent<PositionComponent>(this.combat.selectedUnit, "position");
-    if (!pos) return;
-
-    const range = reachableHexes(this.grid, { q: pos.q, r: pos.r }, 4);
-    this.overlayRenderer.showMovementRange(range, this.layout);
-  }
-
-  private showAttackOverlay(): void {
-    this.overlayRenderer.clearOverlays();
-    if (!this.combat.selectedUnit) return;
-
-    const pos = this.world.getComponent<PositionComponent>(this.combat.selectedUnit, "position");
-    if (!pos) return;
-
-    // Show adjacent hexes as attack targets
-    const neighbors = hexNeighbors(pos.q, pos.r);
-    const attackHexes = new Set<string>();
-    for (const n of neighbors) {
-      const tile = this.grid.get(n.q, n.r);
-      if (tile?.occupant && tile.occupant !== this.combat.selectedUnit) {
-        attackHexes.add(`${n.q},${n.r}`);
+      if (state === "awaitingInput") {
+        this.showMoveAndAttackOverlays();
+      } else if (state === "postMove") {
+        this.showAttackOverlay();
       }
-    }
+
+      this.refreshUI();
+    };
+  }
+
+  /** Show blue move overlays + red attack overlays for adjacent enemies. */
+  private showMoveAndAttackOverlays(): void {
+    if (!this.combat.selectedUnit || !this.combat.moveRange) return;
+
+    this.overlayRenderer.showMovementRange(this.combat.moveRange, this.layout);
+
+    // Also highlight adjacent enemies in red
+    const pos = this.world.getComponent<PositionComponent>(this.combat.selectedUnit, "position");
+    if (!pos) return;
+    const attackHexes = this.getAdjacentEnemyHexes(pos);
     if (attackHexes.size > 0) {
       this.overlayRenderer.showAttackRange(attackHexes, this.layout);
     }
+  }
+
+  /** Show red attack overlays for enemies adjacent to current position. */
+  private showAttackOverlay(): void {
+    if (!this.combat.selectedUnit) return;
+    const pos = this.world.getComponent<PositionComponent>(this.combat.selectedUnit, "position");
+    if (!pos) return;
+
+    const attackHexes = this.getAdjacentEnemyHexes(pos);
+    if (attackHexes.size > 0) {
+      this.overlayRenderer.showAttackRange(attackHexes, this.layout);
+    }
+  }
+
+  /** Get set of hex keys containing enemies adjacent to the given position. */
+  private getAdjacentEnemyHexes(pos: PositionComponent): Set<string> {
+    const hexes = new Set<string>();
+    const neighbors = hexNeighbors(pos.q, pos.r);
+    for (const n of neighbors) {
+      const tile = this.grid.get(n.q, n.r);
+      if (tile?.occupant && tile.occupant !== this.combat.selectedUnit) {
+        const team = this.world.getComponent<TeamComponent>(tile.occupant, "team");
+        if (team?.team === "enemy") {
+          hexes.add(`${n.q},${n.r}`);
+        }
+      }
+    }
+    return hexes;
   }
 
   private showUnitInfo(entityId: EntityId): void {
@@ -446,14 +443,13 @@ export class DemoBattle {
       }
     );
 
-    // Update action bar state
+    // Update action bar based on state
     const isPlayerTurn = this.combat.phase === "playerTurn";
     this.actionBar.setVisible(isPlayerTurn);
 
-    if (isPlayerTurn && this.combat.selectedUnit) {
-      this.actionBar.setEnabled("move", this.combat.playerTurnState === "selectAction");
-      this.actionBar.setEnabled("attack", this.combat.playerTurnState === "selectAction");
-      this.actionBar.setEnabled("wait", this.combat.playerTurnState === "selectAction");
+    if (isPlayerTurn) {
+      this.actionBar.setEnabled("undo", this.combat.canUndo);
+      this.actionBar.setEnabled("wait", this.combat.playerTurnState === "awaitingInput");
       this.actionBar.setEnabled("endTurn", true);
     }
   }

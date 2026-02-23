@@ -39,8 +39,6 @@ export class TouchManager {
   private mouseStart: { x: number; y: number } | null = null;
   private mouseDragging = false;
 
-  /** Speed multiplier for converting screen-space drag pixels to world-space pan units. */
-  private readonly panSpeed = 0.02;
   /** Speed multiplier for mouse wheel zoom. */
   private readonly wheelZoomSpeed = 0.002;
 
@@ -129,12 +127,17 @@ export class TouchManager {
       if (distance > 10 || this.isDragging) {
         this.isDragging = true;
 
-        // Convert screen-space drag to world-space camera pan.
-        // Invert X because dragging right should move the camera left (viewport moves right).
-        // Invert Y (screen Y -> world Z) and further invert because dragging up
-        // should move camera "forward" which is negative Z in our top-down view.
-        const worldDx = -dx * this.panSpeed * this.camera.orthoSize;
-        const worldDz = dy * this.panSpeed * this.camera.orthoSize;
+        // Convert screen-space drag to world-space camera pan (1:1 finger tracking).
+        // Each pixel of drag maps to the exact world-space distance so content
+        // follows the finger.
+        const cam = this.camera.camera;
+        const worldPerPixelX = (cam.orthoRight! - cam.orthoLeft!) / this.canvas.clientWidth;
+        const worldPerPixelZ = (cam.orthoTop! - cam.orthoBottom!) / this.canvas.clientHeight;
+
+        // Negate both: drag right → camera left, drag up → camera moves in +Z
+        // (screen up = -Z, so to keep content under finger, camera must go +Z)
+        const worldDx = -dx * worldPerPixelX;
+        const worldDz = -dy * worldPerPixelZ;
 
         this.camera.pan(worldDx, worldDz);
 
@@ -165,7 +168,7 @@ export class TouchManager {
       );
 
       // Tap: short duration and minimal movement
-      if (elapsed < 200 && moved < 10) {
+      if (elapsed < 300 && moved < 15) {
         this.handleTap(touch.clientX, touch.clientY);
       }
     }
@@ -212,8 +215,11 @@ export class TouchManager {
     if (Math.hypot(dx, dy) > 5 || this.mouseDragging) {
       this.mouseDragging = true;
 
-      const worldDx = -dx * this.panSpeed * this.camera.orthoSize;
-      const worldDz = dy * this.panSpeed * this.camera.orthoSize;
+      const cam = this.camera.camera;
+      const worldPerPixelX = (cam.orthoRight! - cam.orthoLeft!) / this.canvas.clientWidth;
+      const worldPerPixelZ = (cam.orthoTop! - cam.orthoBottom!) / this.canvas.clientHeight;
+      const worldDx = -dx * worldPerPixelX;
+      const worldDz = -dy * worldPerPixelZ;
 
       this.camera.pan(worldDx, worldDz);
 
