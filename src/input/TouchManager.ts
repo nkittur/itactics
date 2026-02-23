@@ -245,25 +245,29 @@ export class TouchManager {
   // ---------------------------------------------------------------------------
 
   /**
-   * Convert a screen tap/click into a hex coordinate using Babylon.js scene
-   * picking. The pick ray intersects with scene meshes; the hit point in
-   * world space is converted from (worldX, worldZ) to axial hex coordinates
-   * using pixelToHex.
+   * Convert a screen tap/click into a hex coordinate using direct math
+   * for the orthographic camera. This avoids scene.pick reliability issues
+   * on mobile devices.
    */
   private handleTap(screenX: number, screenY: number): void {
     if (!this.onHexTap) return;
 
-    // Use Babylon.js scene picking to find the world-space position of the tap
-    const pickResult = this.scene.pick(screenX, screenY);
+    const cam = this.camera.camera;
+    const cw = this.canvas.clientWidth;
+    const ch = this.canvas.clientHeight;
 
-    if (pickResult?.hit && pickResult.pickedPoint) {
-      // World X -> hex pixel X, World Z -> hex pixel Y (top-down on XZ plane)
-      const worldX = pickResult.pickedPoint.x;
-      const worldZ = pickResult.pickedPoint.z;
+    if (cw === 0 || ch === 0) return;
 
-      const hexCoord = pixelToHex(this.hexLayout, worldX, worldZ);
-      this.onHexTap(hexCoord.q, hexCoord.r);
-    }
+    // Normalized screen coordinates [0, 1]
+    const nx = screenX / cw;
+    const ny = screenY / ch;
+
+    // Map to world XZ via orthographic bounds + camera position
+    const worldX = cam.position.x + cam.orthoLeft! + nx * (cam.orthoRight! - cam.orthoLeft!);
+    const worldZ = cam.position.z - cam.orthoTop! + ny * (cam.orthoTop! - cam.orthoBottom!);
+
+    const hexCoord = pixelToHex(this.hexLayout, worldX, worldZ);
+    this.onHexTap(hexCoord.q, hexCoord.r);
   }
 
   // ---------------------------------------------------------------------------

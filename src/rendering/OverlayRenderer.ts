@@ -33,8 +33,9 @@ export class OverlayRenderer {
     // Ensure movement material exists
     if (!this.movementMaterial) {
       this.movementMaterial = new StandardMaterial("movementOverlayMat", this.scene);
-      this.movementMaterial.diffuseColor = new Color3(0.2, 0.4, 0.9); // blue
-      this.movementMaterial.alpha = 0.3;
+      this.movementMaterial.diffuseColor = Color3.Black();
+      this.movementMaterial.emissiveColor = new Color3(0.2, 0.4, 0.9); // blue
+      this.movementMaterial.alpha = 0.4;
       this.movementMaterial.specularColor = Color3.Black();
       this.movementMaterial.backFaceCulling = false;
     }
@@ -73,8 +74,9 @@ export class OverlayRenderer {
     // Ensure attack material exists
     if (!this.attackMaterial) {
       this.attackMaterial = new StandardMaterial("attackOverlayMat", this.scene);
-      this.attackMaterial.diffuseColor = new Color3(0.9, 0.2, 0.2); // red
-      this.attackMaterial.alpha = 0.3;
+      this.attackMaterial.diffuseColor = Color3.Black();
+      this.attackMaterial.emissiveColor = new Color3(0.9, 0.2, 0.2); // red
+      this.attackMaterial.alpha = 0.4;
       this.attackMaterial.specularColor = Color3.Black();
       this.attackMaterial.backFaceCulling = false;
     }

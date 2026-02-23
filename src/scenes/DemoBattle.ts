@@ -21,6 +21,9 @@ import { TurnOrderBar } from "@ui/TurnOrderBar";
 import { UnitInfoPanel } from "@ui/UnitInfoPanel";
 import type { EntityId } from "@entities/Entity";
 import type { HealthComponent } from "@entities/components/Health";
+import type { PositionComponent } from "@entities/components/Position";
+import { reachableHexes } from "@hex/HexPathfinding";
+import { hexNeighbors } from "@hex/HexMath";
 
 // Terrain generation helpers
 const TERRAIN_CONFIGS: Record<TerrainType, Omit<HexTile, "q" | "r" | "elevation" | "occupant">> = {
@@ -309,13 +312,37 @@ export class DemoBattle {
   private wireEvents(): void {
     // Touch -> Combat
     this.touchManager.onHexTap = (q: number, r: number) => {
+      const prevState = this.combat.playerTurnState;
       this.combat.handleHexTap(q, r);
+
+      // If state didn't change from selectMoveTarget/selectAttackTarget,
+      // the tap was outside valid range — cancel back to selectAction
+      if (this.combat.playerTurnState === prevState) {
+        if (prevState === "selectMoveTarget" || prevState === "selectAttackTarget") {
+          this.combat.playerTurnState = "selectAction";
+          this.overlayRenderer.clearOverlays();
+        }
+      } else if (this.combat.playerTurnState !== "selectMoveTarget" &&
+                 this.combat.playerTurnState !== "selectAttackTarget") {
+        this.overlayRenderer.clearOverlays();
+      }
+
       this.refreshUI();
     };
 
     // Action bar -> Combat
     this.actionBar.onAction = (action) => {
       this.combat.handleAction(action);
+
+      // Show overlays based on new state
+      if (action === "move" && this.combat.playerTurnState === "selectMoveTarget") {
+        this.showMoveOverlay();
+      } else if (action === "attack" && this.combat.playerTurnState === "selectAttackTarget") {
+        this.showAttackOverlay();
+      } else {
+        this.overlayRenderer.clearOverlays();
+      }
+
       this.refreshUI();
     };
 
@@ -364,6 +391,38 @@ export class DemoBattle {
       this.unitRenderer.setSelected(entityId);
       this.showUnitInfo(entityId);
     };
+  }
+
+  private showMoveOverlay(): void {
+    this.overlayRenderer.clearOverlays();
+    if (!this.combat.selectedUnit) return;
+
+    const pos = this.world.getComponent<PositionComponent>(this.combat.selectedUnit, "position");
+    if (!pos) return;
+
+    const range = reachableHexes(this.grid, { q: pos.q, r: pos.r }, 4);
+    this.overlayRenderer.showMovementRange(range, this.layout);
+  }
+
+  private showAttackOverlay(): void {
+    this.overlayRenderer.clearOverlays();
+    if (!this.combat.selectedUnit) return;
+
+    const pos = this.world.getComponent<PositionComponent>(this.combat.selectedUnit, "position");
+    if (!pos) return;
+
+    // Show adjacent hexes as attack targets
+    const neighbors = hexNeighbors(pos.q, pos.r);
+    const attackHexes = new Set<string>();
+    for (const n of neighbors) {
+      const tile = this.grid.get(n.q, n.r);
+      if (tile?.occupant && tile.occupant !== this.combat.selectedUnit) {
+        attackHexes.add(`${n.q},${n.r}`);
+      }
+    }
+    if (attackHexes.size > 0) {
+      this.overlayRenderer.showAttackRange(attackHexes, this.layout);
+    }
   }
 
   private showUnitInfo(entityId: EntityId): void {
