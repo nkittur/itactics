@@ -89,7 +89,9 @@ export class TouchManager {
   }
 
   private onTouchStart(e: TouchEvent): void {
-    e.preventDefault();
+    // Do NOT call preventDefault here — it would suppress pointer events,
+    // blocking Babylon.js GUI button taps. CSS touch-action:none handles
+    // preventing browser gestures instead.
     this.touchActive = true;
 
     if (e.touches.length === 1) {
