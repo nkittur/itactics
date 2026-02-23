@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(wc -l /Users/nkittur/Dropbox/scripts/itactics/planning/*.md 2>/dev/null || echo \"No files found\"2)",
+      "Bash(npm install 2>&12)",
+      "Bash(npx tsc --noEmit 2>&1 | head -80)",
+      "Bash(npx tsc --noEmit 2>&1 | head -40)",
+      "Bash(npx vitest run 2>&1)",
+      "Bash(npx vite build 2>&1 | tail -20)",
+      "Bash(git remote -v 2>/dev/null; echo \"---\"; gh auth status 2>&1 | head -5)",
+      "Bash(npx vite build 2>&1 | tail -5)",
+      "Bash(git status -u)",
+      "Bash(git add .github/workflows/deploy.yml .gitignore index.html package.json package-lock.json tsconfig.json vite.config.ts vitest.config.ts src/ tests/ planning/ && git commit -m \"$\\(cat <<'EOF'\nPhase 1: tactical combat prototype with hex grid, ECS, and Babylon.js\n\nBattle Brothers-inspired mobile browser game foundation:\n- Hex grid with pathfinding, line of sight, and field of view\n- Entity Component System with 13 component types\n- Turn-based combat with melee attacks, damage/armor resolution\n- Simple enemy AI \\(move toward and attack nearest\\)\n- Babylon.js rendering: hex tiles, unit discs, movement/attack overlays\n- Touch input: tap to select, pan, pinch-zoom\n- Babylon.GUI: action bar, turn order bar, unit info panel\n- 46 unit tests for hex math, pathfinding, LoS, and combat\n- GitHub Pages deployment via Actions workflow\n\nCo-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>\nEOF\n\\)\" && git status)",
+      "Bash(git push origin main 2>&1)"
+    ]
+  }
+}
