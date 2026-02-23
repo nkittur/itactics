@@ -447,6 +447,8 @@ export class DemoBattle {
 
     // Update action bar based on state
     const isPlayerTurn = this.combat.phase === "playerTurn";
+    console.log("[refreshUI] phase=%s state=%s isPlayerTurn=%s",
+      this.combat.phase, this.combat.playerTurnState, isPlayerTurn);
     this.actionBar.setVisible(isPlayerTurn);
 
     if (isPlayerTurn) {
