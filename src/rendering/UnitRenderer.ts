@@ -81,9 +81,10 @@ export class UnitRenderer {
     mesh.position.y = 0.1;
     mesh.position.z = y;
 
-    // Material colored by team
+    // Material colored by team — use emissive so units are always visible
     const mat = new StandardMaterial(`unitMat_${entityId}`, this.scene);
-    mat.diffuseColor = TEAM_COLORS[team];
+    mat.diffuseColor = Color3.Black();
+    mat.emissiveColor = TEAM_COLORS[team];
     mat.specularColor = Color3.Black();
     mat.backFaceCulling = false;
     mesh.material = mat;
@@ -158,8 +159,7 @@ export class UnitRenderer {
       },
       this.scene
     );
-    // Lay flat on XZ plane
-    ring.rotation.x = Math.PI / 2;
+    // Torus is already in XZ plane by default — no rotation needed
     ring.position.x = x;
     ring.position.y = 0.15; // above unit disc
     ring.position.z = y;
@@ -167,8 +167,8 @@ export class UnitRenderer {
     // Yellow selection material
     if (!this.selectionMaterial) {
       this.selectionMaterial = new StandardMaterial("selectionMat", this.scene);
-      this.selectionMaterial.diffuseColor = SELECTION_COLOR;
-      this.selectionMaterial.emissiveColor = SELECTION_COLOR.scale(0.5);
+      this.selectionMaterial.diffuseColor = Color3.Black();
+      this.selectionMaterial.emissiveColor = SELECTION_COLOR;
       this.selectionMaterial.specularColor = Color3.Black();
       this.selectionMaterial.backFaceCulling = false;
     }
