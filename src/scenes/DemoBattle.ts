@@ -238,11 +238,11 @@ export class DemoBattle {
       this.unitRenderer.addUnit(id, pos.q, pos.r, unitTeam);
     }
 
-    // UI
-    this.uiManager = new UIManager(this.sceneManager.scene);
-    this.actionBar = new ActionBar(this.uiManager.guiTexture);
-    this.turnOrderBar = new TurnOrderBar(this.uiManager.guiTexture);
-    this.unitInfoPanel = new UnitInfoPanel(this.uiManager.guiTexture);
+    // UI (HTML overlay — works reliably on mobile unlike Babylon.js GUI)
+    this.uiManager = new UIManager();
+    this.actionBar = new ActionBar(this.uiManager.root);
+    this.turnOrderBar = new TurnOrderBar(this.uiManager.root);
+    this.unitInfoPanel = new UnitInfoPanel(this.uiManager.root);
 
     // Input
     this.touchManager = new TouchManager(

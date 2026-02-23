@@ -34,7 +34,7 @@ src/
   rendering/                 # Babylon.js: SceneManager, CameraController, TileRenderer,
                              #   UnitRenderer, OverlayRenderer
   input/TouchManager.ts      # Unified touch + pointer input (tap, pan, pinch, wheel)
-  ui/                        # Babylon.js GUI: UIManager, ActionBar, TurnOrderBar, UnitInfoPanel
+  ui/                        # HTML overlay UI: UIManager, ActionBar, TurnOrderBar, UnitInfoPanel
   core/                      # StateMachine, EventBus, GameLoop
   utils/                     # RNG, MathUtils, PriorityQueue, IdGenerator
 planning/                    # 8 detailed design docs (combat, classes, weapons, etc.)
@@ -55,11 +55,11 @@ tests/                       # Vitest tests for hex math, pathfinding, combat
 - **Scene autoClear must stay enabled** — disabling it causes hex trails when panning
 - Engine uses `adaptToDeviceRatio: true` for sharp rendering on retina displays
 
-### GUI (Babylon.js AdvancedDynamicTexture)
-- **DPI scaling**: `idealHeight = 844` is set on the GUI texture (UIManager.ts). Without this, controls are invisibly tiny on retina mobile screens because the texture uses the native pixel resolution.
-- GUI buttons receive pointer events from the browser. Do NOT call `e.preventDefault()` in `touchstart` handlers — it suppresses the synthesized pointer events that Babylon.js GUI needs for button taps.
-- Use Rectangle containers with explicit width/height for reliable layout. StackPanel sizing can be fragile.
-- `paddingBottom` reduces content area INSIDE the control, not outside — can clip children.
+### GUI (HTML Overlay)
+- **UI uses HTML/CSS overlay** (`#gameUI` div in index.html), NOT Babylon.js AdvancedDynamicTexture. The Babylon.js GUI had persistent rendering issues on mobile due to DPI/texture scaling interactions with `adaptToDeviceRatio`. HTML overlay is guaranteed to work on all mobile browsers.
+- `#gameUI` has `pointer-events: none`; child elements set `pointer-events: auto` so taps pass through to the canvas except on UI controls.
+- CSS uses `env(safe-area-inset-*)` for notched phone compatibility.
+- Styles are in `index.html` `<style>` block (not separate CSS file).
 
 ### Input (TouchManager.ts)
 - **Touch events** handle mobile tap/pan/pinch; **pointer events** handle mouse/stylus
@@ -80,7 +80,7 @@ tests/                       # Vitest tests for hex math, pathfinding, combat
 - A* pathfinding with terrain movement costs in HexPathfinding.ts
 
 ## Known Issues / In Progress
-- Mobile button visibility may still need tuning on some devices
+- Mobile UI uses HTML overlay (resolved prior Babylon.js GUI visibility issues)
 - Console.log diagnostic statements throughout (remove once stable)
 - Enemy AI is minimal (SimpleAI: move toward nearest, attack if adjacent)
 - No sprite art yet — units are colored circles, terrain is colored hexes

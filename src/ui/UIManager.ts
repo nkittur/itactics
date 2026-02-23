@@ -1,21 +1,18 @@
-import { AdvancedDynamicTexture } from "@babylonjs/gui/2D/advancedDynamicTexture";
-import type { Scene } from "@babylonjs/core/scene";
-
 export class UIManager {
-  guiTexture: AdvancedDynamicTexture;
+  root: HTMLDivElement;
 
-  constructor(scene: Scene) {
-    this.guiTexture = AdvancedDynamicTexture.CreateFullscreenUI(
-      "UI",
-      true,
-      scene
-    );
-    // Scale GUI controls relative to a consistent design height so they
-    // aren't tiny on high-DPI / retina mobile screens.
-    this.guiTexture.idealHeight = 844;
+  constructor() {
+    const existing = document.getElementById("gameUI") as HTMLDivElement | null;
+    if (existing) {
+      this.root = existing;
+    } else {
+      this.root = document.createElement("div");
+      this.root.id = "gameUI";
+      document.body.appendChild(this.root);
+    }
   }
 
   dispose(): void {
-    this.guiTexture.dispose();
+    this.root.innerHTML = "";
   }
 }
