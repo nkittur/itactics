@@ -134,10 +134,10 @@ export class TouchManager {
         const worldPerPixelX = (cam.orthoRight! - cam.orthoLeft!) / this.canvas.clientWidth;
         const worldPerPixelZ = (cam.orthoTop! - cam.orthoBottom!) / this.canvas.clientHeight;
 
-        // Negate both: drag right → camera left, drag up → camera moves in +Z
-        // (screen up = -Z, so to keep content under finger, camera must go +Z)
+        // Drag right → camera moves -X (content follows finger right)
+        // Drag up (dy<0) → camera moves -Z (screen up = +Z, so content follows)
         const worldDx = -dx * worldPerPixelX;
-        const worldDz = -dy * worldPerPixelZ;
+        const worldDz = dy * worldPerPixelZ;
 
         this.camera.pan(worldDx, worldDz);
 
@@ -219,7 +219,7 @@ export class TouchManager {
       const worldPerPixelX = (cam.orthoRight! - cam.orthoLeft!) / this.canvas.clientWidth;
       const worldPerPixelZ = (cam.orthoTop! - cam.orthoBottom!) / this.canvas.clientHeight;
       const worldDx = -dx * worldPerPixelX;
-      const worldDz = -dy * worldPerPixelZ;
+      const worldDz = dy * worldPerPixelZ;
 
       this.camera.pan(worldDx, worldDz);
 
@@ -268,9 +268,11 @@ export class TouchManager {
     const nx = screenX / cw;
     const ny = screenY / ch;
 
-    // Map to world XZ via orthographic bounds + camera position
+    // Map to world XZ via orthographic bounds + camera position.
+    // With camera rotation.x = PI/2: screen right = +X, screen up = +Z.
+    // Screen Y=0 (top) maps to cam.z + orthoTop, Y=height (bottom) to cam.z + orthoBottom.
     const worldX = cam.position.x + cam.orthoLeft! + nx * (cam.orthoRight! - cam.orthoLeft!);
-    const worldZ = cam.position.z - cam.orthoTop! + ny * (cam.orthoTop! - cam.orthoBottom!);
+    const worldZ = cam.position.z + cam.orthoTop! - ny * (cam.orthoTop! - cam.orthoBottom!);
 
     const hexCoord = pixelToHex(this.hexLayout, worldX, worldZ);
     this.onHexTap(hexCoord.q, hexCoord.r);

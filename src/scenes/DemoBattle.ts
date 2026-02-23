@@ -260,7 +260,7 @@ export class DemoBattle {
 
     // Center camera on grid
     const center = hexToPixel(this.layout, 5, 4);
-    this.camera.pan(center.x, center.y);
+    this.camera.centerOn(center.x, center.y);
 
     // Handle resize
     window.addEventListener("resize", () => {

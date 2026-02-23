@@ -25,9 +25,6 @@ export class SceneManager {
     light.intensity = 1.0;
 
     // Performance optimizations for mobile
-    this.scene.autoClear = false;
-    this.scene.autoClearDepthAndStencil = true;
-    this.scene.blockMaterialDirtyMechanism = true;
     this.scene.skipPointerMovePicking = true;
   }
 
