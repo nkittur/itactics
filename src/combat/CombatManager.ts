@@ -7,7 +7,7 @@ import { TurnOrder } from "./TurnOrder";
 import { DamageCalculator, type AttackResult } from "./DamageCalculator";
 import { decideAIAction } from "./SimpleAI";
 import { RNG } from "@utils/RNG";
-import { hexDistance } from "@hex/HexMath";
+import { hexDistance, hexNeighbors } from "@hex/HexMath";
 import { findPath, reachableHexes } from "@hex/HexPathfinding";
 
 export type CombatPhase = "deployment" | "playerTurn" | "enemyTurn" | "battleEnd";
@@ -197,12 +197,21 @@ export class CombatManager {
     pos.r = r;
     if (newTile) pos.elevation = newTile.elevation;
 
+    // Check remaining movement before clearing moveRange
+    const destKey = `${q},${r}`;
+    const remainingMovement = this.moveRange?.get(destKey) ?? 0;
     this.moveRange = null;
 
     this.onUnitMoved?.(entityId, pathResult.path);
 
-    // After move, go to postMove so the unit can attack or undo
-    this.setPlayerState("postMove");
+    // Auto-end: moved full distance and no adjacent enemies to attack
+    if (remainingMovement === 0 && !this.hasAdjacentEnemies(entityId)) {
+      this.undoInfo = null;
+      this.endPlayerUnitTurn();
+    } else {
+      // Go to postMove so the unit can attack or undo
+      this.setPlayerState("postMove");
+    }
   }
 
   /** Undo the last move. */
@@ -459,6 +468,20 @@ export class CombatManager {
       const health = this.world.getComponent<HealthComponent>(id, "health");
       return health && health.current > 0 && this.isEnemyEntity(id);
     });
+  }
+
+  /** Check whether a unit has any living enemy units on adjacent hexes. */
+  private hasAdjacentEnemies(entityId: EntityId): boolean {
+    const pos = this.world.getComponent<PositionComponent>(entityId, "position");
+    if (!pos) return false;
+    for (const n of hexNeighbors(pos.q, pos.r)) {
+      const tile = this.grid.get(n.q, n.r);
+      if (tile?.occupant && tile.occupant !== entityId && this.isEnemyEntity(tile.occupant)) {
+        const health = this.world.getComponent<HealthComponent>(tile.occupant, "health");
+        if (health && health.current > 0) return true;
+      }
+    }
+    return false;
   }
 
   private findAdjacentEnemy(

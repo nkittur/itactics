@@ -23,6 +23,7 @@ import type { EntityId } from "@entities/Entity";
 import type { HealthComponent } from "@entities/components/Health";
 import type { PositionComponent } from "@entities/components/Position";
 import { hexNeighbors } from "@hex/HexMath";
+import type { AttackResult } from "@combat/DamageCalculator";
 
 // Terrain generation helpers
 const TERRAIN_CONFIGS: Record<TerrainType, Omit<HexTile, "q" | "r" | "elevation" | "occupant">> = {
@@ -332,9 +333,16 @@ export class DemoBattle {
       this.refreshUI();
     };
 
-    // Combat: attack resolved → update rendering
-    this.combat.onAttackResult = (_result, _attackerId, defenderId) => {
-      if (_result.targetKilled) {
+    // Combat: attack resolved → show damage, update health bars, remove killed
+    this.combat.onAttackResult = (result, _attackerId, defenderId) => {
+      this.showDamagePopup(defenderId, result);
+
+      const health = this.world.getComponent<HealthComponent>(defenderId, "health");
+      if (health) {
+        this.unitRenderer.updateHealthBar(defenderId, health.current, health.max);
+      }
+
+      if (result.targetKilled) {
         this.unitRenderer.removeUnit(defenderId);
       }
       this.refreshUI();
@@ -361,10 +369,11 @@ export class DemoBattle {
       }
     };
 
-    // Combat: turn advanced → select new unit
+    // Combat: turn advanced → select new unit and center camera
     this.combat.onTurnAdvance = (entityId: EntityId) => {
       this.unitRenderer.setSelected(entityId);
       this.showUnitInfo(entityId);
+      this.panCameraToUnit(entityId);
     };
 
     // Combat: player state changed → update overlays
@@ -422,6 +431,42 @@ export class DemoBattle {
       }
     }
     return hexes;
+  }
+
+  /** Smoothly pan camera to center on a unit. */
+  private panCameraToUnit(entityId: EntityId): void {
+    const pos = this.world.getComponent<PositionComponent>(entityId, "position");
+    if (!pos) return;
+    const worldPos = hexToPixel(this.layout, pos.q, pos.r);
+    this.camera.panTo(worldPos.x, worldPos.y);
+  }
+
+  /** Show a floating damage popup over a unit. */
+  private showDamagePopup(entityId: EntityId, result: AttackResult): void {
+    const pos = this.world.getComponent<PositionComponent>(entityId, "position");
+    if (!pos) return;
+
+    const worldPos = hexToPixel(this.layout, pos.q, pos.r);
+    const screenPos = this.camera.worldToScreen(worldPos.x, worldPos.y);
+
+    const popup = document.createElement("div");
+    popup.className = "damage-popup";
+
+    if (!result.hit) {
+      popup.textContent = "Miss";
+      popup.classList.add("miss");
+    } else if (result.targetKilled) {
+      popup.textContent = `-${result.hpDamage} KILLED`;
+      popup.classList.add("kill");
+    } else {
+      popup.textContent = `-${result.hpDamage}`;
+    }
+
+    popup.style.left = `${screenPos.x}px`;
+    popup.style.top = `${screenPos.y}px`;
+
+    this.uiManager.root.appendChild(popup);
+    popup.addEventListener("animationend", () => popup.remove());
   }
 
   private showUnitInfo(entityId: EntityId): void {

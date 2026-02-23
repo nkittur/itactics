@@ -14,14 +14,23 @@ import { Vector3 } from "@babylonjs/core/Maths/math.vector";
  */
 export class CameraController {
   camera: FreeCamera;
-  private orthoHalfHeight = 8;
+  private orthoHalfHeight = 10;
   private engine: Engine;
+  private scene: Scene;
 
   private readonly minOrthoHalfHeight = 3;
   private readonly maxOrthoHalfHeight = 15;
 
+  /** Active smooth-pan animation state, or null if idle. */
+  private panAnim: {
+    startX: number; startZ: number;
+    targetX: number; targetZ: number;
+    startTime: number; duration: number;
+  } | null = null;
+
   constructor(scene: Scene, engine: Engine) {
     this.engine = engine;
+    this.scene = scene;
 
     this.camera = new FreeCamera("camera", new Vector3(0, 10, 0), scene);
     // Fixed rotation: look straight down. No setTarget() — avoids gimbal lock.
@@ -32,6 +41,9 @@ export class CameraController {
 
     this.camera.inputs.clear();
     this.updateOrtho();
+
+    // Drive smooth-pan each frame
+    scene.registerBeforeRender(() => this.tickPan());
   }
 
   updateOrtho(): void {
@@ -44,9 +56,10 @@ export class CameraController {
 
   /**
    * Pan the camera by a world-space delta on the XZ plane.
-   * Only modifies position — rotation stays fixed.
+   * Cancels any in-flight smooth pan.
    */
   pan(dx: number, dz: number): void {
+    this.panAnim = null;
     this.camera.position.x += dx;
     this.camera.position.z += dz;
   }
@@ -68,9 +81,57 @@ export class CameraController {
     this.updateOrtho();
   }
 
+  /** Instantly center the camera on a world position. */
   centerOn(x: number, z: number): void {
+    this.panAnim = null;
     this.camera.position.x = x;
     this.camera.position.z = z;
+  }
+
+  /** Smoothly pan the camera to a world position over durationMs. */
+  panTo(targetX: number, targetZ: number, durationMs = 400): void {
+    this.panAnim = {
+      startX: this.camera.position.x,
+      startZ: this.camera.position.z,
+      targetX,
+      targetZ,
+      startTime: performance.now(),
+      duration: durationMs,
+    };
+  }
+
+  private tickPan(): void {
+    if (!this.panAnim) return;
+    const { startX, startZ, targetX, targetZ, startTime, duration } = this.panAnim;
+    const t = Math.min(1, (performance.now() - startTime) / duration);
+    const ease = 1 - (1 - t) * (1 - t); // ease-out quadratic
+
+    this.camera.position.x = startX + (targetX - startX) * ease;
+    this.camera.position.z = startZ + (targetZ - startZ) * ease;
+
+    if (t >= 1) this.panAnim = null;
+  }
+
+  /**
+   * Project a world XZ position to screen-space CSS pixels.
+   * Useful for positioning HTML overlays above game objects.
+   */
+  worldToScreen(worldX: number, worldZ: number): { x: number; y: number } {
+    const canvas = this.engine.getRenderingCanvas()!;
+    const camX = this.camera.position.x;
+    const camZ = this.camera.position.z;
+    const oL = this.camera.orthoLeft!;
+    const oR = this.camera.orthoRight!;
+    const oT = this.camera.orthoTop!;
+    const oB = this.camera.orthoBottom!;
+
+    const ndcX = (worldX - camX - oL) / (oR - oL);
+    const ndcY = 1 - (worldZ - camZ - oB) / (oT - oB);
+
+    return {
+      x: ndcX * canvas.clientWidth,
+      y: ndcY * canvas.clientHeight,
+    };
   }
 
   get orthoSize(): number {

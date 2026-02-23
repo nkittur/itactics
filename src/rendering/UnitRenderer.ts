@@ -20,6 +20,14 @@ interface UnitEntry {
   r: number;
 }
 
+/** Health bar meshes for a single unit. */
+interface HealthBarEntry {
+  bg: Mesh;
+  fill: Mesh;
+  fillMat: StandardMaterial;
+  pct: number;
+}
+
 /** Team to base color mapping. */
 const TEAM_COLORS: Record<UnitTeam, Color3> = {
   [UnitTeam.Player]: Color3.FromHexString("#4477cc"),  // blue
@@ -36,8 +44,7 @@ const SELECTION_COLOR = Color3.FromHexString("#ffcc00"); // yellow
  * (y=0.1). Player units are blue, enemy units are red. When a unit is
  * selected, a yellow selection ring is displayed around it.
  *
- * This is a placeholder renderer -- real sprites will replace these discs
- * once the SpriteManager is implemented.
+ * Damaged units show a health bar above their disc.
  */
 export class UnitRenderer {
   private scene: Scene;
@@ -47,41 +54,31 @@ export class UnitRenderer {
   private selectionMaterial: StandardMaterial | null = null;
   private selectedEntityId: string | null = null;
 
+  private healthBars = new Map<string, HealthBarEntry>();
+  private hpBgMat: StandardMaterial | null = null;
+
   constructor(scene: Scene, layout: HexLayout) {
     this.scene = scene;
     this.layout = layout;
   }
 
-  /**
-   * Add a unit disc to the scene at the given hex position.
-   *
-   * @param entityId - Unique entity identifier.
-   * @param q - Axial q coordinate.
-   * @param r - Axial r coordinate.
-   * @param team - Which team the unit belongs to.
-   */
   addUnit(entityId: string, q: number, r: number, team: UnitTeam): void {
-    // Remove existing if present (idempotent)
     if (this.units.has(entityId)) {
       this.removeUnit(entityId);
     }
 
     const { x, y } = hexToPixel(this.layout, q, r);
 
-    // Create a disc mesh for the unit
     const mesh = MeshBuilder.CreateDisc(
       `unit_${entityId}`,
       { radius: this.layout.size * 0.4, tessellation: 16 },
       this.scene
     );
-    // Lay flat on XZ plane
     mesh.rotation.x = -Math.PI / 2;
-    // Position slightly above hex tiles
     mesh.position.x = x;
     mesh.position.y = 0.1;
     mesh.position.z = y;
 
-    // Material colored by team — use emissive so units are always visible
     const mat = new StandardMaterial(`unitMat_${entityId}`, this.scene);
     mat.diffuseColor = Color3.Black();
     mat.emissiveColor = TEAM_COLORS[team];
@@ -92,14 +89,10 @@ export class UnitRenderer {
     this.units.set(entityId, { mesh, team, q, r });
   }
 
-  /**
-   * Remove a unit from the scene.
-   */
   removeUnit(entityId: string): void {
     const entry = this.units.get(entityId);
     if (!entry) return;
 
-    // Clear selection if this unit was selected
     if (this.selectedEntityId === entityId) {
       this.setSelected(null);
     }
@@ -107,11 +100,10 @@ export class UnitRenderer {
     entry.mesh.material?.dispose();
     entry.mesh.dispose();
     this.units.delete(entityId);
+
+    this.removeHealthBar(entityId);
   }
 
-  /**
-   * Move a unit's visual representation to a new hex position.
-   */
   updatePosition(entityId: string, q: number, r: number): void {
     const entry = this.units.get(entityId);
     if (!entry) return;
@@ -122,19 +114,15 @@ export class UnitRenderer {
     entry.q = q;
     entry.r = r;
 
-    // Move selection ring if this unit is selected
     if (this.selectedEntityId === entityId && this.selectionRing) {
       this.selectionRing.position.x = x;
       this.selectionRing.position.z = y;
     }
+
+    this.moveHealthBar(entityId, x, y);
   }
 
-  /**
-   * Set the currently selected unit. Pass null to deselect.
-   * A yellow ring is drawn around the selected unit.
-   */
   setSelected(entityId: string | null): void {
-    // Remove existing selection ring
     if (this.selectionRing) {
       this.selectionRing.dispose();
       this.selectionRing = null;
@@ -149,7 +137,6 @@ export class UnitRenderer {
 
     const { x, y } = hexToPixel(this.layout, entry.q, entry.r);
 
-    // Create a torus (ring) around the selected unit
     const ring = MeshBuilder.CreateTorus(
       "selectionRing",
       {
@@ -159,12 +146,10 @@ export class UnitRenderer {
       },
       this.scene
     );
-    // Torus is already in XZ plane by default — no rotation needed
     ring.position.x = x;
-    ring.position.y = 0.15; // above unit disc
+    ring.position.y = 0.15;
     ring.position.z = y;
 
-    // Yellow selection material
     if (!this.selectionMaterial) {
       this.selectionMaterial = new StandardMaterial("selectionMat", this.scene);
       this.selectionMaterial.diffuseColor = Color3.Black();
@@ -177,18 +162,117 @@ export class UnitRenderer {
     this.selectionRing = ring;
   }
 
-  /**
-   * Get the currently selected entity ID, or null if none.
-   */
   getSelected(): string | null {
     return this.selectedEntityId;
   }
 
+  // ── Health bars ──
+
   /**
-   * Remove all unit meshes from the scene.
+   * Show or update a health bar above a unit. Hides bar at full health.
    */
+  updateHealthBar(entityId: string, current: number, max: number): void {
+    const entry = this.units.get(entityId);
+    if (!entry) return;
+
+    if (current >= max) {
+      this.removeHealthBar(entityId);
+      return;
+    }
+
+    const { x, y } = hexToPixel(this.layout, entry.q, entry.r);
+    const barWidth = this.layout.size * 0.7;
+    const barHeight = this.layout.size * 0.08;
+    const barZ = y + this.layout.size * 0.55;
+    const barY = 0.2;
+    const pct = Math.max(0.01, current / max);
+
+    let bar = this.healthBars.get(entityId);
+    if (!bar) {
+      // Lazy-create shared background material
+      if (!this.hpBgMat) {
+        this.hpBgMat = new StandardMaterial("hpBgMat", this.scene);
+        this.hpBgMat.diffuseColor = Color3.Black();
+        this.hpBgMat.emissiveColor = new Color3(0.2, 0.05, 0.05);
+        this.hpBgMat.specularColor = Color3.Black();
+        this.hpBgMat.backFaceCulling = false;
+      }
+
+      const bg = MeshBuilder.CreatePlane(
+        "hpBg_" + entityId,
+        { width: barWidth, height: barHeight },
+        this.scene
+      );
+      bg.rotation.x = -Math.PI / 2;
+      bg.material = this.hpBgMat;
+
+      const fillMat = new StandardMaterial("hpFillMat_" + entityId, this.scene);
+      fillMat.diffuseColor = Color3.Black();
+      fillMat.specularColor = Color3.Black();
+      fillMat.backFaceCulling = false;
+
+      const fill = MeshBuilder.CreatePlane(
+        "hpFill_" + entityId,
+        { width: barWidth, height: barHeight },
+        this.scene
+      );
+      fill.rotation.x = -Math.PI / 2;
+      fill.material = fillMat;
+
+      bar = { bg, fill, fillMat, pct };
+      this.healthBars.set(entityId, bar);
+    }
+
+    bar.pct = pct;
+
+    // Position background (centered on unit X)
+    bar.bg.position.x = x;
+    bar.bg.position.y = barY;
+    bar.bg.position.z = barZ;
+
+    // Scale fill and left-align
+    bar.fill.scaling.x = pct;
+    bar.fill.position.x = x - barWidth * (1 - pct) / 2;
+    bar.fill.position.y = barY + 0.01;
+    bar.fill.position.z = barZ;
+
+    // Color by health percentage
+    if (pct > 0.5) {
+      bar.fillMat.emissiveColor = new Color3(0.2, 0.8, 0.2);   // green
+    } else if (pct > 0.25) {
+      bar.fillMat.emissiveColor = new Color3(0.8, 0.8, 0.2);   // yellow
+    } else {
+      bar.fillMat.emissiveColor = new Color3(0.8, 0.2, 0.2);   // red
+    }
+  }
+
+  private removeHealthBar(entityId: string): void {
+    const bar = this.healthBars.get(entityId);
+    if (!bar) return;
+    bar.bg.dispose();
+    bar.fill.dispose();
+    bar.fillMat.dispose();
+    this.healthBars.delete(entityId);
+  }
+
+  private moveHealthBar(entityId: string, worldX: number, worldZ: number): void {
+    const bar = this.healthBars.get(entityId);
+    if (!bar) return;
+    const barWidth = this.layout.size * 0.7;
+    const barZ = worldZ + this.layout.size * 0.55;
+
+    bar.bg.position.x = worldX;
+    bar.bg.position.z = barZ;
+
+    bar.fill.position.x = worldX - barWidth * (1 - bar.pct) / 2;
+    bar.fill.position.z = barZ;
+  }
+
+  // ── Cleanup ──
+
   clear(): void {
     this.setSelected(null);
+
     for (const [id] of this.units) {
       const entry = this.units.get(id);
       if (entry) {
@@ -198,15 +282,24 @@ export class UnitRenderer {
     }
     this.units.clear();
 
+    for (const [, bar] of this.healthBars) {
+      bar.bg.dispose();
+      bar.fill.dispose();
+      bar.fillMat.dispose();
+    }
+    this.healthBars.clear();
+
     if (this.selectionMaterial) {
       this.selectionMaterial.dispose();
       this.selectionMaterial = null;
     }
+
+    if (this.hpBgMat) {
+      this.hpBgMat.dispose();
+      this.hpBgMat = null;
+    }
   }
 
-  /**
-   * Dispose of all resources.
-   */
   dispose(): void {
     this.clear();
   }

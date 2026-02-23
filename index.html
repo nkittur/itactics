@@ -47,9 +47,9 @@
       display: flex;
       gap: 4px;
       padding: 5px;
-      background: magenta;
+      background: rgba(26, 26, 46, 0.8);
       border-radius: 8px;
-      border: 3px solid yellow;
+      border: 1px solid #444466;
       pointer-events: auto;
     }
     .action-btn {
@@ -100,9 +100,9 @@
       transform: translateX(-50%);
       width: 180px;
       padding: 8px 10px;
-      background: cyan;
+      background: rgba(26, 26, 46, 0.8);
       border-radius: 6px;
-      border: 3px solid red;
+      border: 1px solid #aaaaaa;
       pointer-events: auto;
     }
     .unit-name {
@@ -129,27 +129,34 @@
       font-size: 11px;
       margin-top: 2px;
     }
+    .damage-popup {
+      position: absolute;
+      transform: translate(-50%, -100%);
+      font-size: 20px;
+      font-weight: bold;
+      color: #ff4444;
+      text-shadow: 0 0 4px black, 0 0 4px black;
+      pointer-events: none;
+      animation: dmgFloat 1s ease-out forwards;
+      white-space: nowrap;
+    }
+    .damage-popup.miss {
+      color: #999999;
+      font-size: 16px;
+    }
+    .damage-popup.kill {
+      color: #ff0000;
+      font-size: 24px;
+    }
+    @keyframes dmgFloat {
+      0% { opacity: 1; transform: translate(-50%, -100%); }
+      100% { opacity: 0; transform: translate(-50%, -250%); }
+    }
   </style>
 </head>
 <body>
   <canvas id="gameCanvas"></canvas>
-  <div id="gameUI">
-    <!-- DEBUG: static element, no JS needed. Remove after confirming overlay works. -->
-    <div id="debugOverlay" style="
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      background: red;
-      color: white;
-      font-size: 24px;
-      font-weight: bold;
-      padding: 20px 40px;
-      border: 4px solid yellow;
-      pointer-events: auto;
-      z-index: 999;
-    ">DEBUG: UI OVERLAY IS HERE</div>
-  </div>
+  <div id="gameUI"></div>
   <script type="module" src="/src/main.ts"></script>
 </body>
 </html>
