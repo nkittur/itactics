@@ -3,21 +3,16 @@ import { CameraController } from "@rendering/CameraController";
 import { HexLayout, pixelToHex } from "@hex/HexLayout";
 
 /**
- * Unified touch and mouse input manager.
+ * Unified touch and pointer input manager.
  *
- * Handles all pointer input on the game canvas and translates raw browser
- * events into game-meaningful actions:
- *
- * - **Tap** (touch < 200ms, movement < 10px): Picks the hex under the pointer
- *   and fires the onHexTap callback.
- * - **Pan** (single-finger drag or mouse drag): Pans the camera across the
- *   battlefield.
- * - **Pinch** (two-finger gesture): Zooms the camera in or out.
+ * - **Tap** (quick press, minimal movement): Picks the hex under the pointer.
+ * - **Pan** (single-finger drag or mouse drag): Pans the camera.
+ * - **Pinch** (two-finger gesture): Zooms the camera.
  * - **Mouse wheel**: Zooms the camera.
  *
- * Touch events are handled via the pointer events API fallback, with direct
- * touch event listeners for pinch detection. The canvas touch-action is set
- * to "none" to prevent browser gestures from interfering.
+ * Uses pointer events for mouse/stylus (since Babylon.js suppresses mouse
+ * events via preventDefault on its own pointer handlers) and raw touch
+ * events for multi-touch pinch detection.
  */
 export class TouchManager {
   /** Called when a hex tile is tapped. Receives axial (q, r) coordinates. */
@@ -28,28 +23,28 @@ export class TouchManager {
   private camera: CameraController;
   private hexLayout: HexLayout;
 
-  // Touch state tracking
+  // Touch state tracking (for pinch)
   private touchStart: { x: number; y: number; time: number } | null = null;
   private isDragging = false;
   private initialPinchDistance: number | null = null;
   private lastPinchScale = 1;
+  private touchActive = false; // true while a touch sequence is active
 
-  // Mouse state tracking
-  private mouseDown = false;
-  private mouseStart: { x: number; y: number } | null = null;
-  private mouseDragging = false;
+  // Pointer state tracking (mouse/stylus — not touch)
+  private pointerDown = false;
+  private pointerStart: { x: number; y: number } | null = null;
+  private pointerDragging = false;
 
-  /** Speed multiplier for mouse wheel zoom. */
   private readonly wheelZoomSpeed = 0.002;
 
-  // Bound event handlers (for proper removeEventListener)
+  // Bound event handlers
   private boundOnTouchStart: (e: TouchEvent) => void;
   private boundOnTouchMove: (e: TouchEvent) => void;
   private boundOnTouchEnd: (e: TouchEvent) => void;
   private boundOnTouchCancel: (e: TouchEvent) => void;
-  private boundOnMouseDown: (e: MouseEvent) => void;
-  private boundOnMouseMove: (e: MouseEvent) => void;
-  private boundOnMouseUp: (e: MouseEvent) => void;
+  private boundOnPointerDown: (e: PointerEvent) => void;
+  private boundOnPointerMove: (e: PointerEvent) => void;
+  private boundOnPointerUp: (e: PointerEvent) => void;
   private boundOnWheel: (e: WheelEvent) => void;
 
   constructor(
@@ -63,32 +58,27 @@ export class TouchManager {
     this.camera = camera;
     this.hexLayout = hexLayout;
 
-    // Prevent browser default touch gestures (scroll, zoom, etc.)
     this.canvas.style.touchAction = "none";
 
-    // Bind handlers
     this.boundOnTouchStart = this.onTouchStart.bind(this);
     this.boundOnTouchMove = this.onTouchMove.bind(this);
     this.boundOnTouchEnd = this.onTouchEnd.bind(this);
     this.boundOnTouchCancel = this.onTouchCancel.bind(this);
-    this.boundOnMouseDown = this.onMouseDown.bind(this);
-    this.boundOnMouseMove = this.onMouseMove.bind(this);
-    this.boundOnMouseUp = this.onMouseUp.bind(this);
+    this.boundOnPointerDown = this.onPointerDown.bind(this);
+    this.boundOnPointerMove = this.onPointerMove.bind(this);
+    this.boundOnPointerUp = this.onPointerUp.bind(this);
     this.boundOnWheel = this.onWheel.bind(this);
 
     this.setupTouchEvents();
-    this.setupMouseEvents();
+    this.setupPointerEvents();
   }
 
-  /**
-   * Update the hex layout reference (e.g., if the layout changes at runtime).
-   */
   setHexLayout(layout: HexLayout): void {
     this.hexLayout = layout;
   }
 
   // ---------------------------------------------------------------------------
-  // Touch events
+  // Touch events (handles tap, single-finger pan, and pinch-zoom)
   // ---------------------------------------------------------------------------
 
   private setupTouchEvents(): void {
@@ -100,18 +90,18 @@ export class TouchManager {
 
   private onTouchStart(e: TouchEvent): void {
     e.preventDefault();
+    this.touchActive = true;
 
     if (e.touches.length === 1) {
       const touch = e.touches[0]!;
       this.touchStart = { x: touch.clientX, y: touch.clientY, time: Date.now() };
       this.isDragging = false;
     } else if (e.touches.length === 2) {
-      // Begin pinch
       const dx = e.touches[0]!.clientX - e.touches[1]!.clientX;
       const dy = e.touches[0]!.clientY - e.touches[1]!.clientY;
       this.initialPinchDistance = Math.hypot(dx, dy);
       this.lastPinchScale = 1;
-      this.touchStart = null; // cancel any pending tap
+      this.touchStart = null;
     }
   }
 
@@ -126,22 +116,7 @@ export class TouchManager {
 
       if (distance > 10 || this.isDragging) {
         this.isDragging = true;
-
-        // Convert screen-space drag to world-space camera pan (1:1 finger tracking).
-        // Each pixel of drag maps to the exact world-space distance so content
-        // follows the finger.
-        const cam = this.camera.camera;
-        const worldPerPixelX = (cam.orthoRight! - cam.orthoLeft!) / this.canvas.clientWidth;
-        const worldPerPixelZ = (cam.orthoTop! - cam.orthoBottom!) / this.canvas.clientHeight;
-
-        // Drag right → camera moves -X (content follows finger right)
-        // Drag up (dy<0) → camera moves -Z (screen up = +Z, so content follows)
-        const worldDx = -dx * worldPerPixelX;
-        const worldDz = dy * worldPerPixelZ;
-
-        this.camera.pan(worldDx, worldDz);
-
-        // Update start for continuous drag deltas
+        this.panByScreenDelta(dx, dy);
         this.touchStart.x = touch.clientX;
         this.touchStart.y = touch.clientY;
       }
@@ -150,8 +125,6 @@ export class TouchManager {
       const dy = e.touches[0]!.clientY - e.touches[1]!.clientY;
       const currentDistance = Math.hypot(dx, dy);
       const scale = currentDistance / this.initialPinchDistance;
-
-      // Apply only the delta since last frame
       const deltaScale = scale / this.lastPinchScale;
       this.camera.zoomByScale(deltaScale);
       this.lastPinchScale = scale;
@@ -167,18 +140,18 @@ export class TouchManager {
         touch.clientY - this.touchStart.y
       );
 
-      // Tap: short duration and minimal movement
       if (elapsed < 300 && moved < 15) {
+        console.log("[Touch] tap at", touch.clientX, touch.clientY);
         this.handleTap(touch.clientX, touch.clientY);
       }
     }
 
-    // Reset state
     if (e.touches.length === 0) {
       this.touchStart = null;
       this.isDragging = false;
       this.initialPinchDistance = null;
       this.lastPinchScale = 1;
+      this.touchActive = false;
     }
   }
 
@@ -187,76 +160,89 @@ export class TouchManager {
     this.isDragging = false;
     this.initialPinchDistance = null;
     this.lastPinchScale = 1;
+    this.touchActive = false;
   }
 
   // ---------------------------------------------------------------------------
-  // Mouse events (desktop / hybrid devices)
+  // Pointer events (mouse/stylus on desktop — skips touch pointers)
   // ---------------------------------------------------------------------------
 
-  private setupMouseEvents(): void {
-    this.canvas.addEventListener("mousedown", this.boundOnMouseDown);
-    this.canvas.addEventListener("mousemove", this.boundOnMouseMove);
-    this.canvas.addEventListener("mouseup", this.boundOnMouseUp);
+  private setupPointerEvents(): void {
+    this.canvas.addEventListener("pointerdown", this.boundOnPointerDown);
+    this.canvas.addEventListener("pointermove", this.boundOnPointerMove);
+    this.canvas.addEventListener("pointerup", this.boundOnPointerUp);
     this.canvas.addEventListener("wheel", this.boundOnWheel, { passive: false });
   }
 
-  private onMouseDown(e: MouseEvent): void {
-    this.mouseDown = true;
-    this.mouseDragging = false;
-    this.mouseStart = { x: e.clientX, y: e.clientY };
+  private onPointerDown(e: PointerEvent): void {
+    // Skip touch pointers — handled by touch events above
+    if (e.pointerType === "touch") return;
+
+    console.log("[Pointer] down", e.pointerType, e.clientX, e.clientY);
+    this.pointerDown = true;
+    this.pointerDragging = false;
+    this.pointerStart = { x: e.clientX, y: e.clientY };
   }
 
-  private onMouseMove(e: MouseEvent): void {
-    if (!this.mouseDown || !this.mouseStart) return;
+  private onPointerMove(e: PointerEvent): void {
+    if (e.pointerType === "touch") return;
+    if (!this.pointerDown || !this.pointerStart) return;
 
-    const dx = e.clientX - this.mouseStart.x;
-    const dy = e.clientY - this.mouseStart.y;
+    const dx = e.clientX - this.pointerStart.x;
+    const dy = e.clientY - this.pointerStart.y;
 
-    if (Math.hypot(dx, dy) > 5 || this.mouseDragging) {
-      this.mouseDragging = true;
-
-      const cam = this.camera.camera;
-      const worldPerPixelX = (cam.orthoRight! - cam.orthoLeft!) / this.canvas.clientWidth;
-      const worldPerPixelZ = (cam.orthoTop! - cam.orthoBottom!) / this.canvas.clientHeight;
-      const worldDx = -dx * worldPerPixelX;
-      const worldDz = dy * worldPerPixelZ;
-
-      this.camera.pan(worldDx, worldDz);
-
-      this.mouseStart.x = e.clientX;
-      this.mouseStart.y = e.clientY;
+    if (Math.hypot(dx, dy) > 5 || this.pointerDragging) {
+      this.pointerDragging = true;
+      this.panByScreenDelta(dx, dy);
+      this.pointerStart.x = e.clientX;
+      this.pointerStart.y = e.clientY;
     }
   }
 
-  private onMouseUp(e: MouseEvent): void {
-    if (this.mouseDown && !this.mouseDragging) {
-      // Click (no drag) = tap
+  private onPointerUp(e: PointerEvent): void {
+    if (e.pointerType === "touch") return;
+
+    console.log("[Pointer] up", e.pointerType, "dragging=", this.pointerDragging, "down=", this.pointerDown);
+
+    if (this.pointerDown && !this.pointerDragging) {
+      console.log("[Pointer] click→tap at", e.clientX, e.clientY);
       this.handleTap(e.clientX, e.clientY);
     }
 
-    this.mouseDown = false;
-    this.mouseDragging = false;
-    this.mouseStart = null;
+    this.pointerDown = false;
+    this.pointerDragging = false;
+    this.pointerStart = null;
   }
 
   private onWheel(e: WheelEvent): void {
     e.preventDefault();
-    // Positive deltaY = scroll down = zoom out (increase ortho size)
     const delta = e.deltaY * this.wheelZoomSpeed * this.camera.orthoSize;
     this.camera.zoom(delta);
   }
 
   // ---------------------------------------------------------------------------
-  // Hex picking
+  // Shared helpers
   // ---------------------------------------------------------------------------
+
+  /** Convert a screen-space drag delta to a world-space camera pan. */
+  private panByScreenDelta(dx: number, dy: number): void {
+    const cam = this.camera.camera;
+    const worldPerPixelX = (cam.orthoRight! - cam.orthoLeft!) / this.canvas.clientWidth;
+    const worldPerPixelZ = (cam.orthoTop! - cam.orthoBottom!) / this.canvas.clientHeight;
+    const worldDx = -dx * worldPerPixelX;
+    const worldDz = dy * worldPerPixelZ;
+    this.camera.pan(worldDx, worldDz);
+  }
 
   /**
    * Convert a screen tap/click into a hex coordinate using direct math
-   * for the orthographic camera. This avoids scene.pick reliability issues
-   * on mobile devices.
+   * for the orthographic camera.
    */
   private handleTap(screenX: number, screenY: number): void {
-    if (!this.onHexTap) return;
+    if (!this.onHexTap) {
+      console.log("[handleTap] no onHexTap callback!");
+      return;
+    }
 
     const cam = this.camera.camera;
     const cw = this.canvas.clientWidth;
@@ -264,17 +250,15 @@ export class TouchManager {
 
     if (cw === 0 || ch === 0) return;
 
-    // Normalized screen coordinates [0, 1]
     const nx = screenX / cw;
     const ny = screenY / ch;
 
-    // Map to world XZ via orthographic bounds + camera position.
-    // With camera rotation.x = PI/2: screen right = +X, screen up = +Z.
-    // Screen Y=0 (top) maps to cam.z + orthoTop, Y=height (bottom) to cam.z + orthoBottom.
     const worldX = cam.position.x + cam.orthoLeft! + nx * (cam.orthoRight! - cam.orthoLeft!);
     const worldZ = cam.position.z + cam.orthoTop! - ny * (cam.orthoTop! - cam.orthoBottom!);
 
     const hexCoord = pixelToHex(this.hexLayout, worldX, worldZ);
+    console.log("[handleTap] screen=(%f,%f) world=(%f,%f) hex=(%d,%d)",
+      screenX, screenY, worldX, worldZ, hexCoord.q, hexCoord.r);
     this.onHexTap(hexCoord.q, hexCoord.r);
   }
 
@@ -282,17 +266,14 @@ export class TouchManager {
   // Cleanup
   // ---------------------------------------------------------------------------
 
-  /**
-   * Remove all event listeners and clean up resources.
-   */
   dispose(): void {
     this.canvas.removeEventListener("touchstart", this.boundOnTouchStart);
     this.canvas.removeEventListener("touchmove", this.boundOnTouchMove);
     this.canvas.removeEventListener("touchend", this.boundOnTouchEnd);
     this.canvas.removeEventListener("touchcancel", this.boundOnTouchCancel);
-    this.canvas.removeEventListener("mousedown", this.boundOnMouseDown);
-    this.canvas.removeEventListener("mousemove", this.boundOnMouseMove);
-    this.canvas.removeEventListener("mouseup", this.boundOnMouseUp);
+    this.canvas.removeEventListener("pointerdown", this.boundOnPointerDown);
+    this.canvas.removeEventListener("pointermove", this.boundOnPointerMove);
+    this.canvas.removeEventListener("pointerup", this.boundOnPointerUp);
     this.canvas.removeEventListener("wheel", this.boundOnWheel);
 
     this.onHexTap = null;

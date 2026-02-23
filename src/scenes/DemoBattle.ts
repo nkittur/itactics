@@ -304,10 +304,12 @@ export class DemoBattle {
   }
 
   private wireEvents(): void {
-    // Touch -> Combat
+    // Touch/Click -> Combat
     this.touchManager.onHexTap = (q: number, r: number) => {
-      this.combat.handleHexTap(q, r);
-      // Overlays update automatically via onPlayerStateChange
+      console.log("[DemoBattle] onHexTap q=%d r=%d phase=%s state=%s selected=%s",
+        q, r, this.combat.phase, this.combat.playerTurnState, this.combat.selectedUnit);
+      const handled = this.combat.handleHexTap(q, r);
+      console.log("[DemoBattle] handleHexTap returned", handled, "newState=", this.combat.playerTurnState);
       this.refreshUI();
     };
 
