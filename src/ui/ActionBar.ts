@@ -1,4 +1,5 @@
 import { StackPanel } from "@babylonjs/gui/2D/controls/stackPanel";
+import { Rectangle } from "@babylonjs/gui/2D/controls/rectangle";
 import { Button } from "@babylonjs/gui/2D/controls/button";
 import { Control } from "@babylonjs/gui/2D/controls/control";
 import type { AdvancedDynamicTexture } from "@babylonjs/gui/2D/advancedDynamicTexture";
@@ -6,17 +7,30 @@ import type { AdvancedDynamicTexture } from "@babylonjs/gui/2D/advancedDynamicTe
 export type ActionType = "undo" | "wait" | "endTurn";
 
 export class ActionBar {
+  private container: Rectangle;
   private panel: StackPanel;
   onAction?: (action: ActionType) => void;
   private buttons: Map<string, Button> = new Map();
 
   constructor(gui: AdvancedDynamicTexture) {
+    // Outer container: fixed rectangle with visible background
+    this.container = new Rectangle("actionBarBg");
+    this.container.width = "300px";
+    this.container.height = "60px";
+    this.container.cornerRadius = 8;
+    this.container.background = "#1a1a2ecc";
+    this.container.color = "#444466";
+    this.container.thickness = 1;
+    this.container.verticalAlignment = Control.VERTICAL_ALIGNMENT_BOTTOM;
+    this.container.top = "-20px";
+    gui.addControl(this.container);
+
+    // Inner horizontal stack for buttons
     this.panel = new StackPanel("actionBar");
     this.panel.isVertical = false;
-    this.panel.height = "70px";
-    this.panel.verticalAlignment = Control.VERTICAL_ALIGNMENT_BOTTOM;
-    this.panel.paddingBottom = "40px";
-    gui.addControl(this.panel);
+    this.panel.width = "290px";
+    this.panel.height = "50px";
+    this.container.addControl(this.panel);
 
     this.addButton("undo", "Undo", "#6a5a3a");
     this.addButton("wait", "Wait", "#5a5a7a");
@@ -45,7 +59,7 @@ export class ActionBar {
 
   setVisible(visible: boolean): void {
     console.log("[ActionBar] setVisible", visible);
-    this.panel.isVisible = visible;
+    this.container.isVisible = visible;
   }
 
   setEnabled(action: string, enabled: boolean): void {

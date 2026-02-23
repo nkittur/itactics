@@ -10,6 +10,9 @@ export class UIManager {
       true,
       scene
     );
+    // Scale GUI controls relative to a consistent design height so they
+    // aren't tiny on high-DPI / retina mobile screens.
+    this.guiTexture.idealHeight = 844;
   }
 
   dispose(): void {
