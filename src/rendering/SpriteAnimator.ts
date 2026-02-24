@@ -65,7 +65,7 @@ export class SpriteAnimator {
     for (const charType of ["soldier", "orc"] as SpriteCharType[]) {
       for (const anim of Object.keys(ANIM_FILES) as SpriteAnim[]) {
         const url = `sprites/${charType}/${ANIM_FILES[anim]}`;
-        const tex = new Texture(url, this.scene, false, true, Texture.NEAREST_SAMPLINGMODE);
+        const tex = new Texture(url, this.scene, false, false, Texture.NEAREST_SAMPLINGMODE);
         tex.hasAlpha = true;
         tex.wrapU = Texture.CLAMP_ADDRESSMODE;
         tex.wrapV = Texture.CLAMP_ADDRESSMODE;

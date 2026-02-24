@@ -41,6 +41,13 @@ const UNIT_Y = 0.5;
 const RING_Y = 0.35;
 /** Health bar height. Above unit sprite. */
 const HP_BAR_Y = 0.7;
+/**
+ * Z offset to shift sprite so character's feet land ~1/4 up the hex tile.
+ * The character's feet are near the bottom of the 100x100 frame (~85% down).
+ * With spriteSize=12, that's ~4.2 units below center. This offset pushes the
+ * sprite up so feet sit near the hex center.
+ */
+const SPRITE_Z_OFFSET = 3.8;
 
 /**
  * Renders units as animated sprite planes on the hex grid.
@@ -97,7 +104,7 @@ export class UnitRenderer {
     mesh.rotation.x = -Math.PI / 2;
     mesh.position.x = x;
     mesh.position.y = UNIT_Y;
-    mesh.position.z = y;
+    mesh.position.z = y + SPRITE_Z_OFFSET;
     mesh.isPickable = false;
 
     // Create material with sprite texture
@@ -140,7 +147,7 @@ export class UnitRenderer {
 
     const { x, y } = hexToPixel(this.layout, q, r);
     entry.mesh.position.x = x;
-    entry.mesh.position.z = y;
+    entry.mesh.position.z = y + SPRITE_Z_OFFSET;
     entry.q = q;
     entry.r = r;
 
@@ -246,7 +253,10 @@ export class UnitRenderer {
 
     this.setAnimation(entityId, "walk");
 
-    const positions = path.map(p => hexToPixel(this.layout, p.q, p.r));
+    const positions = path.map(p => {
+      const px = hexToPixel(this.layout, p.q, p.r);
+      return { x: px.x, z: px.y + SPRITE_Z_OFFSET, rawZ: px.y };
+    });
     let stepIdx = 0;
     let fromX = entry.mesh.position.x;
     let fromZ = entry.mesh.position.z;
@@ -257,7 +267,7 @@ export class UnitRenderer {
       const target = positions[stepIdx]!;
 
       entry.mesh.position.x = fromX + (target.x - fromX) * t;
-      entry.mesh.position.z = fromZ + (target.y - fromZ) * t;
+      entry.mesh.position.z = fromZ + (target.z - fromZ) * t;
 
       if (t >= 1) {
         const dest = path[stepIdx]!;
@@ -266,9 +276,9 @@ export class UnitRenderer {
 
         if (this.selectedEntityId === entityId && this.selectionRing) {
           this.selectionRing.position.x = target.x;
-          this.selectionRing.position.z = target.y;
+          this.selectionRing.position.z = target.rawZ;
         }
-        this.moveHealthBar(entityId, target.x, target.y);
+        this.moveHealthBar(entityId, target.x, target.rawZ);
 
         stepIdx++;
         if (stepIdx >= positions.length) {
@@ -277,7 +287,7 @@ export class UnitRenderer {
           onComplete();
         } else {
           fromX = target.x;
-          fromZ = target.y;
+          fromZ = target.z;
           stepStart = performance.now();
         }
       }
@@ -302,8 +312,9 @@ export class UnitRenderer {
 
     const startX = entry.mesh.position.x;
     const startZ = entry.mesh.position.z;
+    const targetZ = targetWorldZ + SPRITE_Z_OFFSET;
     const midX = (startX + targetWorldX) / 2;
-    const midZ = (startZ + targetWorldZ) / 2;
+    const midZ = (startZ + targetZ) / 2;
     const halfDur = duration / 2;
     const startTime = performance.now();
 
