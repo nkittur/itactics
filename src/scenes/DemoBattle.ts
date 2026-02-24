@@ -281,6 +281,7 @@ export class DemoBattle {
 
     this.unitRenderer = new UnitRenderer(this.sceneManager.scene, this.layout);
     this.overlayRenderer = new OverlayRenderer(this.sceneManager.scene);
+    this.overlayRenderer.setGrid(this.grid);
 
     // Spawn units from scenario
     this.spawnFromScenario(scenario);

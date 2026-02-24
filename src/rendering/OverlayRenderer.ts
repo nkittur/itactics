@@ -4,6 +4,10 @@ import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { HexLayout, hexToPixel } from "@hex/HexLayout";
+import type { HexGrid } from "@hex/HexGrid";
+
+/** Must match LAYER_HEIGHT in TileRenderer. */
+const LAYER_HEIGHT = 0.12;
 
 /**
  * Renders semi-transparent hex overlays for movement range and attack range.
@@ -14,6 +18,7 @@ import { HexLayout, hexToPixel } from "@hex/HexLayout";
  */
 export class OverlayRenderer {
   private scene: Scene;
+  private grid: HexGrid | null = null;
   private overlays: Mesh[] = [];
   private movementMaterial: StandardMaterial | null = null;
   private attackMaterial: StandardMaterial | null = null;
@@ -23,19 +28,26 @@ export class OverlayRenderer {
     this.scene = scene;
   }
 
+  /** Set the grid reference so overlays can sit on correct tile elevation. */
+  setGrid(grid: HexGrid): void {
+    this.grid = grid;
+  }
+
+  /** Get the Y position for an overlay on a given hex, sitting on the tile surface. */
+  private overlayY(q: number, r: number, yOffset: number): number {
+    const tile = this.grid?.get(q, r);
+    const elevation = tile?.elevation ?? 0;
+    return elevation * LAYER_HEIGHT + yOffset;
+  }
+
   /**
    * Display movement range overlays on reachable hexes.
-   *
-   * @param reachableHexes - Map of hex keys ("q,r") to remaining movement points.
-   *   All keys in the map receive an overlay.
-   * @param layout - The hex layout for coordinate conversion.
    */
   showMovementRange(reachableHexes: Map<string, number>, layout: HexLayout): void {
-    // Ensure movement material exists
     if (!this.movementMaterial) {
       this.movementMaterial = new StandardMaterial("movementOverlayMat", this.scene);
       this.movementMaterial.diffuseColor = Color3.Black();
-      this.movementMaterial.emissiveColor = new Color3(0.2, 0.4, 0.9); // blue
+      this.movementMaterial.emissiveColor = new Color3(0.2, 0.4, 0.9);
       this.movementMaterial.alpha = 0.4;
       this.movementMaterial.specularColor = Color3.Black();
       this.movementMaterial.backFaceCulling = false;
@@ -52,14 +64,12 @@ export class OverlayRenderer {
         { radius: layout.size * 0.9, tessellation: 6 },
         this.scene
       );
-      // Lay flat on XZ plane
       disc.rotation.x = -Math.PI / 2;
-      // Flat-top hex orientation
       disc.rotation.y = Math.PI / 6;
       disc.position.x = x;
-      disc.position.y = 0.25; // above all tile elevations
+      disc.position.y = this.overlayY(coords.q, coords.r, 0.02);
       disc.position.z = y;
-      disc.renderingGroupId = 1; // above tiles, below units
+      disc.renderingGroupId = 1;
       disc.material = this.movementMaterial;
 
       this.overlays.push(disc);
@@ -68,16 +78,12 @@ export class OverlayRenderer {
 
   /**
    * Display attack range overlays on targetable hexes.
-   *
-   * @param hexes - Set of hex keys ("q,r") that are within attack range.
-   * @param layout - The hex layout for coordinate conversion.
    */
   showAttackRange(hexes: Set<string>, layout: HexLayout): void {
-    // Ensure attack material exists
     if (!this.attackMaterial) {
       this.attackMaterial = new StandardMaterial("attackOverlayMat", this.scene);
       this.attackMaterial.diffuseColor = Color3.Black();
-      this.attackMaterial.emissiveColor = new Color3(0.9, 0.2, 0.2); // red
+      this.attackMaterial.emissiveColor = new Color3(0.9, 0.2, 0.2);
       this.attackMaterial.alpha = 0.4;
       this.attackMaterial.specularColor = Color3.Black();
       this.attackMaterial.backFaceCulling = false;
@@ -94,14 +100,12 @@ export class OverlayRenderer {
         { radius: layout.size * 0.9, tessellation: 6 },
         this.scene
       );
-      // Lay flat on XZ plane
       disc.rotation.x = -Math.PI / 2;
-      // Flat-top hex orientation
       disc.rotation.y = Math.PI / 6;
       disc.position.x = x;
-      disc.position.y = 0.26; // slightly above movement overlays
+      disc.position.y = this.overlayY(coords.q, coords.r, 0.03);
       disc.position.z = y;
-      disc.renderingGroupId = 1; // above tiles, below units
+      disc.renderingGroupId = 1;
       disc.material = this.attackMaterial;
 
       this.overlays.push(disc);
@@ -110,9 +114,6 @@ export class OverlayRenderer {
 
   /**
    * Display ZoC danger overlays on hexes where moving would trigger free attacks.
-   *
-   * @param hexes - Set of hex keys ("q,r") that trigger ZoC free attacks.
-   * @param layout - The hex layout for coordinate conversion.
    */
   showZoCDanger(hexes: Set<string>, layout: HexLayout): void {
     if (hexes.size === 0) return;
@@ -120,7 +121,7 @@ export class OverlayRenderer {
     if (!this.zocDangerMaterial) {
       this.zocDangerMaterial = new StandardMaterial("zocDangerMat", this.scene);
       this.zocDangerMaterial.diffuseColor = Color3.Black();
-      this.zocDangerMaterial.emissiveColor = new Color3(0.9, 0.5, 0.1); // orange
+      this.zocDangerMaterial.emissiveColor = new Color3(0.9, 0.5, 0.1);
       this.zocDangerMaterial.alpha = 0.45;
       this.zocDangerMaterial.specularColor = Color3.Black();
       this.zocDangerMaterial.backFaceCulling = false;
@@ -140,7 +141,7 @@ export class OverlayRenderer {
       disc.rotation.x = -Math.PI / 2;
       disc.rotation.y = Math.PI / 6;
       disc.position.x = x;
-      disc.position.y = 0.27; // above attack overlays
+      disc.position.y = this.overlayY(coords.q, coords.r, 0.04);
       disc.position.z = y;
       disc.renderingGroupId = 1;
       disc.material = this.zocDangerMaterial;
