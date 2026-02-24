@@ -3,18 +3,20 @@ import type { HexGrid } from "@hex/HexGrid";
 import type { EntityId } from "@entities/Entity";
 import type { PositionComponent } from "@entities/components/Position";
 import type { HealthComponent } from "@entities/components/Health";
+import type { FatigueComponent } from "@entities/components/Fatigue";
+import type { EquipmentComponent } from "@entities/components/Equipment";
 import { TurnOrder } from "./TurnOrder";
 import { DamageCalculator, type AttackResult } from "./DamageCalculator";
+import { ActionPointManager, tileAPCost, pathAPCost, pathFatigueCost, MAX_AP } from "./ActionPointManager";
+import { getZoCAttacksForMove } from "./ZoneOfControl";
+import { getWeapon, UNARMED } from "@data/WeaponData";
 import { decideAIAction } from "./SimpleAI";
 import { RNG } from "@utils/RNG";
 import { hexDistance, hexNeighbors } from "@hex/HexMath";
 import { findPath, reachableHexes } from "@hex/HexPathfinding";
 
 export type CombatPhase = "deployment" | "playerTurn" | "enemyTurn" | "battleEnd";
-export type PlayerTurnState =
-  | "awaitingInput"
-  | "postMove"
-  | "animating";
+export type PlayerTurnState = "awaitingInput" | "animating";
 
 interface UndoInfo {
   entityId: EntityId;
@@ -22,6 +24,8 @@ interface UndoInfo {
   oldR: number;
   oldElevation: number;
   path: Array<{ q: number; r: number }>;
+  apSpent: number;
+  fatigueSpent: number;
 }
 
 export class CombatManager {
@@ -34,14 +38,13 @@ export class CombatManager {
   /** Movement range cache for the currently selected unit. */
   moveRange: Map<string, number> | null = null;
 
+  /** AP manager for the current turn. */
+  private apManager = new ActionPointManager();
+
   /** Undo info for reverting the last move. */
   private undoInfo: UndoInfo | null = null;
 
-  /**
-   * Continuation to run after animations complete.
-   * Set by executeMove, executeAttack, runEnemyTurn.
-   * Consumed by continueAfterAnimation().
-   */
+  /** Continuation to run after animations complete. */
   private pendingContinuation: (() => void) | null = null;
 
   // ── Callbacks for the rendering/UI layer ──
@@ -51,113 +54,104 @@ export class CombatManager {
   onAttackResult?: (
     result: AttackResult,
     attackerId: EntityId,
-    defenderId: EntityId
+    defenderId: EntityId,
   ) => void;
   onUnitMoved?: (
     entityId: EntityId,
-    path: Array<{ q: number; r: number }>
+    path: Array<{ q: number; r: number }>,
   ) => void;
-  /** Fired when a unit is teleported (e.g. undo) — no animation needed. */
   onUnitTeleported?: (entityId: EntityId, q: number, r: number) => void;
   onBattleEnd?: (victory: boolean) => void;
   onPlayerStateChange?: (state: PlayerTurnState) => void;
-  /** Fired after each action that may need animation (move/attack/enemy turn). */
   onActionComplete?: () => void;
+  onZoCAttack?: (
+    result: AttackResult,
+    attackerId: EntityId,
+    defenderId: EntityId,
+  ) => void;
 
   constructor(
     private world: World,
     private grid: HexGrid,
-    seed?: number
+    seed?: number,
   ) {
     const rng = new RNG(seed ?? Date.now());
     this.turnOrder = new TurnOrder();
-    this.damageCalc = new DamageCalculator(rng);
+    this.damageCalc = new DamageCalculator(rng, grid);
   }
 
-  /** Start combat -- calculate initial turn order, begin first turn. */
+  /** Start combat — calculate initial turn order, begin first turn. */
   start(): void {
     this.turnOrder.calculateOrder(this.world);
     this.beginCurrentTurn();
   }
 
-  /**
-   * Called by the presentation layer after animations finish.
-   * Runs the pending continuation (advance turn, enter postMove, etc.).
-   */
+  /** Called by the presentation layer after animations finish. */
   continueAfterAnimation(): void {
     const fn = this.pendingContinuation;
     this.pendingContinuation = null;
     fn?.();
   }
 
+  /** Remaining AP for the current unit's turn. */
+  get apRemaining(): number {
+    return this.apManager.remaining;
+  }
+
+  /** Get the equipped weapon's AP cost for the selected unit. */
+  get selectedWeaponAPCost(): number {
+    if (!this.selectedUnit) return MAX_AP;
+    return this.getWeaponAPCost(this.selectedUnit);
+  }
+
+  /** Check if the current unit can undo its move. */
+  get canUndo(): boolean {
+    return this.undoInfo !== null;
+  }
+
+  // ── Input handling ──
+
   /** Handle a hex being tapped during player turn. */
   handleHexTap(q: number, r: number): boolean {
     if (this.phase !== "playerTurn") return false;
+    if (this.playerTurnState !== "awaitingInput") return false;
+    if (!this.selectedUnit) return false;
 
     const tile = this.grid.get(q, r);
+    const attackerPos = this.world.getComponent<PositionComponent>(
+      this.selectedUnit,
+      "position",
+    );
+    if (!attackerPos) return false;
 
-    switch (this.playerTurnState) {
-      case "awaitingInput": {
-        if (!this.selectedUnit) break;
-        const attackerPos = this.world.getComponent<PositionComponent>(
-          this.selectedUnit,
-          "position"
-        );
-        if (!attackerPos) break;
+    // Tap on enemy within weapon range → attack
+    if (
+      tile?.occupant &&
+      tile.occupant !== this.selectedUnit &&
+      this.isEnemyEntity(tile.occupant)
+    ) {
+      const dist = hexDistance({ q: attackerPos.q, r: attackerPos.r }, { q, r });
+      const weaponRange = this.getWeaponRange(this.selectedUnit);
+      const weaponAP = this.getWeaponAPCost(this.selectedUnit);
 
-        // Tap on adjacent enemy → attack directly
-        if (
-          tile?.occupant &&
-          tile.occupant !== this.selectedUnit &&
-          this.isEnemyEntity(tile.occupant) &&
-          hexDistance({ q: attackerPos.q, r: attackerPos.r }, { q, r }) === 1
-        ) {
-          this.executeAttack(this.selectedUnit, tile.occupant);
-          return true;
-        }
-
-        // Tap on reachable hex → move
-        const key = `${q},${r}`;
-        if (this.moveRange && this.moveRange.has(key) && !tile?.occupant) {
-          this.executeMove(this.selectedUnit, q, r);
-          return true;
-        }
-
-        return false;
+      if (dist <= weaponRange && this.apManager.canAfford(weaponAP)) {
+        this.executeAttack(this.selectedUnit, tile.occupant);
+        return true;
       }
+    }
 
-      case "postMove": {
-        if (!this.selectedUnit) break;
-        const attackerPos = this.world.getComponent<PositionComponent>(
-          this.selectedUnit,
-          "position"
-        );
-        if (!attackerPos) break;
-
-        // Tap on adjacent enemy → attack
-        if (
-          tile?.occupant &&
-          tile.occupant !== this.selectedUnit &&
-          this.isEnemyEntity(tile.occupant) &&
-          hexDistance({ q: attackerPos.q, r: attackerPos.r }, { q, r }) === 1
-        ) {
-          this.undoInfo = null; // can't undo after attacking
-          this.executeAttack(this.selectedUnit, tile.occupant);
-          return true;
-        }
-
-        return false;
-      }
-
-      default:
-        break;
+    // Tap on reachable hex → move
+    const key = `${q},${r}`;
+    if (this.moveRange && this.moveRange.has(key) && !tile?.occupant) {
+      this.executeMove(this.selectedUnit, q, r);
+      return true;
     }
 
     return false;
   }
 
   /** Handle action bar button press. */
-  handleAction(action: "undo" | "wait" | "endTurn"): void {
+  handleAction(action: "undo" | "wait" | "endTurn" | "recover"): void {
     if (this.phase !== "playerTurn") return;
 
     switch (action) {
@@ -176,6 +170,10 @@ export class CombatManager {
         this.undoInfo = null;
         this.endPlayerUnitTurn();
         break;
+
+      case "recover":
+        this.executeRecover();
+        break;
     }
   }
 
@@ -183,43 +181,78 @@ export class CombatManager {
 
   /** Execute a move action for the given entity to (q, r). */
   private executeMove(entityId: EntityId, q: number, r: number): void {
-    const pos = this.world.getComponent<PositionComponent>(
-      entityId,
-      "position"
-    );
+    const pos = this.world.getComponent<PositionComponent>(entityId, "position");
     if (!pos) return;
 
     const pathResult = findPath(
       this.grid,
       { q: pos.q, r: pos.r },
       { q, r },
-      4
+      this.apManager.remaining,
+      tileAPCost,
     );
     if (!pathResult.found) return;
 
-    // Save undo info before moving
-    this.undoInfo = {
-      entityId,
-      oldQ: pos.q,
-      oldR: pos.r,
-      oldElevation: pos.elevation,
-      path: pathResult.path,
-    };
+    // Calculate costs
+    const apCost = pathResult.cost;
+    const fatigueCost = pathFatigueCost(this.grid, pathResult.path, pos.q, pos.r);
+
+    if (!this.apManager.canAfford(apCost)) return;
+
+    // ── ZoC: Resolve free attacks before moving ──
+    const zocAttackers = getZoCAttacksForMove(
+      this.world, this.grid, entityId,
+      pos.q, pos.r, pathResult.path,
+    );
+
+    for (const attackerId of zocAttackers) {
+      const result = this.damageCalc.resolveMelee(this.world, attackerId, entityId);
+      this.onZoCAttack?.(result, attackerId, entityId);
+
+      if (result.targetKilled) {
+        // Unit died from ZoC — cancel the move
+        this.handleDeath(entityId);
+        this.moveRange = null;
+        this.playerTurnState = "animating";
+        this.pendingContinuation = () => {
+          if (!this.checkBattleEnd()) {
+            this.endPlayerUnitTurn();
+          }
+        };
+        this.onActionComplete?.();
+        return;
+      }
+    }
+
+    // Save undo info before moving (undo disabled if ZoC attacks occurred)
+    if (zocAttackers.length > 0) {
+      this.undoInfo = null; // Can't undo after taking ZoC damage
+    } else {
+      this.undoInfo = {
+        entityId,
+        oldQ: pos.q,
+        oldR: pos.r,
+        oldElevation: pos.elevation,
+        path: pathResult.path,
+        apSpent: apCost,
+        fatigueSpent: fatigueCost,
+      };
+    }
 
     this.playerTurnState = "animating";
 
-    // Check remaining movement before clearing moveRange
-    const destKey = `${q},${r}`;
-    const remainingMovement = this.moveRange?.get(destKey) ?? 0;
+    // Spend AP and fatigue
+    this.apManager.spend(apCost);
+    this.addFatigue(entityId, fatigueCost);
 
-    // Update occupancy on the grid
+    // Update occupancy
     const oldTile = this.grid.get(pos.q, pos.r);
     if (oldTile) oldTile.occupant = null;
 
     const newTile = this.grid.get(q, r);
     if (newTile) newTile.occupant = entityId;
 
-    // Update position component
+    // Update position
     pos.q = q;
     pos.r = r;
     if (newTile) pos.elevation = newTile.elevation;
@@ -228,14 +261,9 @@ export class CombatManager {
 
     this.onUnitMoved?.(entityId, pathResult.path);
 
-    // Set continuation for after animation
+    // Continuation: return to awaitingInput (multi-action turn)
     this.pendingContinuation = () => {
-      if (remainingMovement === 0 && !this.hasAdjacentEnemies(entityId)) {
-        this.undoInfo = null;
-        this.endPlayerUnitTurn();
-      } else {
-        this.setPlayerState("postMove");
-      }
+      this.recalculateAndContinue(entityId);
     };
 
     this.onActionComplete?.();
@@ -245,7 +273,7 @@ export class CombatManager {
   private undoMove(): void {
     if (!this.undoInfo) return;
 
-    const { entityId, oldQ, oldR, oldElevation } = this.undoInfo;
+    const { entityId, oldQ, oldR, oldElevation, apSpent, fatigueSpent } = this.undoInfo;
     const pos = this.world.getComponent<PositionComponent>(entityId, "position");
     if (!pos) return;
 
@@ -261,50 +289,119 @@ export class CombatManager {
     pos.r = oldR;
     pos.elevation = oldElevation;
 
+    // Refund AP and fatigue
+    this.apManager.spend(-apSpent); // negative spend = refund
+    this.addFatigue(entityId, -fatigueSpent);
+
     this.undoInfo = null;
 
-    // Teleport the visual (no animation)
     this.onUnitTeleported?.(entityId, oldQ, oldR);
 
-    // Recalculate move range and go back to awaitingInput
+    // Recalculate and show overlays
     this.calculateMoveRange(entityId);
     this.setPlayerState("awaitingInput");
   }
 
   /** Execute an attack action. */
   private executeAttack(attackerId: EntityId, defenderId: EntityId): void {
+    const weaponAPCost = this.getWeaponAPCost(attackerId);
+    const weaponFatigueCost = this.getWeaponFatigueCost(attackerId);
+
+    if (!this.apManager.canAfford(weaponAPCost)) return;
+
     this.playerTurnState = "animating";
 
-    const result = this.damageCalc.resolveMelee(
-      this.world,
-      attackerId,
-      defenderId
-    );
+    // Spend AP and fatigue
+    this.apManager.spend(weaponAPCost);
+    this.addFatigue(attackerId, weaponFatigueCost);
 
+    // Can't undo after attacking
+    this.undoInfo = null;
+
+    const result = this.damageCalc.resolveMelee(this.world, attackerId, defenderId);
     this.onAttackResult?.(result, attackerId, defenderId);
 
     if (result.targetKilled) {
       this.handleDeath(defenderId);
     }
 
-    // Set continuation for after animation
+    // Continuation: check battle end, then return to awaitingInput
     this.pendingContinuation = () => {
       if (!this.checkBattleEnd()) {
-        this.endPlayerUnitTurn();
+        this.recalculateAndContinue(attackerId);
       }
     };
 
     this.onActionComplete?.();
   }
 
-  /** Calculate and cache move range for a unit. */
+  /** Recover action: spend full turn, recover 50% max fatigue. */
+  private executeRecover(): void {
+    if (!this.selectedUnit) return;
+
+    const fatigue = this.world.getComponent<FatigueComponent>(this.selectedUnit, "fatigue");
+    if (fatigue) {
+      const recovery = Math.floor(fatigue.max * 0.5);
+      fatigue.current = Math.max(0, fatigue.current - recovery);
+    }
+
+    // Recover uses all AP
+    this.apManager.spend(this.apManager.remaining);
+    this.undoInfo = null;
+    this.endPlayerUnitTurn();
+  }
+
+  /**
+   * After an action completes, recalculate move range and decide whether
+   * to continue the turn or auto-end it.
+   */
+  private recalculateAndContinue(entityId: EntityId): void {
+    this.calculateMoveRange(entityId);
+
+    const canMove = this.moveRange && this.moveRange.size > 1; // >1 because start hex is included
+    const canAttack = this.canAttackAnyTarget(entityId);
+
+    if (!canMove && !canAttack) {
+      // No valid actions left — auto-end turn
+      this.undoInfo = null;
+      this.endPlayerUnitTurn();
+    } else {
+      this.setPlayerState("awaitingInput");
+    }
+  }
+
+  /** Check if the unit can attack any adjacent enemy with current AP. */
+  private canAttackAnyTarget(entityId: EntityId): boolean {
+    const pos = this.world.getComponent<PositionComponent>(entityId, "position");
+    if (!pos) return false;
+
+    const weaponAP = this.getWeaponAPCost(entityId);
+    if (!this.apManager.canAfford(weaponAP)) return false;
+
+    const weaponRange = this.getWeaponRange(entityId);
+
+    for (const n of hexNeighbors(pos.q, pos.r)) {
+      const tile = this.grid.get(n.q, n.r);
+      if (!tile?.occupant || tile.occupant === entityId) continue;
+      if (!this.isEnemyEntity(tile.occupant)) continue;
+      const health = this.world.getComponent<HealthComponent>(tile.occupant, "health");
+      if (!health || health.current <= 0) continue;
+      if (hexDistance({ q: pos.q, r: pos.r }, { q: n.q, r: n.r }) <= weaponRange) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /** Calculate and cache move range using AP-based costs. */
   private calculateMoveRange(entityId: EntityId): void {
     const pos = this.world.getComponent<PositionComponent>(entityId, "position");
     if (pos) {
       this.moveRange = reachableHexes(
         this.grid,
         { q: pos.q, r: pos.r },
-        4
+        this.apManager.remaining,
+        tileAPCost,
       );
     }
   }
@@ -324,12 +421,15 @@ export class CombatManager {
     this.beginCurrentTurn();
   }
 
-  /** Begin the current unit's turn based on who it belongs to. */
+  /** Begin the current unit's turn. */
   private beginCurrentTurn(): void {
     if (this.checkBattleEnd()) return;
 
     const entry = this.turnOrder.current();
     if (!entry) return;
+
+    // Apply fatigue recovery at turn start
+    this.applyFatigueRecovery(entry.entityId);
 
     this.onTurnAdvance?.(entry.entityId);
 
@@ -341,26 +441,28 @@ export class CombatManager {
     } else {
       this.setPhase("playerTurn");
       this.selectedUnit = entry.entityId;
+      this.apManager.resetForTurn();
       this.calculateMoveRange(entry.entityId);
       this.setPlayerState("awaitingInput");
     }
   }
 
-  /** Set the player turn state and fire the callback. */
+  /** Apply passive fatigue recovery at the start of a unit's turn. */
+  private applyFatigueRecovery(entityId: EntityId): void {
+    const fatigue = this.world.getComponent<FatigueComponent>(entityId, "fatigue");
+    if (fatigue) {
+      fatigue.current = Math.max(0, fatigue.current - fatigue.recoveryPerTurn);
+    }
+  }
+
   private setPlayerState(state: PlayerTurnState): void {
     this.playerTurnState = state;
     this.onPlayerStateChange?.(state);
   }
 
-  /** Check if the current unit can undo its move. */
-  get canUndo(): boolean {
-    return this.undoInfo !== null;
-  }
-
   /**
-   * Run ONE enemy unit's turn, then wait for animation.
-   * Does NOT recurse — DemoBattle calls continueAfterAnimation()
-   * after animations finish, which runs pendingContinuation.
+   * Run ONE enemy unit's turn using the AI, then wait for animation.
+   * The AI operates with a fixed AP budget.
    */
   private runEnemyTurn(): void {
     const entry = this.turnOrder.current();
@@ -369,16 +471,48 @@ export class CombatManager {
     const entityId = entry.entityId;
     const playerUnits = this.getPlayerUnits();
 
-    const action = decideAIAction(this.world, this.grid, entityId, playerUnits);
+    // Enemy uses AP-based movement budget
+    const enemyAPBudget = MAX_AP;
+    const weaponAPCost = this.getWeaponAPCost(entityId);
+    // Reserve AP for attack if possible
+    const moveAP = enemyAPBudget - weaponAPCost;
+
+    const action = decideAIAction(this.world, this.grid, entityId, playerUnits, moveAP > 0 ? moveAP : 2);
 
     switch (action.type) {
       case "move": {
-        const pos = this.world.getComponent<PositionComponent>(
-          entityId,
-          "position"
-        );
+        const pos = this.world.getComponent<PositionComponent>(entityId, "position");
         if (pos && action.path.length > 0) {
+          // ── ZoC: Resolve free attacks on enemy movement ──
+          const zocAttackers = getZoCAttacksForMove(
+            this.world, this.grid, entityId,
+            pos.q, pos.r, action.path,
+          );
+
+          for (const zocAttacker of zocAttackers) {
+            const zocResult = this.damageCalc.resolveMelee(this.world, zocAttacker, entityId);
+            this.onZoCAttack?.(zocResult, zocAttacker, entityId);
+
+            if (zocResult.targetKilled) {
+              this.handleDeath(entityId);
+              // Enemy died from ZoC — skip rest of turn
+              this.pendingContinuation = () => {
+                if (!this.checkBattleEnd()) {
+                  const newRound = this.turnOrder.advance();
+                  if (newRound) this.turnOrder.calculateOrder(this.world);
+                  this.beginCurrentTurn();
+                }
+              };
+              this.onActionComplete?.();
+              return;
+            }
+          }
+
           const dest = action.path[action.path.length - 1]!;
+
+          // Apply fatigue for movement
+          const fatCost = pathFatigueCost(this.grid, action.path, pos.q, pos.r);
+          this.addFatigue(entityId, fatCost);
 
           const oldTile = this.grid.get(pos.q, pos.r);
           if (oldTile) oldTile.occupant = null;
@@ -393,21 +527,15 @@ export class CombatManager {
           this.onUnitMoved?.(entityId, action.path);
         }
 
-        const posAfterMove = this.world.getComponent<PositionComponent>(
-          entityId,
-          "position"
-        );
+        // Try to attack after moving
+        const posAfterMove = this.world.getComponent<PositionComponent>(entityId, "position");
         if (posAfterMove) {
-          const adjacentTarget = this.findAdjacentEnemy(
-            posAfterMove,
-            playerUnits
-          );
+          const adjacentTarget = this.findAdjacentEnemy(posAfterMove, playerUnits);
           if (adjacentTarget) {
-            const result = this.damageCalc.resolveMelee(
-              this.world,
-              entityId,
-              adjacentTarget
-            );
+            const weaponFat = this.getWeaponFatigueCost(entityId);
+            this.addFatigue(entityId, weaponFat);
+
+            const result = this.damageCalc.resolveMelee(this.world, entityId, adjacentTarget);
             this.onAttackResult?.(result, entityId, adjacentTarget);
             if (result.targetKilled) {
               this.handleDeath(adjacentTarget);
@@ -418,11 +546,10 @@ export class CombatManager {
       }
 
       case "attack": {
-        const result = this.damageCalc.resolveMelee(
-          this.world,
-          entityId,
-          action.targetId
-        );
+        const weaponFat = this.getWeaponFatigueCost(entityId);
+        this.addFatigue(entityId, weaponFat);
+
+        const result = this.damageCalc.resolveMelee(this.world, entityId, action.targetId);
         this.onAttackResult?.(result, entityId, action.targetId);
         if (result.targetKilled) {
           this.handleDeath(action.targetId);
@@ -434,7 +561,6 @@ export class CombatManager {
         break;
     }
 
-    // Set continuation: advance and start next turn (after animations)
     this.pendingContinuation = () => {
       if (!this.checkBattleEnd()) {
         const newRound = this.turnOrder.advance();
@@ -450,7 +576,31 @@ export class CombatManager {
 
   // ── Helpers ──
 
-  /** Check whether a unit has any living enemy units on adjacent hexes. */
+  private getWeaponAPCost(entityId: EntityId): number {
+    const equip = this.world.getComponent<EquipmentComponent>(entityId, "equipment");
+    const weapon = equip?.mainHand ? getWeapon(equip.mainHand) : UNARMED;
+    return weapon.apCost;
+  }
+
+  private getWeaponFatigueCost(entityId: EntityId): number {
+    const equip = this.world.getComponent<EquipmentComponent>(entityId, "equipment");
+    const weapon = equip?.mainHand ? getWeapon(equip.mainHand) : UNARMED;
+    return weapon.fatigueCost;
+  }
+
+  private getWeaponRange(entityId: EntityId): number {
+    const equip = this.world.getComponent<EquipmentComponent>(entityId, "equipment");
+    const weapon = equip?.mainHand ? getWeapon(equip.mainHand) : UNARMED;
+    return weapon.range;
+  }
+
+  private addFatigue(entityId: EntityId, amount: number): void {
+    const fatigue = this.world.getComponent<FatigueComponent>(entityId, "fatigue");
+    if (fatigue) {
+      fatigue.current = Math.max(0, Math.min(fatigue.max, fatigue.current + amount));
+    }
+  }
+
   private hasAdjacentEnemies(entityId: EntityId): boolean {
     const pos = this.world.getComponent<PositionComponent>(entityId, "position");
     if (!pos) return false;
@@ -465,10 +615,7 @@ export class CombatManager {
   }
 
   private handleDeath(entityId: EntityId): void {
-    const pos = this.world.getComponent<PositionComponent>(
-      entityId,
-      "position"
-    );
+    const pos = this.world.getComponent<PositionComponent>(entityId, "position");
     if (pos) {
       const tile = this.grid.get(pos.q, pos.r);
       if (tile) tile.occupant = null;
@@ -522,20 +669,12 @@ export class CombatManager {
 
   private findAdjacentEnemy(
     pos: PositionComponent,
-    enemyIds: EntityId[]
+    enemyIds: EntityId[],
   ): EntityId | null {
     for (const enemyId of enemyIds) {
-      const ePos = this.world.getComponent<PositionComponent>(
-        enemyId,
-        "position"
-      );
+      const ePos = this.world.getComponent<PositionComponent>(enemyId, "position");
       if (!ePos) continue;
-      if (
-        hexDistance(
-          { q: pos.q, r: pos.r },
-          { q: ePos.q, r: ePos.r }
-        ) === 1
-      ) {
+      if (hexDistance({ q: pos.q, r: pos.r }, { q: ePos.q, r: ePos.r }) === 1) {
         return enemyId;
       }
     }

@@ -23,7 +23,8 @@ export function decideAIAction(
   world: World,
   grid: HexGrid,
   entityId: EntityId,
-  enemyIds: EntityId[]
+  enemyIds: EntityId[],
+  moveBudget = 4,
 ): AIAction {
   const pos = world.getComponent<PositionComponent>(entityId, "position");
   if (!pos) return { type: "wait" };
@@ -69,7 +70,7 @@ export function decideAIAction(
       grid,
       { q: pos.q, r: pos.r },
       { q: neighbor.q, r: neighbor.r },
-      4 // movement budget
+      moveBudget,
     );
     if (result.found && result.cost < bestCost) {
       bestCost = result.cost;

@@ -4,6 +4,9 @@ import { hexDistance, hexNeighbors } from "./HexMath";
 import type { HexGrid, HexTile } from "./HexGrid";
 import { PriorityQueue } from "../utils/PriorityQueue";
 
+/** A cost function that takes (grid, sourceTile, targetTile) and returns a number or Infinity. */
+export type CostFn = (grid: HexGrid, source: HexTile, target: HexTile) => number;
+
 interface PathNode {
   q: number;
   r: number;
@@ -45,12 +48,14 @@ export function stepCost(grid: HexGrid, source: HexTile, target: HexTile): numbe
 /**
  * A* pathfinding from `start` to `goal`.
  * `maxCost` limits the search to a movement budget (e.g., the unit's AP).
+ * An optional `costFn` overrides the default `stepCost`.
  */
 export function findPath(
   grid: HexGrid,
   start: AxialCoord,
   goal: AxialCoord,
-  maxCost = Infinity
+  maxCost = Infinity,
+  costFn: CostFn = stepCost,
 ): PathResult {
   const openSet = new PriorityQueue<PathNode>((a, b) => a.f - b.f);
   const closedSet = new Set<string>();
@@ -95,7 +100,7 @@ export function findPath(
       const neighborTile = grid.get(neighbor.q, neighbor.r);
       if (!neighborTile) continue;
 
-      const cost = stepCost(grid, currentTile, neighborTile);
+      const cost = costFn(grid, currentTile, neighborTile);
       if (cost === Infinity) continue;
 
       const tentativeG = current.g + cost;
@@ -124,11 +129,14 @@ export function findPath(
  * Return all hexes reachable within `budget` movement cost.
  * Used to highlight the movement range overlay.
  * Uses Dijkstra flood-fill with a proper priority queue.
+ * The returned map values represent *remaining* budget at each hex.
+ * An optional `costFn` overrides the default `stepCost`.
  */
 export function reachableHexes(
   grid: HexGrid,
   start: AxialCoord,
-  budget: number
+  budget: number,
+  costFn: CostFn = stepCost,
 ): Map<string, number> {
   const visited = new Map<string, number>(); // key -> cost to reach
   const frontier = new PriorityQueue<{ q: number; r: number; cost: number }>(
@@ -148,7 +156,7 @@ export function reachableHexes(
       const neighborTile = grid.get(neighbor.q, neighbor.r);
       if (!neighborTile) continue;
 
-      const cost = stepCost(grid, currentTile, neighborTile);
+      const cost = costFn(grid, currentTile, neighborTile);
       if (cost === Infinity) continue;
 
       const totalCost = current.cost + cost;

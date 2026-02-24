@@ -1,4 +1,4 @@
-export type ActionType = "undo" | "wait" | "endTurn";
+export type ActionType = "undo" | "wait" | "endTurn" | "recover";
 
 export class ActionBar {
   private container: HTMLDivElement;
@@ -11,6 +11,7 @@ export class ActionBar {
     root.appendChild(this.container);
 
     this.addButton("undo", "Undo", "#6a5a3a");
+    this.addButton("recover", "Rest", "#3a6a5a");
     this.addButton("wait", "Wait", "#5a5a7a");
     this.addButton("endTurn", "End", "#7a5a3a");
   }

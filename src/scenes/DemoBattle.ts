@@ -24,6 +24,11 @@ import type { HealthComponent } from "@entities/components/Health";
 import type { PositionComponent } from "@entities/components/Position";
 import { hexNeighbors } from "@hex/HexMath";
 import type { AttackResult } from "@combat/DamageCalculator";
+import { getZoCDangerHexes } from "@combat/ZoneOfControl";
+import { getArmorDef } from "@data/ArmorData";
+import { getWeapon, UNARMED } from "@data/WeaponData";
+import type { FatigueComponent } from "@entities/components/Fatigue";
+import type { EquipmentComponent } from "@entities/components/Equipment";
 
 // ── Terrain configs ──
 
@@ -107,6 +112,13 @@ function findFreeHex(grid: HexGrid, q: number, r: number): { q: number; r: numbe
   return { q, r }; // fallback
 }
 
+interface UnitEquipment {
+  weapon?: string;
+  shield?: string;
+  bodyArmor?: string;
+  headArmor?: string;
+}
+
 function spawnUnit(
   world: World,
   grid: HexGrid,
@@ -114,7 +126,8 @@ function spawnUnit(
   r: number,
   team: "player" | "enemy",
   name: string,
-  stats: { melee: number; defense: number; hp: number; initiative: number }
+  stats: { melee: number; defense: number; hp: number; initiative: number },
+  equip?: UnitEquipment,
 ): EntityId {
   // Ensure no overlap
   const pos = findFreeHex(grid, q, r);
@@ -150,10 +163,25 @@ function spawnUnit(
     injuries: [],
   });
 
+  // Build armor from data registry
+  const bodyDef = equip?.bodyArmor ? getArmorDef(equip.bodyArmor) : undefined;
+  const headDef = equip?.headArmor ? getArmorDef(equip.headArmor) : undefined;
   world.addComponent(id, {
     type: "armor",
-    head: null,
-    body: { id: "leather_armor", currentDurability: 40, maxDurability: 40 },
+    head: headDef
+      ? { id: headDef.id, currentDurability: headDef.durability, maxDurability: headDef.durability }
+      : null,
+    body: bodyDef
+      ? { id: bodyDef.id, currentDurability: bodyDef.durability, maxDurability: bodyDef.durability }
+      : null,
+  });
+
+  world.addComponent(id, {
+    type: "equipment",
+    mainHand: equip?.weapon ?? null,
+    offHand: equip?.shield ?? null,
+    accessory: null,
+    bag: [],
   });
 
   world.addComponent(id, {
@@ -319,35 +347,55 @@ export class DemoBattle {
   }
 
   private spawnAllUnits(): void {
+    // Player units — well-equipped mercenaries
     this.playerIds.push(
       spawnUnit(this.world, this.grid, 1, 2, "player", "Swordsman", {
         melee: 70, defense: 15, hp: 60, initiative: 100,
+      }, {
+        weapon: "arming_sword", shield: "heater_shield",
+        bodyArmor: "mail_hauberk", headArmor: "mail_coif",
       })
     );
     this.playerIds.push(
       spawnUnit(this.world, this.grid, 1, 4, "player", "Axeman", {
         melee: 65, defense: 10, hp: 70, initiative: 90,
+      }, {
+        weapon: "hand_axe", shield: "wooden_shield",
+        bodyArmor: "leather_jerkin", headArmor: "leather_cap",
       })
     );
     this.playerIds.push(
       spawnUnit(this.world, this.grid, 1, 6, "player", "Spearman", {
         melee: 60, defense: 20, hp: 55, initiative: 110,
+      }, {
+        weapon: "spear", shield: "buckler",
+        bodyArmor: "linen_tunic", headArmor: "hood",
       })
     );
 
+    // Enemy units — brigands with scrappy equipment
     this.enemyIds.push(
       spawnUnit(this.world, this.grid, 8, 1, "enemy", "Brigand", {
         melee: 55, defense: 10, hp: 50, initiative: 95,
+      }, {
+        weapon: "short_sword", shield: "buckler",
+        bodyArmor: "leather_jerkin", headArmor: "hood",
       })
     );
     this.enemyIds.push(
       spawnUnit(this.world, this.grid, 8, 4, "enemy", "Raider", {
         melee: 60, defense: 5, hp: 55, initiative: 85,
+      }, {
+        weapon: "hand_axe",
+        bodyArmor: "leather_jerkin", headArmor: "leather_cap",
       })
     );
     this.enemyIds.push(
       spawnUnit(this.world, this.grid, 8, 6, "enemy", "Thug", {
         melee: 45, defense: 5, hp: 45, initiative: 80,
+      }, {
+        weapon: "dagger",
+        bodyArmor: "linen_tunic",
       })
     );
   }
@@ -458,6 +506,45 @@ export class DemoBattle {
       });
     };
 
+    // ZoC free attack (animate same as normal attack)
+    this.combat.onZoCAttack = (result: AttackResult, attackerId: EntityId, defenderId: EntityId) => {
+      const defPos = this.world.getComponent<PositionComponent>(defenderId, "position");
+      const defWorld = defPos ? hexToPixel(this.layout, defPos.q, defPos.r) : null;
+
+      this.queueAnim((done) => {
+        if (!defWorld) { done(); return; }
+
+        this.unitRenderer.animateLunge(
+          attackerId,
+          defWorld.x,
+          defWorld.y,
+          this.lungeDuration(),
+          () => {
+            this.showDamagePopup(defenderId, result);
+
+            const health = this.world.getComponent<HealthComponent>(defenderId, "health");
+            if (health) {
+              this.unitRenderer.updateHealthBar(defenderId, health.current, health.max);
+            }
+            if (result.targetKilled) {
+              this.unitRenderer.playDeath(defenderId, () => {
+                this.unitRenderer.removeUnit(defenderId);
+                this.refreshUI();
+                done();
+              });
+            } else if (result.hit) {
+              this.unitRenderer.playHurt(defenderId);
+              this.refreshUI();
+              done();
+            } else {
+              this.refreshUI();
+              done();
+            }
+          }
+        );
+      });
+    };
+
     // Action complete — start draining animation queue
     this.combat.onActionComplete = () => {
       if (this.animQueue.length > 0) {
@@ -500,8 +587,6 @@ export class DemoBattle {
 
       if (state === "awaitingInput") {
         this.showMoveAndAttackOverlays();
-      } else if (state === "postMove") {
-        this.showAttackOverlay();
       }
 
       this.refreshUI();
@@ -517,16 +602,15 @@ export class DemoBattle {
 
     const pos = this.world.getComponent<PositionComponent>(this.combat.selectedUnit, "position");
     if (!pos) return;
-    const attackHexes = this.getAdjacentEnemyHexes(pos);
-    if (attackHexes.size > 0) {
-      this.overlayRenderer.showAttackRange(attackHexes, this.layout);
-    }
-  }
 
-  private showAttackOverlay(): void {
-    if (!this.combat.selectedUnit) return;
-    const pos = this.world.getComponent<PositionComponent>(this.combat.selectedUnit, "position");
-    if (!pos) return;
+    // ZoC danger overlay — highlight hexes that trigger free attacks
+    const zocDanger = getZoCDangerHexes(
+      this.world, this.grid, this.combat.selectedUnit,
+      pos.q, pos.r,
+    );
+    if (zocDanger.size > 0) {
+      this.overlayRenderer.showZoCDanger(zocDanger, this.layout);
+    }
 
     const attackHexes = this.getAdjacentEnemyHexes(pos);
     if (attackHexes.size > 0) {
@@ -588,9 +672,21 @@ export class DemoBattle {
   private showUnitInfo(entityId: EntityId): void {
     const health = this.world.getComponent<HealthComponent>(entityId, "health");
     const team = this.world.getComponent<TeamComponent>(entityId, "team");
-    if (health && team) {
-      this.unitInfoPanel.show(team.name, health.current, health.max);
-    }
+    const fatigue = this.world.getComponent<FatigueComponent>(entityId, "fatigue");
+    const equip = this.world.getComponent<EquipmentComponent>(entityId, "equipment");
+    if (!health || !team) return;
+
+    const weapon = equip?.mainHand ? getWeapon(equip.mainHand) : UNARMED;
+    const isCurrentPlayer = this.combat.selectedUnit === entityId && this.combat.phase === "playerTurn";
+
+    this.unitInfoPanel.show(
+      team.name,
+      health.current,
+      health.max,
+      isCurrentPlayer ? this.combat.apRemaining : undefined,
+      fatigue ? { current: fatigue.current, max: fatigue.max } : undefined,
+      weapon.name,
+    );
   }
 
   private refreshUI(): void {
@@ -614,6 +710,13 @@ export class DemoBattle {
       this.actionBar.setEnabled("undo", this.combat.canUndo);
       this.actionBar.setEnabled("wait", this.combat.playerTurnState === "awaitingInput");
       this.actionBar.setEnabled("endTurn", true);
+      // Recover requires full AP (9) — only available at start of turn with no actions taken
+      this.actionBar.setEnabled("recover", this.combat.apRemaining >= 9);
+    }
+
+    // Update unit info panel with current AP
+    if (this.combat.selectedUnit && this.combat.phase === "playerTurn") {
+      this.showUnitInfo(this.combat.selectedUnit);
     }
   }
 

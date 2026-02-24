@@ -17,6 +17,7 @@ export class OverlayRenderer {
   private overlays: Mesh[] = [];
   private movementMaterial: StandardMaterial | null = null;
   private attackMaterial: StandardMaterial | null = null;
+  private zocDangerMaterial: StandardMaterial | null = null;
 
   constructor(scene: Scene) {
     this.scene = scene;
@@ -108,6 +109,47 @@ export class OverlayRenderer {
   }
 
   /**
+   * Display ZoC danger overlays on hexes where moving would trigger free attacks.
+   *
+   * @param hexes - Set of hex keys ("q,r") that trigger ZoC free attacks.
+   * @param layout - The hex layout for coordinate conversion.
+   */
+  showZoCDanger(hexes: Set<string>, layout: HexLayout): void {
+    if (hexes.size === 0) return;
+
+    if (!this.zocDangerMaterial) {
+      this.zocDangerMaterial = new StandardMaterial("zocDangerMat", this.scene);
+      this.zocDangerMaterial.diffuseColor = Color3.Black();
+      this.zocDangerMaterial.emissiveColor = new Color3(0.9, 0.5, 0.1); // orange
+      this.zocDangerMaterial.alpha = 0.45;
+      this.zocDangerMaterial.specularColor = Color3.Black();
+      this.zocDangerMaterial.backFaceCulling = false;
+    }
+
+    for (const key of hexes) {
+      const coords = parseHexKey(key);
+      if (!coords) continue;
+
+      const { x, y } = hexToPixel(layout, coords.q, coords.r);
+
+      const disc = MeshBuilder.CreateDisc(
+        `zocOverlay_${key}`,
+        { radius: layout.size * 0.9, tessellation: 6 },
+        this.scene
+      );
+      disc.rotation.x = -Math.PI / 2;
+      disc.rotation.y = Math.PI / 6;
+      disc.position.x = x;
+      disc.position.y = 0.27; // above attack overlays
+      disc.position.z = y;
+      disc.renderingGroupId = 1;
+      disc.material = this.zocDangerMaterial;
+
+      this.overlays.push(disc);
+    }
+  }
+
+  /**
    * Remove all overlay meshes from the scene.
    */
   clearOverlays(): void {
@@ -130,6 +172,10 @@ export class OverlayRenderer {
     if (this.attackMaterial) {
       this.attackMaterial.dispose();
       this.attackMaterial = null;
+    }
+    if (this.zocDangerMaterial) {
+      this.zocDangerMaterial.dispose();
+      this.zocDangerMaterial = null;
     }
   }
 }
