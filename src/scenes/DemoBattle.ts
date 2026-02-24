@@ -313,13 +313,18 @@ export class DemoBattle {
     // Spawn units from scenario
     this.spawnFromScenario(scenario);
 
-    // Render units
-    for (const id of [...this.playerIds, ...this.enemyIds]) {
+    // Render units with tint indices for visual differentiation
+    for (let i = 0; i < this.playerIds.length; i++) {
+      const id = this.playerIds[i]!;
       const pos = this.world.getComponent<{ type: "position"; q: number; r: number }>(id, "position")!;
-      const teamComp = this.world.getComponent<TeamComponent>(id, "team")!;
       const spriteRef = this.world.getComponent<SpriteRefComponent>(id, "spriteRef");
-      const unitTeam = teamComp.team === "player" ? UnitTeam.Player : UnitTeam.Enemy;
-      this.unitRenderer.addUnit(id, pos.q, pos.r, unitTeam, spriteRef?.atlasKey as SpriteCharType | undefined);
+      this.unitRenderer.addUnit(id, pos.q, pos.r, UnitTeam.Player, spriteRef?.atlasKey as SpriteCharType | undefined, i);
+    }
+    for (let i = 0; i < this.enemyIds.length; i++) {
+      const id = this.enemyIds[i]!;
+      const pos = this.world.getComponent<{ type: "position"; q: number; r: number }>(id, "position")!;
+      const spriteRef = this.world.getComponent<SpriteRefComponent>(id, "spriteRef");
+      this.unitRenderer.addUnit(id, pos.q, pos.r, UnitTeam.Enemy, spriteRef?.atlasKey as SpriteCharType | undefined, i);
     }
 
     // UI

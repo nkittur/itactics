@@ -37,6 +37,26 @@ interface HealthBarEntry {
 
 const SELECTION_COLOR = Color3.FromHexString("#ffcc00"); // yellow
 
+/** Tint palettes — emissive color shifts to differentiate same-sprite units. */
+const PLAYER_TINTS: Color3[] = [
+  new Color3(0.65, 0.60, 0.55), // warm neutral
+  new Color3(0.50, 0.55, 0.75), // steel blue
+  new Color3(0.50, 0.72, 0.50), // forest green
+  new Color3(0.75, 0.48, 0.48), // crimson
+  new Color3(0.68, 0.58, 0.40), // golden
+  new Color3(0.60, 0.48, 0.70), // royal purple
+];
+const ENEMY_TINTS: Color3[] = [
+  new Color3(0.60, 0.55, 0.55), // neutral
+  new Color3(0.55, 0.62, 0.50), // olive
+  new Color3(0.65, 0.52, 0.45), // rusty
+  new Color3(0.50, 0.55, 0.62), // ashen
+  new Color3(0.62, 0.55, 0.48), // sand
+  new Color3(0.55, 0.58, 0.55), // mossy
+  new Color3(0.60, 0.50, 0.55), // dusky
+  new Color3(0.58, 0.55, 0.50), // grey-brown
+];
+
 /** Height above tile surface for unit sprites. */
 const UNIT_Y = 0.5;
 /** Height for selection ring. Between tile and unit sprite. */
@@ -93,7 +113,7 @@ export class UnitRenderer {
     return (tile?.elevation ?? 0) * LAYER_HEIGHT;
   }
 
-  addUnit(entityId: string, q: number, r: number, team: UnitTeam, charType?: SpriteCharType): void {
+  addUnit(entityId: string, q: number, r: number, team: UnitTeam, charType?: SpriteCharType, tintIndex?: number): void {
     if (this.units.has(entityId)) {
       this.removeUnit(entityId);
     }
@@ -120,7 +140,10 @@ export class UnitRenderer {
     // Create material with sprite texture
     const mat = new StandardMaterial(`unitMat_${entityId}`, this.scene);
     mat.specularColor = Color3.Black();
-    mat.emissiveColor = new Color3(0.6, 0.6, 0.6); // brighten sprite
+    // Apply tint palette color for unit differentiation
+    const palette = team === UnitTeam.Enemy ? ENEMY_TINTS : PLAYER_TINTS;
+    const idx = tintIndex ?? 0;
+    mat.emissiveColor = palette[idx % palette.length] ?? new Color3(0.6, 0.6, 0.6);
     mat.backFaceCulling = false;
     mat.useAlphaFromDiffuseTexture = true;
     mat.transparencyMode = 2; // MATERIAL_ALPHABLEND
