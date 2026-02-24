@@ -328,9 +328,15 @@ export class DemoBattle {
     // Wire up events
     this.wireEvents();
 
-    // Center camera on grid
+    // Center camera on grid, offset for bottom-heavy UI
+    // Bottom UI (action bar + info panel) ≈ 220px, top UI (turn order) ≈ 40px
+    // Shift camera down in Z so grid appears higher on screen
     const center = hexToPixel(this.layout, Math.floor(scenario.gridWidth / 2), Math.floor(scenario.gridHeight / 2));
-    this.camera.centerOn(center.x, center.y);
+    const canvasH = canvas.clientHeight || 700;
+    const bottomUI = 220;
+    const topUI = 40;
+    const uiOffset = ((bottomUI - topUI) / 2 / canvasH) * this.camera.orthoSize * 2;
+    this.camera.centerOn(center.x, center.y - uiOffset);
 
     // Handle resize
     window.addEventListener("resize", () => {

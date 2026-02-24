@@ -14,12 +14,12 @@ import { Vector3 } from "@babylonjs/core/Maths/math.vector";
  */
 export class CameraController {
   camera: FreeCamera;
-  private orthoHalfHeight = 10;
+  private orthoHalfHeight = 15;
   private engine: Engine;
   private scene: Scene;
 
   private readonly minOrthoHalfHeight = 3;
-  private readonly maxOrthoHalfHeight = 15;
+  private readonly maxOrthoHalfHeight = 25;
 
   /** Active smooth-pan animation state, or null if idle. */
   private panAnim: {
