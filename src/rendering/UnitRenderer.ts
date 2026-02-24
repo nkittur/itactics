@@ -43,11 +43,9 @@ const RING_Y = 0.35;
 const HP_BAR_Y = 0.7;
 /**
  * Z offset to shift sprite so character's feet land ~1/4 up the hex tile.
- * The character's feet are near the bottom of the 100x100 frame (~85% down).
- * With spriteSize=12, that's ~4.2 units below center. This offset pushes the
- * sprite up so feet sit near the hex center.
+ * Positive Z = screen up. Tuned so feet sit just above hex center.
  */
-const SPRITE_Z_OFFSET = 3.8;
+const SPRITE_Z_OFFSET = 1.0;
 
 /**
  * Renders units as animated sprite planes on the hex grid.
@@ -106,6 +104,7 @@ export class UnitRenderer {
     mesh.position.y = UNIT_Y;
     mesh.position.z = y + SPRITE_Z_OFFSET;
     mesh.isPickable = false;
+    mesh.renderingGroupId = 2; // render above overlays
 
     // Create material with sprite texture
     const mat = new StandardMaterial(`unitMat_${entityId}`, this.scene);
@@ -186,6 +185,7 @@ export class UnitRenderer {
     ring.position.x = x;
     ring.position.y = RING_Y;
     ring.position.z = y;
+    ring.renderingGroupId = 2;
 
     if (!this.selectionMaterial) {
       this.selectionMaterial = new StandardMaterial("selectionMat", this.scene);
@@ -392,6 +392,7 @@ export class UnitRenderer {
         this.scene
       );
       bg.rotation.x = -Math.PI / 2;
+      bg.renderingGroupId = 2;
       bg.material = this.hpBgMat;
 
       const fillMat = new StandardMaterial("hpFillMat_" + entityId, this.scene);
@@ -405,6 +406,7 @@ export class UnitRenderer {
         this.scene
       );
       fill.rotation.x = -Math.PI / 2;
+      fill.renderingGroupId = 2;
       fill.material = fillMat;
 
       bar = { bg, fill, fillMat, pct };

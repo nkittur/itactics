@@ -58,6 +58,7 @@ export class OverlayRenderer {
       disc.position.x = x;
       disc.position.y = 0.25; // above all tile elevations
       disc.position.z = y;
+      disc.renderingGroupId = 1; // above tiles, below units
       disc.material = this.movementMaterial;
 
       this.overlays.push(disc);
@@ -99,6 +100,7 @@ export class OverlayRenderer {
       disc.position.x = x;
       disc.position.y = 0.26; // slightly above movement overlays
       disc.position.z = y;
+      disc.renderingGroupId = 1; // above tiles, below units
       disc.material = this.attackMaterial;
 
       this.overlays.push(disc);
