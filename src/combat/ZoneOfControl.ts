@@ -120,6 +120,16 @@ export function getZoCAttacksForMove(
 }
 
 /**
+ * MP cost to break free from enemy Zone of Control.
+ * Costs 4 MP, or all remaining MP if the unit has 3 or fewer.
+ */
+export function getZoCBreakCost(currentMP: number): number {
+  if (currentMP <= 0) return 0;
+  if (currentMP <= 3) return currentMP;
+  return 4;
+}
+
+/**
  * Check if a specific hex is in any enemy's zone of control.
  */
 export function isInEnemyZoC(

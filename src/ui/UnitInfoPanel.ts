@@ -4,6 +4,7 @@ export class UnitInfoPanel {
   private hpText: HTMLDivElement;
   private hpFill: HTMLDivElement;
   private apText: HTMLDivElement;
+  private mpText: HTMLDivElement;
   private fatigueFill: HTMLDivElement;
   private fatigueText: HTMLDivElement;
   private weaponText: HTMLDivElement;
@@ -40,6 +41,14 @@ export class UnitInfoPanel {
     this.apText.style.color = "#aad4ff";
     this.apText.style.marginTop = "2px";
     this.container.appendChild(this.apText);
+
+    // MP display
+    this.mpText = document.createElement("div");
+    this.mpText.className = "mp-text";
+    this.mpText.style.fontSize = "11px";
+    this.mpText.style.color = "#88cc88";
+    this.mpText.style.marginTop = "2px";
+    this.container.appendChild(this.mpText);
 
     // Fatigue bar
     const fatigueBar = document.createElement("div");
@@ -83,6 +92,8 @@ export class UnitInfoPanel {
     currentHp: number,
     maxHp: number,
     ap?: number,
+    mp?: number,
+    maxMP?: number,
     fatigue?: { current: number; max: number },
     weaponName?: string,
     moraleState?: string,
@@ -109,6 +120,14 @@ export class UnitInfoPanel {
       this.apText.style.display = "block";
     } else {
       this.apText.style.display = "none";
+    }
+
+    // MP
+    if (mp != null) {
+      this.mpText.textContent = `MP ${mp}/${maxMP ?? 8}`;
+      this.mpText.style.display = "block";
+    } else {
+      this.mpText.style.display = "none";
     }
 
     // Fatigue

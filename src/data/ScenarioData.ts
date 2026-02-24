@@ -14,7 +14,7 @@ export interface ScenarioUnit {
   r: number;
   team: "player" | "enemy";
   name: string;
-  stats: { melee: number; defense: number; hp: number; initiative: number };
+  stats: { melee: number; defense: number; hp: number; initiative: number; mp?: number };
   weapon?: string;
   shield?: string;
   bodyArmor?: string;

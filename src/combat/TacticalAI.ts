@@ -8,7 +8,8 @@ import type { EquipmentComponent } from "@entities/components/Equipment";
 import type { AIBehaviorComponent, AIType } from "@entities/components/AIBehavior";
 import { hexDistance, hexNeighbors } from "@hex/HexMath";
 import { reachableHexes, findPath } from "@hex/HexPathfinding";
-import { tileAPCost, MAX_AP } from "./ActionPointManager";
+import { tileMPCost, getEffectiveMP, DEFAULT_MP } from "./MovementPointManager";
+import type { StatsComponent } from "@entities/components/Stats";
 import { getZoCAttacksForMove } from "./ZoneOfControl";
 import { getWeapon, UNARMED } from "@data/WeaponData";
 import { getSkillsForWeapon, skillAPCost, skillRange, BASIC_ATTACK, type SkillDef } from "@data/SkillData";
@@ -120,11 +121,18 @@ export function decideTacticalAction(
     }
   }
 
-  // Movement budget: reserve AP for basic attack
-  const moveAP = Math.max(2, MAX_AP - basicAPCost);
+  // Movement budget: full MP (separate from AP, no need to reserve)
+  const stats = world.getComponent<StatsComponent>(entityId, "stats");
+  const armor = world.getComponent<ArmorComponent>(entityId, "armor");
+  const unitMP = getEffectiveMP(
+    stats?.movementPoints ?? DEFAULT_MP,
+    armor?.body?.id,
+    armor?.head?.id,
+    equip?.offHand ?? undefined,
+  );
 
   // Get all reachable hexes
-  const reachable = reachableHexes(grid, { q: pos.q, r: pos.r }, moveAP, tileAPCost);
+  const reachable = reachableHexes(grid, { q: pos.q, r: pos.r }, unitMP, tileMPCost);
 
   let bestScore = -Infinity;
   let bestAction: TacticalAction = { type: "wait" };
@@ -172,7 +180,7 @@ export function decideTacticalAction(
     if (!tile || (tile.occupant && tile.occupant !== entityId)) continue;
 
     // Find path to this hex
-    const pathResult = findPath(grid, { q: pos.q, r: pos.r }, { q: hq, r: hr }, moveAP, tileAPCost);
+    const pathResult = findPath(grid, { q: pos.q, r: pos.r }, { q: hq, r: hr }, unitMP, tileMPCost);
     if (!pathResult.found || pathResult.path.length === 0) continue;
 
     // ZoC penalty

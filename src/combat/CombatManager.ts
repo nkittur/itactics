@@ -7,8 +7,11 @@ import type { FatigueComponent } from "@entities/components/Fatigue";
 import type { EquipmentComponent } from "@entities/components/Equipment";
 import { TurnOrder } from "./TurnOrder";
 import { DamageCalculator, type AttackResult } from "./DamageCalculator";
-import { ActionPointManager, tileAPCost, pathAPCost, pathFatigueCost, MAX_AP } from "./ActionPointManager";
-import { getZoCAttacksForMove } from "./ZoneOfControl";
+import { ActionPointManager, pathFatigueCost, MAX_AP } from "./ActionPointManager";
+import { MovementPointManager, tileMPCost, getEffectiveMP, DEFAULT_MP } from "./MovementPointManager";
+import { getZoCAttacksForMove, isInEnemyZoC, getZoCBreakCost } from "./ZoneOfControl";
+import type { StatsComponent } from "@entities/components/Stats";
+import type { ArmorComponent } from "@entities/components/Armor";
 import { StatusEffectManager, type BleedTickResult } from "./StatusEffectManager";
 import { MoraleManager, type MoraleCheckResult } from "./MoraleManager";
 import { SkillExecutor } from "./SkillExecutor";
@@ -31,6 +34,7 @@ interface UndoInfo {
   oldElevation: number;
   path: Array<{ q: number; r: number }>;
   apSpent: number;
+  mpSpent: number;
   fatigueSpent: number;
 }
 
@@ -53,8 +57,11 @@ export class CombatManager {
   /** Movement range cache for the currently selected unit. */
   moveRange: Map<string, number> | null = null;
 
-  /** AP manager for the current turn. */
+  /** AP manager for the current turn (attacks only). */
   private apManager = new ActionPointManager();
+
+  /** MP manager for the current turn (movement only). */
+  private mpManager = new MovementPointManager();
 
   /** Undo info for reverting the last move. */
   private undoInfo: UndoInfo | null = null;
@@ -126,6 +133,16 @@ export class CombatManager {
   /** Remaining AP for the current unit's turn. */
   get apRemaining(): number {
     return this.apManager.remaining;
+  }
+
+  /** Remaining MP for the current unit's turn. */
+  get mpRemaining(): number {
+    return this.mpManager.remaining;
+  }
+
+  /** Maximum MP for the current unit's turn. */
+  get mpMaximum(): number {
+    return this.mpManager.maximum;
   }
 
   /** Get the equipped weapon's AP cost for the selected unit. */
@@ -361,20 +378,31 @@ export class CombatManager {
     const pos = this.world.getComponent<PositionComponent>(entityId, "position");
     if (!pos) return;
 
+    // Check ZoC break cost first
+    const inZoC = isInEnemyZoC(this.world, this.grid, pos.q, pos.r, entityId);
+    let zocMPCost = 0;
+    if (inZoC) {
+      zocMPCost = getZoCBreakCost(this.mpManager.remaining);
+    }
+
+    const mpAfterZoC = this.mpManager.remaining - zocMPCost;
+    if (mpAfterZoC <= 0) return;
+
     const pathResult = findPath(
       this.grid,
       { q: pos.q, r: pos.r },
       { q, r },
-      this.apManager.remaining,
-      tileAPCost,
+      mpAfterZoC,
+      tileMPCost,
     );
     if (!pathResult.found) return;
 
     // Calculate costs
-    const apCost = pathResult.cost;
+    const pathMP = pathResult.cost;
+    const totalMPSpent = pathMP + zocMPCost;
     const fatigueCost = pathFatigueCost(this.grid, pathResult.path, pos.q, pos.r);
 
-    if (!this.apManager.canAfford(apCost)) return;
+    if (!this.mpManager.canAfford(totalMPSpent)) return;
 
     // ── ZoC: Resolve free attacks before moving ──
     const zocAttackers = getZoCAttacksForMove(
@@ -411,15 +439,16 @@ export class CombatManager {
         oldR: pos.r,
         oldElevation: pos.elevation,
         path: pathResult.path,
-        apSpent: apCost,
+        apSpent: 0,
+        mpSpent: totalMPSpent,
         fatigueSpent: fatigueCost,
       };
     }
 
     this.playerTurnState = "animating";
 
-    // Spend AP and fatigue
-    this.apManager.spend(apCost);
+    // Spend MP (not AP) and fatigue
+    this.mpManager.spend(totalMPSpent);
     this.addFatigue(entityId, fatigueCost);
 
     // Update occupancy
@@ -455,7 +484,7 @@ export class CombatManager {
   private undoMove(): void {
     if (!this.undoInfo) return;
 
-    const { entityId, oldQ, oldR, oldElevation, apSpent, fatigueSpent } = this.undoInfo;
+    const { entityId, oldQ, oldR, oldElevation, apSpent, mpSpent, fatigueSpent } = this.undoInfo;
     const pos = this.world.getComponent<PositionComponent>(entityId, "position");
     if (!pos) return;
 
@@ -471,8 +500,9 @@ export class CombatManager {
     pos.r = oldR;
     pos.elevation = oldElevation;
 
-    // Refund AP and fatigue
-    this.apManager.spend(-apSpent); // negative spend = refund
+    // Refund MP, AP, and fatigue
+    this.mpManager.spend(-mpSpent); // negative spend = refund
+    this.apManager.spend(-apSpent);
     this.addFatigue(entityId, -fatigueSpent);
 
     this.undoInfo = null;
@@ -630,17 +660,24 @@ export class CombatManager {
     return false;
   }
 
-  /** Calculate and cache move range using AP-based costs. */
+  /** Calculate and cache move range using MP-based costs. */
   private calculateMoveRange(entityId: EntityId): void {
     const pos = this.world.getComponent<PositionComponent>(entityId, "position");
-    if (pos) {
-      this.moveRange = reachableHexes(
-        this.grid,
-        { q: pos.q, r: pos.r },
-        this.apManager.remaining,
-        tileAPCost,
-      );
+    if (!pos) return;
+
+    let effectiveMP = this.mpManager.remaining;
+
+    // If in enemy ZoC, reduce effective budget by break cost
+    if (isInEnemyZoC(this.world, this.grid, pos.q, pos.r, entityId)) {
+      effectiveMP = Math.max(0, effectiveMP - getZoCBreakCost(effectiveMP));
     }
+
+    this.moveRange = reachableHexes(
+      this.grid,
+      { q: pos.q, r: pos.r },
+      effectiveMP,
+      tileMPCost,
+    );
   }
 
   /** End the current player unit's turn and advance. */
@@ -739,6 +776,7 @@ export class CombatManager {
       this.setPhase("playerTurn");
       this.selectedUnit = entityId;
       this.apManager.resetForTurn();
+      this.resetMPForUnit(entityId);
       this.calculateMoveRange(entityId);
       this.setPlayerState("awaitingInput");
     }
@@ -966,10 +1004,14 @@ export class CombatManager {
 
     const pos = this.world.getComponent<PositionComponent>(entityId, "position");
     if (pos) {
-      // Find hex farthest from nearest enemy
+      // Find hex farthest from nearest enemy — use unit's effective MP
+      const stats = this.world.getComponent<StatsComponent>(entityId, "stats");
+      const equip = this.world.getComponent<EquipmentComponent>(entityId, "equipment");
+      const armor = this.world.getComponent<ArmorComponent>(entityId, "armor");
+      const fleeMP = getEffectiveMP(stats?.movementPoints ?? DEFAULT_MP, armor?.body?.id, armor?.head?.id, equip?.offHand ?? undefined);
       const enemies = isEnemy ? this.getPlayerUnits() : this.getEnemyUnits();
       const reachable = reachableHexes(
-        this.grid, { q: pos.q, r: pos.r }, 4, tileAPCost,
+        this.grid, { q: pos.q, r: pos.r }, fleeMP, tileMPCost,
       );
 
       let bestHex: { q: number; r: number } | null = null;
@@ -997,7 +1039,7 @@ export class CombatManager {
 
       if (bestHex && (bestHex.q !== pos.q || bestHex.r !== pos.r)) {
         const pathResult = findPath(
-          this.grid, { q: pos.q, r: pos.r }, bestHex, 4, tileAPCost,
+          this.grid, { q: pos.q, r: pos.r }, bestHex, fleeMP, tileMPCost,
         );
         if (pathResult.found && pathResult.path.length > 0) {
           const dest = pathResult.path[pathResult.path.length - 1]!;
@@ -1024,6 +1066,16 @@ export class CombatManager {
   }
 
   // ── Helpers ──
+
+  /** Reset MP for a unit based on its stats and equipment. */
+  private resetMPForUnit(entityId: EntityId): void {
+    const stats = this.world.getComponent<StatsComponent>(entityId, "stats");
+    const equip = this.world.getComponent<EquipmentComponent>(entityId, "equipment");
+    const armor = this.world.getComponent<ArmorComponent>(entityId, "armor");
+    const baseMP = stats?.movementPoints ?? DEFAULT_MP;
+    const effectiveMP = getEffectiveMP(baseMP, armor?.body?.id, armor?.head?.id, equip?.offHand ?? undefined);
+    this.mpManager.resetForTurn(effectiveMP);
+  }
 
   private getWeaponDef(entityId: EntityId): WeaponDef {
     const equip = this.world.getComponent<EquipmentComponent>(entityId, "equipment");

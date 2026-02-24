@@ -10,6 +10,7 @@ export interface StatsComponent extends Component {
   rangedSkill: number;
   meleeDefense: number;
   rangedDefense: number;
+  movementPoints: number;
   level: number;
   experience: number;
 }
@@ -23,6 +24,7 @@ export function createStats(params: {
   rangedSkill: number;
   meleeDefense: number;
   rangedDefense: number;
+  movementPoints?: number;
   level?: number;
   experience?: number;
 }): StatsComponent {
@@ -36,6 +38,7 @@ export function createStats(params: {
     rangedSkill: params.rangedSkill,
     meleeDefense: params.meleeDefense,
     rangedDefense: params.rangedDefense,
+    movementPoints: params.movementPoints ?? 8,
     level: params.level ?? 1,
     experience: params.experience ?? 0,
   };
