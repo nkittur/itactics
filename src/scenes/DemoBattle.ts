@@ -688,7 +688,6 @@ export class DemoBattle {
         if (this.combat.selectedUnit) {
           this.unitRenderer.setSelected(this.combat.selectedUnit);
           this.showUnitInfo(this.combat.selectedUnit);
-          this.populateSkillBar();
         }
         this.refreshUI();
       } else if (phase === "battleEnd") {
@@ -701,15 +700,14 @@ export class DemoBattle {
       }
     };
 
-    // Turn advanced → select unit, pan camera, populate skills
+    // Turn advanced → select unit, pan camera
     this.combat.onTurnAdvance = (entityId: EntityId) => {
       this.unitRenderer.setSelected(entityId);
       this.showUnitInfo(entityId);
       this.panCameraToUnit(entityId);
-      this.populateSkillBar();
     };
 
-    // Player state changed → update overlays
+    // Player state changed → update overlays + skill bar
     this.combat.onPlayerStateChange = (state) => {
       this.overlayRenderer.clearOverlays();
       this.hideEnemyDetail();
@@ -717,6 +715,9 @@ export class DemoBattle {
 
       if (state === "awaitingInput") {
         this.showMoveAndAttackOverlays();
+        this.populateSkillBar();
+      } else {
+        this.skillBar.hide();
       }
 
       this.refreshUI();
