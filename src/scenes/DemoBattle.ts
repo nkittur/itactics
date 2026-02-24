@@ -23,7 +23,7 @@ import type { EntityId } from "@entities/Entity";
 import type { HealthComponent } from "@entities/components/Health";
 import type { PositionComponent } from "@entities/components/Position";
 import { hexNeighbors } from "@hex/HexMath";
-import type { AttackResult } from "@combat/DamageCalculator";
+import type { AttackResult, AttackPreview } from "@combat/DamageCalculator";
 import { getZoCDangerHexes } from "@combat/ZoneOfControl";
 import { getArmorDef } from "@data/ArmorData";
 import { getWeapon, UNARMED } from "@data/WeaponData";
@@ -244,6 +244,9 @@ export class DemoBattle {
 
   private playerIds: EntityId[] = [];
   private enemyIds: EntityId[] = [];
+
+  // ── Attack preview labels ──
+  private attackPreviews: HTMLDivElement[] = [];
 
   // ── Animation queue ──
   private animQueue: Array<(done: () => void) => void> = [];
@@ -608,6 +611,7 @@ export class DemoBattle {
         this.actionBar.setVisible(false);
         this.unitInfoPanel.hide();
         this.overlayRenderer.clearOverlays();
+        this.clearAttackPreviews();
       } else if (phase === "playerTurn") {
         if (this.combat.selectedUnit) {
           this.unitRenderer.setSelected(this.combat.selectedUnit);
@@ -618,6 +622,7 @@ export class DemoBattle {
         this.actionBar.setVisible(false);
         this.unitInfoPanel.hide();
         this.overlayRenderer.clearOverlays();
+        this.clearAttackPreviews();
       }
     };
 
@@ -631,6 +636,7 @@ export class DemoBattle {
     // Player state changed → update overlays
     this.combat.onPlayerStateChange = (state) => {
       this.overlayRenderer.clearOverlays();
+      this.clearAttackPreviews();
 
       if (state === "awaitingInput") {
         this.showMoveAndAttackOverlays();
@@ -663,6 +669,9 @@ export class DemoBattle {
     if (attackHexes.size > 0) {
       this.overlayRenderer.showAttackRange(attackHexes, this.layout);
     }
+
+    // Show attack preview labels on attackable enemies
+    this.showAttackPreviews(pos);
   }
 
   private getAdjacentEnemyHexes(pos: PositionComponent): Set<string> {
@@ -678,6 +687,48 @@ export class DemoBattle {
       }
     }
     return hexes;
+  }
+
+  private showAttackPreviews(attackerPos: PositionComponent): void {
+    this.clearAttackPreviews();
+    if (!this.combat.selectedUnit) return;
+
+    const weaponAP = this.combat.selectedWeaponAPCost;
+    const canAfford = this.combat.apRemaining >= weaponAP;
+    if (!canAfford) return;
+
+    const neighbors = hexNeighbors(attackerPos.q, attackerPos.r);
+    for (const n of neighbors) {
+      const tile = this.grid.get(n.q, n.r);
+      if (!tile?.occupant || tile.occupant === this.combat.selectedUnit) continue;
+      const team = this.world.getComponent<TeamComponent>(tile.occupant, "team");
+      if (team?.team !== "enemy") continue;
+
+      const preview = this.combat.damageCalc.previewMelee(
+        this.world, this.combat.selectedUnit, tile.occupant,
+      );
+
+      const worldPos = hexToPixel(this.layout, n.q, n.r);
+      const screenPos = this.camera.worldToScreen(worldPos.x, worldPos.y);
+
+      const label = document.createElement("div");
+      label.className = "attack-preview";
+      label.innerHTML =
+        `<span class="ap-hit">${preview.hitChance}%</span>` +
+        `<span class="ap-dmg">${preview.minDamage}-${preview.maxDamage}</span>`;
+      label.style.left = `${screenPos.x}px`;
+      label.style.top = `${screenPos.y}px`;
+
+      this.uiManager.root.appendChild(label);
+      this.attackPreviews.push(label);
+    }
+  }
+
+  private clearAttackPreviews(): void {
+    for (const el of this.attackPreviews) {
+      el.remove();
+    }
+    this.attackPreviews = [];
   }
 
   // ── UI helpers ──

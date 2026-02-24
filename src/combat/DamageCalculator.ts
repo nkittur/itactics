@@ -13,6 +13,12 @@ import { RNG } from "@utils/RNG";
 import { clamp } from "@utils/MathUtils";
 import type { StatusEffectManager } from "./StatusEffectManager";
 
+export interface AttackPreview {
+  hitChance: number;
+  minDamage: number;
+  maxDamage: number;
+}
+
 export interface AttackResult {
   hit: boolean;
   hitChance: number;
@@ -199,6 +205,62 @@ export class DamageCalculator {
       appliedEffects,
     };
   }
+  /** Preview a melee attack: compute hit chance and damage range without rolling. */
+  previewMelee(
+    world: World,
+    attackerId: EntityId,
+    defenderId: EntityId,
+  ): AttackPreview {
+    const attackerStats = world.getComponent<StatsComponent>(attackerId, "stats");
+    const defenderStats = world.getComponent<StatsComponent>(defenderId, "stats");
+    const attackerEquip = world.getComponent<EquipmentComponent>(attackerId, "equipment");
+    const defenderEquip = world.getComponent<EquipmentComponent>(defenderId, "equipment");
+
+    if (!attackerStats || !defenderStats) {
+      return { hitChance: 5, minDamage: 0, maxDamage: 0 };
+    }
+
+    const weapon: WeaponDef = attackerEquip?.mainHand
+      ? getWeapon(attackerEquip.mainHand)
+      : UNARMED;
+
+    const shield: ShieldDef | undefined = defenderEquip?.offHand
+      ? getShield(defenderEquip.offHand)
+      : undefined;
+
+    const attackerPos = world.getComponent<PositionComponent>(attackerId, "position");
+    const defenderPos = world.getComponent<PositionComponent>(defenderId, "position");
+
+    const shieldBonus = shield?.meleeDefBonus ?? 0;
+    const defenderTile = defenderPos ? this.grid.get(defenderPos.q, defenderPos.r) : undefined;
+    const terrainDefBonus = defenderTile?.defenseBonusMelee ?? 0;
+    const attackerElev = attackerPos?.elevation ?? 0;
+    const defenderElev = defenderPos?.elevation ?? 0;
+    const elevationMod = (attackerElev - defenderElev) * 10;
+    const surroundBonus = defenderPos
+      ? this.countSurroundBonus(world, attackerId, defenderId)
+      : 0;
+
+    const attackerMeleeSkillMod = this.statusEffects
+      ? this.statusEffects.getModifier(world, attackerId, "meleeSkill", attackerStats.meleeSkill)
+      : 0;
+    const defenderMeleeDefMod = this.statusEffects
+      ? this.statusEffects.getModifier(world, defenderId, "meleeDefense", defenderStats.meleeDefense)
+      : 0;
+
+    const hitChance = clamp(
+      (attackerStats.meleeSkill + attackerMeleeSkillMod) + weapon.hitChanceBonus
+        - (defenderStats.meleeDefense + defenderMeleeDefMod) - shieldBonus
+        - terrainDefBonus
+        + elevationMod
+        + surroundBonus,
+      5,
+      95,
+    );
+
+    return { hitChance, minDamage: weapon.minDamage, maxDamage: weapon.maxDamage };
+  }
+
   /**
    * Count surrounding bonus: +5 per ally of the attacker adjacent to the defender,
    * beyond the first (the attacker themselves).
