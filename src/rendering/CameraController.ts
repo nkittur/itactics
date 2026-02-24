@@ -96,12 +96,12 @@ export class CameraController {
   centerOn(gx: number, gz: number): void {
     this.panAnim = null;
     this.camera.position.x = gx;
-    this.camera.position.z = gz + this.camera.position.y * TILT_COS / TILT_SIN;
+    this.camera.position.z = gz - this.camera.position.y * TILT_COS / TILT_SIN;
   }
 
   /** Smoothly pan the camera to center on ground point (gx, gz). */
   panTo(gx: number, gz: number, durationMs = 400, onComplete?: () => void): void {
-    const targetZ = gz + this.camera.position.y * TILT_COS / TILT_SIN;
+    const targetZ = gz - this.camera.position.y * TILT_COS / TILT_SIN;
     this.panAnim = {
       startX: this.camera.position.x,
       startZ: this.camera.position.z,
@@ -137,7 +137,7 @@ export class CameraController {
     this.panAnim = null;
     const cam = this.camera;
     const worldDx = -dx * (cam.orthoRight! - cam.orthoLeft!) / canvasW;
-    const worldDz = -dy * (cam.orthoTop! - cam.orthoBottom!) / (canvasH * TILT_SIN);
+    const worldDz = dy * (cam.orthoTop! - cam.orthoBottom!) / (canvasH * TILT_SIN);
     cam.position.x += worldDx;
     cam.position.z += worldDz;
   }
@@ -163,7 +163,7 @@ export class CameraController {
 
     const worldX = cam.position.x + oL + nx * (oR - oL);
     const orthoV = oB + (1 - ny) * (oT - oB);
-    const worldZ = cam.position.z - (cam.position.y * TILT_COS + orthoV) / TILT_SIN;
+    const worldZ = cam.position.z + (cam.position.y * TILT_COS + orthoV) / TILT_SIN;
 
     return { x: worldX, z: worldZ };
   }
@@ -181,7 +181,7 @@ export class CameraController {
     const oB = cam.orthoBottom!;
 
     const ndcX = (worldX - cam.position.x - oL) / (oR - oL);
-    const orthoV = (cam.position.z - worldZ) * TILT_SIN + (worldY - cam.position.y) * TILT_COS;
+    const orthoV = (worldZ - cam.position.z) * TILT_SIN + (worldY - cam.position.y) * TILT_COS;
     const ndcY = 1 - (orthoV - oB) / (oT - oB);
 
     return {
