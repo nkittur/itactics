@@ -14,6 +14,8 @@ import { hasLineOfSight } from "@hex/HexLineOfSight";
 import { RNG } from "@utils/RNG";
 import { clamp } from "@utils/MathUtils";
 import type { StatusEffectManager } from "./StatusEffectManager";
+import type { CharacterClassComponent } from "@entities/components/CharacterClass";
+import { getClassDef, getClassHitBonus, getClassDamageBonus } from "@data/ClassData";
 
 export interface AttackPreview {
   hitChance: number;
@@ -121,6 +123,12 @@ export class DamageCalculator {
       ? this.countSurroundBonus(world, attackerId, defenderId)
       : 0;
 
+    // Class passives
+    const attackerCC = world.getComponent<CharacterClassComponent>(attackerId, "characterClass");
+    const attackerClassDef = attackerCC ? getClassDef(attackerCC.classId) : undefined;
+    const classHitBonus = attackerClassDef ? getClassHitBonus(attackerClassDef, weapon) : 0;
+    const classDmgBonus = attackerClassDef ? getClassDamageBonus(attackerClassDef, weapon) : 0;
+
     // Status effect modifiers
     const attackerMeleeSkillMod = this.statusEffects
       ? this.statusEffects.getModifier(world, attackerId, "meleeSkill", attackerStats.meleeSkill)
@@ -131,6 +139,7 @@ export class DamageCalculator {
 
     const hitChance = clamp(
       (attackerStats.meleeSkill + attackerMeleeSkillMod) + weapon.hitChanceBonus
+        + classHitBonus
         - (defenderStats.meleeDefense + defenderMeleeDefMod) - shieldBonus
         - terrainDefBonus
         + elevationMod
@@ -144,8 +153,9 @@ export class DamageCalculator {
       return miss(hitChance, weapon.id);
     }
 
-    // ── 2. Roll raw damage ──
-    const rawDamage = this.rng.nextInt(weapon.minDamage, weapon.maxDamage);
+    // ── 2. Roll raw damage (with class bonus) ──
+    let rawDamage = this.rng.nextInt(weapon.minDamage, weapon.maxDamage);
+    if (classDmgBonus > 0) rawDamage = Math.floor(rawDamage * (1 + classDmgBonus / 100));
 
     // ── 3. Head hit (25% chance) ──
     const headHit = this.rng.roll(25);
@@ -243,6 +253,12 @@ export class DamageCalculator {
       ? getShield(defenderEquip.offHand)
       : undefined;
 
+    // Class passives
+    const attackerCC = world.getComponent<CharacterClassComponent>(attackerId, "characterClass");
+    const attackerClassDef = attackerCC ? getClassDef(attackerCC.classId) : undefined;
+    const classHitBonus = attackerClassDef ? getClassHitBonus(attackerClassDef, weapon) : 0;
+    const classDmgBonus = attackerClassDef ? getClassDamageBonus(attackerClassDef, weapon) : 0;
+
     const attackerPos = world.getComponent<PositionComponent>(attackerId, "position");
     const defenderPos = world.getComponent<PositionComponent>(defenderId, "position");
 
@@ -265,6 +281,7 @@ export class DamageCalculator {
 
     const hitChance = clamp(
       (attackerStats.meleeSkill + attackerMeleeSkillMod) + weapon.hitChanceBonus
+        + classHitBonus
         - (defenderStats.meleeDefense + defenderMeleeDefMod) - shieldBonus
         - terrainDefBonus
         + elevationMod
@@ -273,7 +290,12 @@ export class DamageCalculator {
       95,
     );
 
-    return { hitChance, minDamage: weapon.minDamage, maxDamage: weapon.maxDamage };
+    const dmgMult = classDmgBonus > 0 ? (1 + classDmgBonus / 100) : 1;
+    return {
+      hitChance,
+      minDamage: Math.floor(weapon.minDamage * dmgMult),
+      maxDamage: Math.floor(weapon.maxDamage * dmgMult),
+    };
   }
 
   /** Preview with full modifier breakdown for the enemy detail panel. */
@@ -300,6 +322,12 @@ export class DamageCalculator {
     const shield: ShieldDef | undefined = defenderEquip?.offHand
       ? getShield(defenderEquip.offHand) : undefined;
 
+    // Class passives
+    const attackerCC = world.getComponent<CharacterClassComponent>(attackerId, "characterClass");
+    const attackerClassDef = attackerCC ? getClassDef(attackerCC.classId) : undefined;
+    const classHitBonus = attackerClassDef ? getClassHitBonus(attackerClassDef, weapon) : 0;
+    const classDmgBonus = attackerClassDef ? getClassDamageBonus(attackerClassDef, weapon) : 0;
+
     const attackerPos = world.getComponent<PositionComponent>(attackerId, "position");
     const defenderPos = world.getComponent<PositionComponent>(defenderId, "position");
 
@@ -324,6 +352,8 @@ export class DamageCalculator {
       modifiers.push({ label: "Skill Effects", value: attackerMeleeSkillMod });
     if (weapon.hitChanceBonus !== 0)
       modifiers.push({ label: weapon.name, value: weapon.hitChanceBonus });
+    if (classHitBonus !== 0)
+      modifiers.push({ label: "Class", value: classHitBonus });
     modifiers.push({ label: "Defense", value: -defenderStats.meleeDefense });
     if (defenderMeleeDefMod !== 0)
       modifiers.push({ label: "Def Effects", value: -defenderMeleeDefMod });
@@ -337,14 +367,16 @@ export class DamageCalculator {
       modifiers.push({ label: "Surround", value: surroundBonus });
 
     const rawHit = (attackerStats.meleeSkill + attackerMeleeSkillMod) + weapon.hitChanceBonus
+      + classHitBonus
       - (defenderStats.meleeDefense + defenderMeleeDefMod) - shieldBonus
       - terrainDefBonus + elevationMod + surroundBonus;
     const hitChance = clamp(rawHit, 5, 95);
 
+    const dmgMult = classDmgBonus > 0 ? (1 + classDmgBonus / 100) : 1;
     return {
       hitChance,
-      minDamage: weapon.minDamage,
-      maxDamage: weapon.maxDamage,
+      minDamage: Math.floor(weapon.minDamage * dmgMult),
+      maxDamage: Math.floor(weapon.maxDamage * dmgMult),
       modifiers,
       weaponName: weapon.name,
       armorIgnorePct: weapon.armorIgnorePct,
@@ -387,6 +419,12 @@ export class DamageCalculator {
     const shield: ShieldDef | undefined = defenderEquip?.offHand
       ? getShield(defenderEquip.offHand)
       : undefined;
+
+    // Class passives
+    const attackerCC = world.getComponent<CharacterClassComponent>(attackerId, "characterClass");
+    const attackerClassDef = attackerCC ? getClassDef(attackerCC.classId) : undefined;
+    const classHitBonus = attackerClassDef ? getClassHitBonus(attackerClassDef, weapon) : 0;
+    const classDmgBonus = attackerClassDef ? getClassDamageBonus(attackerClassDef, weapon) : 0;
 
     // ── 1. Hit chance ──
     const attackerPos = world.getComponent<PositionComponent>(attackerId, "position");
@@ -438,6 +476,7 @@ export class DamageCalculator {
 
     const hitChance = clamp(
       (attackerStats.meleeSkill + attackerMeleeSkillMod) + weapon.hitChanceBonus
+        + classHitBonus
         + skill.hitChanceModifier
         + rangePenalty
         - (defenderStats.meleeDefense + defenderMeleeDefMod) - shieldBonus
@@ -453,10 +492,11 @@ export class DamageCalculator {
       return miss(hitChance, weapon.id);
     }
 
-    // ── 2. Roll raw damage with skill multiplier ──
-    const rawDamage = Math.floor(
+    // ── 2. Roll raw damage with skill multiplier (and class bonus) ──
+    let rawDamage = Math.floor(
       this.rng.nextInt(weapon.minDamage, weapon.maxDamage) * skill.damageMultiplier,
     );
+    if (classDmgBonus > 0) rawDamage = Math.floor(rawDamage * (1 + classDmgBonus / 100));
 
     // ── 3. Head hit (25% chance) ──
     const headHit = this.rng.roll(25);
@@ -556,6 +596,12 @@ export class DamageCalculator {
     const shield: ShieldDef | undefined = defenderEquip?.offHand
       ? getShield(defenderEquip.offHand) : undefined;
 
+    // Class passives
+    const attackerCC = world.getComponent<CharacterClassComponent>(attackerId, "characterClass");
+    const attackerClassDef = attackerCC ? getClassDef(attackerCC.classId) : undefined;
+    const classHitBonus = attackerClassDef ? getClassHitBonus(attackerClassDef, weapon) : 0;
+    const classDmgBonus = attackerClassDef ? getClassDamageBonus(attackerClassDef, weapon) : 0;
+
     const attackerPos = world.getComponent<PositionComponent>(attackerId, "position");
     const defenderPos = world.getComponent<PositionComponent>(defenderId, "position");
 
@@ -596,6 +642,8 @@ export class DamageCalculator {
       modifiers.push({ label: "Skill Effects", value: attackerMeleeSkillMod });
     if (weapon.hitChanceBonus !== 0)
       modifiers.push({ label: weapon.name, value: weapon.hitChanceBonus });
+    if (classHitBonus !== 0)
+      modifiers.push({ label: "Class", value: classHitBonus });
     if (skill.hitChanceModifier !== 0)
       modifiers.push({ label: skill.name, value: skill.hitChanceModifier });
     if (rangePenalty !== 0)
@@ -613,6 +661,7 @@ export class DamageCalculator {
       modifiers.push({ label: "Surround", value: surroundBonus });
 
     const rawHit = (attackerStats.meleeSkill + attackerMeleeSkillMod) + weapon.hitChanceBonus
+      + classHitBonus
       + skill.hitChanceModifier + rangePenalty
       - (defenderStats.meleeDefense + defenderMeleeDefMod) - shieldBonus
       - terrainDefBonus + elevationMod + surroundBonus;
@@ -621,10 +670,11 @@ export class DamageCalculator {
     const armorIgnore = skill.armorIgnoreOverride ?? weapon.armorIgnorePct;
     const armorDmgMult = skill.armorDamageMultOverride ?? weapon.armorDamageMult;
 
+    const totalDmgMult = skill.damageMultiplier * (classDmgBonus > 0 ? (1 + classDmgBonus / 100) : 1);
     return {
       hitChance,
-      minDamage: Math.floor(weapon.minDamage * skill.damageMultiplier),
-      maxDamage: Math.floor(weapon.maxDamage * skill.damageMultiplier),
+      minDamage: Math.floor(weapon.minDamage * totalDmgMult),
+      maxDamage: Math.floor(weapon.maxDamage * totalDmgMult),
       modifiers,
       weaponName: weapon.name,
       armorIgnorePct: armorIgnore,

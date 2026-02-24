@@ -14,6 +14,8 @@ import { getZoCAttacksForMove } from "./ZoneOfControl";
 import { getWeapon, UNARMED } from "@data/WeaponData";
 import { getSkillsForWeapon, skillAPCost, skillRange, BASIC_ATTACK, type SkillDef } from "@data/SkillData";
 import type { ArmorComponent } from "@entities/components/Armor";
+import type { CharacterClassComponent } from "@entities/components/CharacterClass";
+import { getClassDef, getClassAPDiscount, getClassArmorMPReduction } from "@data/ClassData";
 
 export type TacticalAction =
   | { type: "moveAndAttack"; path: Array<{ q: number; r: number }>; targetId: EntityId; skill?: SkillDef }
@@ -106,10 +108,16 @@ export function decideTacticalAction(
   const weapon = equip?.mainHand ? getWeapon(equip.mainHand) : UNARMED;
   const weaponId = equip?.mainHand ?? "unarmed";
 
+  // Class passives
+  const cc = world.getComponent<CharacterClassComponent>(entityId, "characterClass");
+  const classDef = cc ? getClassDef(cc.classId) : undefined;
+  const armorMPReduction = classDef ? getClassArmorMPReduction(classDef) : 0;
+
   // Get available skills for this weapon
   const skills = getSkillsForWeapon(weaponId);
   const basicSkill = skills.find(s => s.isBasicAttack) ?? BASIC_ATTACK;
-  const basicAPCost = skillAPCost(basicSkill, weapon);
+  const apDiscount = classDef ? getClassAPDiscount(classDef, weapon, basicSkill.rangeType) : 0;
+  const basicAPCost = Math.max(1, skillAPCost(basicSkill, weapon) - apDiscount);
   const basicRange = skillRange(basicSkill, weapon);
 
   // Check if we should recover (fatigue > 70% of max)
@@ -129,6 +137,7 @@ export function decideTacticalAction(
     armor?.body?.id,
     armor?.head?.id,
     equip?.offHand ?? undefined,
+    armorMPReduction,
   );
 
   // Get all reachable hexes

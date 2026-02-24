@@ -1,6 +1,7 @@
 import { TerrainType } from "@hex/HexGrid";
 import type { AIType } from "@entities/components/AIBehavior";
 import type { SpriteCharType } from "@rendering/SpriteAnimator";
+import type { CharacterClass } from "./ClassData";
 
 export interface ScenarioTile {
   q: number;
@@ -21,6 +22,7 @@ export interface ScenarioUnit {
   headArmor?: string;
   aiType?: AIType;
   sprite?: SpriteCharType;
+  classId?: CharacterClass;
 }
 
 export interface ScenarioDef {
@@ -54,17 +56,17 @@ export const SCENARIOS: ScenarioDef[] = [
         stats: { melee: 70, defense: 15, hp: 60, initiative: 100 },
         weapon: "arming_sword", shield: "heater_shield",
         bodyArmor: "mail_hauberk", headArmor: "mail_coif",
-        sprite: "swordsman" },
+        sprite: "swordsman", classId: "fighter" },
       { q: 1, r: 4, team: "player", name: "Axeman",
         stats: { melee: 65, defense: 10, hp: 70, initiative: 90 },
         weapon: "hand_axe", shield: "wooden_shield",
         bodyArmor: "leather_jerkin", headArmor: "leather_cap",
-        sprite: "armored-axeman" },
+        sprite: "armored-axeman", classId: "fighter" },
       { q: 1, r: 6, team: "player", name: "Spearman",
         stats: { melee: 60, defense: 20, hp: 55, initiative: 110 },
         weapon: "spear", shield: "buckler",
         bodyArmor: "linen_tunic", headArmor: "hood",
-        sprite: "knight-templar" },
+        sprite: "knight-templar", classId: "spearman" },
       // Enemy
       { q: 8, r: 1, team: "enemy", name: "Brigand",
         stats: { melee: 55, defense: 10, hp: 50, initiative: 95 },
@@ -113,22 +115,22 @@ export const SCENARIOS: ScenarioDef[] = [
         stats: { melee: 70, defense: 15, hp: 65, initiative: 100 },
         weapon: "arming_sword", shield: "heater_shield",
         bodyArmor: "mail_hauberk", headArmor: "mail_coif",
-        sprite: "swordsman" },
+        sprite: "swordsman", classId: "fighter" },
       { q: 1, r: 3, team: "player", name: "Axeman",
         stats: { melee: 65, defense: 10, hp: 70, initiative: 90 },
         weapon: "hand_axe", shield: "wooden_shield",
         bodyArmor: "leather_jerkin", headArmor: "leather_cap",
-        sprite: "armored-axeman" },
+        sprite: "armored-axeman", classId: "fighter" },
       { q: 1, r: 4, team: "player", name: "Spearman",
         stats: { melee: 60, defense: 20, hp: 55, initiative: 110 },
         weapon: "spear", shield: "buckler",
         bodyArmor: "linen_tunic", headArmor: "hood",
-        sprite: "knight-templar" },
+        sprite: "knight-templar", classId: "spearman" },
       { q: 1, r: 5, team: "player", name: "Maceman",
         stats: { melee: 65, defense: 12, hp: 60, initiative: 95 },
         weapon: "winged_mace", shield: "wooden_shield",
         bodyArmor: "mail_hauberk", headArmor: "leather_cap",
-        sprite: "soldier" },
+        sprite: "soldier", classId: "fighter" },
       // Enemy (5 units, defending the hill)
       { q: 7, r: 2, team: "enemy", name: "Hill Guard",
         stats: { melee: 60, defense: 15, hp: 55, initiative: 90 },
@@ -181,22 +183,22 @@ export const SCENARIOS: ScenarioDef[] = [
         stats: { melee: 75, defense: 18, hp: 65, initiative: 100 },
         weapon: "arming_sword", shield: "heater_shield",
         bodyArmor: "mail_hauberk", headArmor: "mail_coif",
-        sprite: "swordsman" },
+        sprite: "swordsman", classId: "fighter" },
       { q: 5, r: 4, team: "player", name: "Axeman",
         stats: { melee: 70, defense: 12, hp: 75, initiative: 90 },
         weapon: "hand_axe", shield: "wooden_shield",
         bodyArmor: "mail_hauberk", headArmor: "leather_cap",
-        sprite: "armored-axeman" },
+        sprite: "armored-axeman", classId: "fighter" },
       { q: 4, r: 5, team: "player", name: "Spearman",
         stats: { melee: 65, defense: 22, hp: 55, initiative: 110 },
         weapon: "spear", shield: "buckler",
         bodyArmor: "leather_jerkin", headArmor: "hood",
-        sprite: "knight-templar" },
+        sprite: "knight-templar", classId: "spearman" },
       { q: 5, r: 5, team: "player", name: "Maceman",
         stats: { melee: 68, defense: 14, hp: 60, initiative: 95 },
         weapon: "winged_mace", shield: "wooden_shield",
         bodyArmor: "mail_hauberk", headArmor: "leather_cap",
-        sprite: "soldier" },
+        sprite: "soldier", classId: "fighter" },
       // Enemy (8 units surrounding)
       { q: 2, r: 3, team: "enemy", name: "Brigand",
         stats: { melee: 50, defense: 8, hp: 45, initiative: 90 },

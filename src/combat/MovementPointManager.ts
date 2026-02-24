@@ -90,25 +90,28 @@ export function pathMPCost(
 /**
  * Compute effective MP after armor and shield penalties.
  * Minimum 2 MP so a unit can always move at least one hex.
+ * @param armorMPReduction Class passive that reduces total armor MP penalty (e.g. Knight: 1).
  */
 export function getEffectiveMP(
   baseMP: number,
   bodyArmorId?: string,
   headArmorId?: string,
   shieldId?: string,
+  armorMPReduction: number = 0,
 ): number {
-  let mp = baseMP;
+  let totalPenalty = 0;
   if (bodyArmorId) {
     const def = getArmorDef(bodyArmorId);
-    if (def) mp -= def.mpPenalty;
+    if (def) totalPenalty += def.mpPenalty;
   }
   if (headArmorId) {
     const def = getArmorDef(headArmorId);
-    if (def) mp -= def.mpPenalty;
+    if (def) totalPenalty += def.mpPenalty;
   }
   if (shieldId) {
     const def = getShield(shieldId);
-    if (def) mp -= def.mpPenalty;
+    if (def) totalPenalty += def.mpPenalty;
   }
-  return Math.max(2, mp);
+  const effectivePenalty = Math.max(0, totalPenalty - armorMPReduction);
+  return Math.max(2, baseMP - effectivePenalty);
 }

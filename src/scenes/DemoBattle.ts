@@ -36,6 +36,8 @@ import { EnemyDetailPanel, type EnemyDetailData } from "@ui/EnemyDetailPanel";
 import { AttackPreviewPanel } from "@ui/AttackPreviewPanel";
 import { UndoButton } from "@ui/UndoButton";
 import { skillAPCost, skillRange } from "@data/SkillData";
+import { getClassDef, type CharacterClass } from "@data/ClassData";
+import type { CharacterClassComponent } from "@entities/components/CharacterClass";
 import type { FatigueComponent } from "@entities/components/Fatigue";
 import type { EquipmentComponent } from "@entities/components/Equipment";
 import type { ArmorComponent } from "@entities/components/Armor";
@@ -127,6 +129,7 @@ function spawnUnit(
   equip?: UnitEquipment,
   aiType?: AIType,
   sprite?: SpriteCharType,
+  classId?: CharacterClass,
 ): EntityId {
   // Ensure no overlap
   const pos = findFreeHex(grid, q, r);
@@ -151,7 +154,7 @@ function spawnUnit(
     rangedSkill: 30,
     meleeDefense: stats.defense,
     rangedDefense: 10,
-    movementPoints: stats.mp ?? 8,
+    movementPoints: stats.mp ?? (classId ? getClassDef(classId).baseMP : 8),
     level: 1,
     experience: 0,
   });
@@ -224,6 +227,13 @@ function spawnUnit(
     team,
     name,
   });
+
+  if (classId) {
+    world.addComponent(id, {
+      type: "characterClass",
+      classId,
+    } as CharacterClassComponent);
+  }
 
   if (team === "enemy") {
     world.addComponent(id, {
@@ -394,6 +404,7 @@ export class DemoBattle {
         },
         unit.aiType,
         unit.sprite,
+        unit.classId,
       );
       if (unit.team === "player") {
         this.playerIds.push(id);
@@ -1021,8 +1032,11 @@ export class DemoBattle {
     const moraleState = this.combat.morale.getState(this.world, entityId);
     const statusEffects = this.combat.statusEffects.getActiveEffects(this.world, entityId);
 
+    const cc = this.world.getComponent<CharacterClassComponent>(entityId, "characterClass");
+    const displayName = cc ? `${team.name} (${getClassDef(cc.classId).name})` : team.name;
+
     this.unitInfoPanel.show(
-      team.name,
+      displayName,
       health.current,
       health.max,
       isCurrentPlayer ? this.combat.apRemaining : undefined,
@@ -1045,11 +1059,9 @@ export class DemoBattle {
     if (!this.combat.selectedUnit) return;
     const skills = this.combat.getAvailableSkills();
     const affordable = new Set<string>();
-    const equip = this.world.getComponent<EquipmentComponent>(this.combat.selectedUnit, "equipment");
-    const weapon = equip?.mainHand ? getWeapon(equip.mainHand) : UNARMED;
     for (const skill of skills) {
       if (skill.isBasicAttack) continue;
-      const apCost = skillAPCost(skill, weapon);
+      const apCost = this.combat.getSkillAPCost(skill);
       if (this.combat.apRemaining >= apCost) {
         affordable.add(skill.id);
       }

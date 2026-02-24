@@ -18,6 +18,8 @@ import { SkillExecutor } from "./SkillExecutor";
 import type { ActiveStancesComponent } from "@entities/components/ActiveStances";
 import { getWeapon, UNARMED, type WeaponDef } from "@data/WeaponData";
 import { BASIC_ATTACK, getSkillsForWeapon, skillAPCost, skillFatigueCost, skillRange, type SkillDef } from "@data/SkillData";
+import type { CharacterClassComponent } from "@entities/components/CharacterClass";
+import { getClassDef, getClassAPDiscount, getClassArmorMPReduction } from "@data/ClassData";
 import { decideTacticalAction, type TacticalAction } from "./TacticalAI";
 import { hasLineOfSight } from "@hex/HexLineOfSight";
 import { RNG } from "@utils/RNG";
@@ -201,7 +203,7 @@ export class CombatManager {
     const skill = this.pendingSkill;
     const weapon = this.getWeaponDef(this.selectedUnit);
     const range = skillRange(skill, weapon);
-    const apCost = skillAPCost(skill, weapon);
+    const apCost = this.getEffectiveAPCost(this.selectedUnit, skill, weapon);
     if (!this.apManager.canAfford(apCost)) return hexes;
 
     if (skill.targetType === "self") {
@@ -263,7 +265,7 @@ export class CombatManager {
       const dist = hexDistance({ q: attackerPos.q, r: attackerPos.r }, { q, r });
       const weapon = this.getWeaponDef(this.selectedUnit);
       const range = skillRange(skill, weapon);
-      const apCost = skillAPCost(skill, weapon);
+      const apCost = this.getEffectiveAPCost(this.selectedUnit, skill, weapon);
       if (dist > range || !this.apManager.canAfford(apCost)) return false;
       // Ranged attacks require line of sight
       if (skill.rangeType === "ranged") {
@@ -323,7 +325,7 @@ export class CombatManager {
       const dist = hexDistance({ q: attackerPos.q, r: attackerPos.r }, { q, r });
       const weapon = this.getWeaponDef(this.selectedUnit);
       const range = skillRange(skill, weapon);
-      const apCost = skillAPCost(skill, weapon);
+      const apCost = this.getEffectiveAPCost(this.selectedUnit, skill, weapon);
 
       if (dist <= range && this.apManager.canAfford(apCost)) {
         this.executeAttack(this.selectedUnit, tile.occupant);
@@ -520,7 +522,7 @@ export class CombatManager {
   private executeAttack(attackerId: EntityId, defenderId: EntityId): void {
     const skill = this.getActiveSkill();
     const weapon = this.getWeaponDef(attackerId);
-    const apCost = skillAPCost(skill, weapon);
+    const apCost = this.getEffectiveAPCost(attackerId, skill, weapon);
     const fatCost = skillFatigueCost(skill, weapon);
 
     if (!this.apManager.canAfford(apCost)) return;
@@ -582,7 +584,7 @@ export class CombatManager {
   /** Execute a stance skill (self-targeting). */
   private executeStance(entityId: EntityId, skill: SkillDef): void {
     const weapon = this.getWeaponDef(entityId);
-    const apCost = skillAPCost(skill, weapon);
+    const apCost = this.getEffectiveAPCost(entityId, skill, weapon);
     const fatCost = skillFatigueCost(skill, weapon);
 
     if (!this.apManager.canAfford(apCost)) return;
@@ -628,7 +630,7 @@ export class CombatManager {
 
     const weapon = this.getWeaponDef(entityId);
     const range = skillRange(skill, weapon);
-    const apCost = skillAPCost(skill, weapon);
+    const apCost = this.getEffectiveAPCost(entityId, skill, weapon);
     if (!this.apManager.canAfford(apCost)) return false;
 
     const isRanged = skill.rangeType === "ranged";
@@ -1008,7 +1010,10 @@ export class CombatManager {
       const stats = this.world.getComponent<StatsComponent>(entityId, "stats");
       const equip = this.world.getComponent<EquipmentComponent>(entityId, "equipment");
       const armor = this.world.getComponent<ArmorComponent>(entityId, "armor");
-      const fleeMP = getEffectiveMP(stats?.movementPoints ?? DEFAULT_MP, armor?.body?.id, armor?.head?.id, equip?.offHand ?? undefined);
+      const cc = this.world.getComponent<CharacterClassComponent>(entityId, "characterClass");
+      const fleeClassDef = cc ? getClassDef(cc.classId) : undefined;
+      const fleeArmorReduction = fleeClassDef ? getClassArmorMPReduction(fleeClassDef) : 0;
+      const fleeMP = getEffectiveMP(stats?.movementPoints ?? DEFAULT_MP, armor?.body?.id, armor?.head?.id, equip?.offHand ?? undefined, fleeArmorReduction);
       const enemies = isEnemy ? this.getPlayerUnits() : this.getEnemyUnits();
       const reachable = reachableHexes(
         this.grid, { q: pos.q, r: pos.r }, fleeMP, tileMPCost,
@@ -1067,19 +1072,39 @@ export class CombatManager {
 
   // ── Helpers ──
 
-  /** Reset MP for a unit based on its stats and equipment. */
+  /** Reset MP for a unit based on its stats, equipment, and class. */
   private resetMPForUnit(entityId: EntityId): void {
     const stats = this.world.getComponent<StatsComponent>(entityId, "stats");
     const equip = this.world.getComponent<EquipmentComponent>(entityId, "equipment");
     const armor = this.world.getComponent<ArmorComponent>(entityId, "armor");
+    const cc = this.world.getComponent<CharacterClassComponent>(entityId, "characterClass");
+    const classDef = cc ? getClassDef(cc.classId) : undefined;
+    const armorMPReduction = classDef ? getClassArmorMPReduction(classDef) : 0;
     const baseMP = stats?.movementPoints ?? DEFAULT_MP;
-    const effectiveMP = getEffectiveMP(baseMP, armor?.body?.id, armor?.head?.id, equip?.offHand ?? undefined);
+    const effectiveMP = getEffectiveMP(baseMP, armor?.body?.id, armor?.head?.id, equip?.offHand ?? undefined, armorMPReduction);
     this.mpManager.resetForTurn(effectiveMP);
   }
 
   private getWeaponDef(entityId: EntityId): WeaponDef {
     const equip = this.world.getComponent<EquipmentComponent>(entityId, "equipment");
     return equip?.mainHand ? getWeapon(equip.mainHand) : UNARMED;
+  }
+
+  /** Get effective AP cost for a skill, applying class discount. Min 1 AP. */
+  private getEffectiveAPCost(entityId: EntityId, skill: SkillDef, weapon: WeaponDef): number {
+    const base = skillAPCost(skill, weapon);
+    const cc = this.world.getComponent<CharacterClassComponent>(entityId, "characterClass");
+    if (!cc) return base;
+    const classDef = getClassDef(cc.classId);
+    const discount = getClassAPDiscount(classDef, weapon, skill.rangeType);
+    return Math.max(1, base - discount);
+  }
+
+  /** Public: get effective AP cost for the selected unit's pending/active skill. */
+  getSkillAPCost(skill: SkillDef): number {
+    if (!this.selectedUnit) return skillAPCost(skill, UNARMED);
+    const weapon = this.getWeaponDef(this.selectedUnit);
+    return this.getEffectiveAPCost(this.selectedUnit, skill, weapon);
   }
 
   private getWeaponAPCost(entityId: EntityId): number {
