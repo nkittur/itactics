@@ -19,6 +19,7 @@
 7. [Inventory System](#7-inventory-system)
 8. [Supplies and Consumables](#8-supplies-and-consumables)
 9. [Implementation Notes](#9-implementation-notes)
+10. [Character Classes and Weapon Proficiencies](#10-character-classes-and-weapon-proficiencies)
 
 ---
 
@@ -1216,6 +1217,365 @@ const BALANCE_CONFIG = {
 | Throwing | Burst damage, versatile | Limited ammo | Opening volley | Extended fights |
 | Firearm | Devastating alpha strike | Extremely slow reload | Any single target | Sustained combat |
 | Whip | Disarm, reach, no counter | Extremely low damage | Equipped enemies | Unarmed/beasts |
+
+---
+
+## 10. Character Classes and Weapon Proficiencies
+
+### 10.1 Overview
+
+Unlike Battle Brothers' pure background system, iTactics introduces **character classes** that restrict which weapon categories a character can equip. Classes are chosen at character creation (or derived from background) and determine the character's weapon proficiency groups, armor tier limits, and access to class-exclusive weapons.
+
+A character's class defines **what they can wield**, while their stats and perks define **how well they use it**. This creates meaningful differentiation: two frontliners with the same sword have different roles if one is a Knight (heavy armor, shields) and the other is a Duelist (light armor, dual-wield).
+
+### 10.2 Weapon Proficiency Groups
+
+Weapon families are organized into **proficiency groups** that classes reference. Some families appear in multiple groups.
+
+| Group | Weapon Families | Description |
+|-------|----------------|-------------|
+| **Light Melee** | Dagger, Sword (1H), Cleaver (1H) | Fast, finesse weapons |
+| **Heavy Melee** | Axe, Mace/Hammer, Flail | Strength-based bludgeoning/chopping |
+| **Polearms** | Spear, Polearm | Reach weapons, formation fighting |
+| **Two-Handed** | Sword (2H), Axe (2H), Mace (2H), Cleaver (2H), Flail (2H) | Heavy two-handed weapons |
+| **Ranged** | Bow, Crossbow | Dedicated ranged weapons |
+| **Thrown** | Throwing | Short-range consumable ranged |
+| **Exotic** | Whip, Firearm | Rare/specialized weapons |
+| **Shields** | All shields | Off-hand defensive equipment |
+
+### 10.3 Character Classes
+
+#### Fighter
+
+The all-rounder frontliner. Fighters have the broadest weapon access of any melee class and can wear the heaviest armor. They lack the finesse of specialists but can adapt to any battlefield role.
+
+| Attribute | Value |
+|-----------|-------|
+| **Proficiencies** | Light Melee, Heavy Melee, Polearms, Two-Handed, Shields, Thrown |
+| **Restricted** | Ranged, Exotic |
+| **Armor Tier** | All (up to Plate) |
+| **Base MP** | 8 |
+| **Stat Emphasis** | HP, MATT, MDEF |
+
+**Cannot equip**: Bows, Crossbows, Whips, Firearms.
+
+---
+
+#### Knight
+
+Heavily armored specialist focused on shields, maces, and swords. Knights cannot use two-handed weapons (they always carry a shield) but gain superior shield-related abilities. Their heavy armor training minimizes MP penalties.
+
+| Attribute | Value |
+|-----------|-------|
+| **Proficiencies** | Light Melee (Sword only), Heavy Melee (Mace only), Shields |
+| **Restricted** | Two-Handed, Polearms, Ranged, Exotic, Dagger, Cleaver, Flail, Axe |
+| **Armor Tier** | All (up to Plate, reduced MP penalty: -1 from armor) |
+| **Base MP** | 7 |
+| **Stat Emphasis** | HP, MDEF, RES |
+
+**Cannot equip**: Two-handed weapons, Bows, Daggers, Axes, Polearms. Always requires a shield.
+
+**Special**: Armor MP penalties reduced by 1 (minimum 0). A Knight in Coat of Plates (normally -2 MP) only loses 1 MP.
+
+---
+
+#### Rogue
+
+Fast, lightly armored melee specialist. Excels with daggers, one-handed swords, and cleavers. Cannot use heavy weapons or heavy armor. High initiative and movement make them flankers and finishers.
+
+| Attribute | Value |
+|-----------|-------|
+| **Proficiencies** | Light Melee, Thrown, Exotic (Whip only) |
+| **Restricted** | Heavy Melee, Two-Handed, Polearms, Ranged, Shields (Buckler only) |
+| **Armor Tier** | Light only (Linen, Leather — no Mail or Plate) |
+| **Base MP** | 10 |
+| **Stat Emphasis** | INI, MATT, FAT |
+
+**Cannot equip**: Axes, Maces, Flails, Two-handed weapons, Spears, Polearms, Bows, Crossbows, Shields (except Buckler). Cannot wear Mail or Plate armor.
+
+**Special**: +2 base MP over standard (10 total). Dagger AP costs reduced by 1 (Knife costs 2 AP, Dagger costs 2 AP). Kill-chain refund from dagger family bonus stacks with this.
+
+---
+
+#### Ranger
+
+Ranged combat specialist with backup melee capability. Can use bows and crossbows as primary weapons and light melee as sidearms. Cannot wear heavy armor (interferes with drawing/aiming).
+
+| Attribute | Value |
+|-----------|-------|
+| **Proficiencies** | Ranged, Thrown, Light Melee (Dagger, Sword 1H only) |
+| **Restricted** | Heavy Melee, Two-Handed, Polearms, Exotic, Shields |
+| **Armor Tier** | Medium (up to Leather, Mail Coif head only) |
+| **Base MP** | 9 |
+| **Stat Emphasis** | RATT, INI, RDEF |
+
+**Cannot equip**: Axes, Maces, Flails, Cleavers, Two-handed melee, Spears, Polearms, Shields (except Buckler). Cannot wear body armor heavier than Leather.
+
+**Special**: Ranged weapon AP costs reduced by 1 (Short Bow costs 3 AP instead of 4). No accuracy penalty at range 3-4 (extended optimal range).
+
+---
+
+#### Spearman
+
+Formation fighter specializing in spears and polearms. Defensive frontliner who controls space with reach weapons and Spearwall. Can use shields with one-handed spears.
+
+| Attribute | Value |
+|-----------|-------|
+| **Proficiencies** | Polearms, Shields, Light Melee (Sword 1H, Dagger as sidearm) |
+| **Restricted** | Heavy Melee, Two-Handed (non-polearm), Ranged, Exotic, Thrown |
+| **Armor Tier** | All (up to Plate) |
+| **Base MP** | 8 |
+| **Stat Emphasis** | MATT, MDEF, INI |
+
+**Cannot equip**: Axes, Maces, Flails, Cleavers, Two-handed swords/axes/maces, Bows, Crossbows.
+
+**Special**: Spearwall can trigger up to 5 times per round (vs 3 for other classes). Spear family +20% hit bonus increased to +25%.
+
+---
+
+#### Brute
+
+Berserker archetype focused on two-handed weapons and maximum damage. Can use any two-handed weapon but refuses shields and struggles with ranged combat. Light or medium armor only — they rely on killing enemies before being hit.
+
+| Attribute | Value |
+|-----------|-------|
+| **Proficiencies** | Two-Handed, Heavy Melee (1H as backup), Thrown |
+| **Restricted** | Shields, Ranged, Exotic, Light Melee (Dagger only as sidearm) |
+| **Armor Tier** | Medium (up to Mail — no Plate, too restrictive for berserker style) |
+| **Base MP** | 9 |
+| **Stat Emphasis** | HP, MATT, FAT |
+
+**Cannot equip**: Shields, Bows, Crossbows, Whips, Firearms. Cannot wear Plate armor.
+
+**Special**: +15% damage with two-handed weapons. AoE skills (Round Swing, Swing, Crush) hit one additional target. On kill, recover 5 fatigue (stacks with perk bonuses).
+
+---
+
+### 10.4 Class–Proficiency Summary Matrix
+
+| Weapon Group | Fighter | Knight | Rogue | Ranger | Spearman | Brute |
+|-------------|---------|--------|-------|--------|----------|-------|
+| Dagger | Yes | No | Yes | Yes | Sidearm | Sidearm |
+| Sword 1H | Yes | Yes | Yes | Yes | Yes | No |
+| Cleaver 1H | Yes | No | Yes | No | No | No |
+| Axe 1H | Yes | No | No | No | No | Yes |
+| Mace 1H | Yes | Yes | No | No | No | Yes |
+| Flail 1H | Yes | No | No | No | No | No |
+| Spear | Yes | No | No | No | Yes | No |
+| Sword 2H | Yes | No | No | No | No | Yes |
+| Axe 2H | Yes | No | No | No | No | Yes |
+| Mace 2H | Yes | No | No | No | No | Yes |
+| Cleaver 2H | Yes | No | No | No | No | Yes |
+| Flail 2H | Yes | No | No | No | No | Yes |
+| Polearm | No | No | No | No | Yes | No |
+| Bow | No | No | No | Yes | No | No |
+| Crossbow | No | No | No | Yes | No | No |
+| Throwing | Yes | No | Yes | Yes | No | Yes |
+| Whip | No | No | Yes | No | No | No |
+| Firearm | No | No | No | No | No | No |
+| Buckler | Yes | Yes | Yes | Yes | Yes | No |
+| Shield | Yes | Yes | No | No | Yes | No |
+
+> **Design Note**: Fighters are the only class with access to Flails (1H) and can equip the widest range of weapons. This makes them the "jack of all trades" — good at everything, best at nothing. Firearms are currently unequippable by any standard class; they may be unlocked by a future prestige class or special background.
+
+---
+
+### 10.5 Specialized Weapons with Class/Stat Requirements
+
+Some weapons have additional requirements beyond class proficiency. These are rarer, more powerful versions that reward stat investment or class specialization.
+
+#### Stat-Gated Weapons
+
+| Weapon | Family | Requirement | Effect | Why Gated |
+|--------|--------|-------------|--------|-----------|
+| **Assassin's Stiletto** | Dagger | Rogue + INI ≥ 120 | 2 AP cost, 20-30 DMG, 30% AI, +3 AP refund on kill | Ultra-fast attacks enable 4 strikes/turn; needs Rogue speed |
+| **War Bow** | Bow | Ranger + RATT ≥ 60 | Standard stats but range 7 + Rain of Arrows | Heavy draw requires trained marksman |
+| **Executioner's Blade** | Cleaver 2H | Brute + MATT ≥ 70 | 65-100 DMG, Decapitate at 130% instead of 100% | Massive weapon needs raw strength and rage |
+| **Templar Mace** | Mace 1H | Knight + RES ≥ 50 | 30-45 DMG, +20% stun (vs +10%), +10 RES aura to adjacent allies | Holy weapon empowered by faith/resolve |
+| **Serpent Spear** | Spear | Spearman + MDEF ≥ 20 | 25-40 DMG, Spearwall triggers deal full (100%) damage instead of 80% | Master spearman's precision weapon |
+| **Shadow Dagger** | Dagger | Rogue + MATT ≥ 65 | 20-35 DMG, Puncture at 60% damage (vs 40%), costs 3 AP | Targets armor gaps more effectively |
+| **Champion's Greatsword** | Sword 2H | Fighter + HP ≥ 70 + MATT ≥ 65 | 60-90 DMG, Swing hits 4 targets (vs 3) | Only the strongest fighters can wield effectively |
+| **Heartseeker Bow** | Bow | Ranger + RATT ≥ 70 | 30-55 DMG, Crippling Shot also applies Bleed (5/turn, 2 turns) | Precision shots that also wound |
+| **Titan's Hammer** | Mace 2H | Brute + HP ≥ 65 + FAT ≥ 110 | 45-80 DMG, Crush AoE radius +1 tile, 40% stun chance | Enormous weapon, enormous stamina demand |
+
+#### Class-Exclusive Skills from Specialized Weapons
+
+Some specialized weapons unlock unique skills not available to their base family:
+
+| Weapon | Exclusive Skill | AP | Effect |
+|--------|----------------|-----|--------|
+| **Assassin's Stiletto** | Backstab | 3 | If attacking from behind (enemy facing away), deal 250% damage and ignore all armor. Requires adjacent, non-engaged target. |
+| **Templar Mace** | Smite | 5 | 120% damage. If target is Undead or Demon type, deal 180% damage and apply -20 morale penalty. |
+| **Serpent Spear** | Viper Strike | 4 | Range 2 thrust (like polearm). Applies Poison: -10 MATT, -10 MDEF for 3 turns. |
+| **Executioner's Blade** | Reap the Fallen | 6 | AoE sweep. For each target killed, gain +1 AP refund and +10% damage on next attack (stacks up to 3 kills). |
+
+---
+
+### 10.6 Weapon Category Special Effects
+
+Each weapon category has inherent mechanical tendencies beyond the family bonus. These shape the category's identity in combat:
+
+#### Spears — Formation and Reach
+
+- **Spearwall stance** (exclusive): Free attacks on enemies entering adjacent hexes
+- **Brace** (Boar Spear): Double damage counter against charges
+- **Jab** (3 AP): Cheapest melee attack for chip damage and effect triggers
+- **Line Attack** (future skill): Thrust through a hex, hitting the target AND the enemy behind them in a line (skips friendly units). Requires 2+ enemies in a line from the attacker. AP 5, 80% damage to each. Available to Spearman class only.
+- **Design identity**: Control space, punish movement, protect allies behind them
+
+#### Maces — Stun and Disruption
+
+- **+10% stun chance** on every hit (family bonus)
+- **Guaranteed Stun** skill (50% damage but target loses entire next turn)
+- **Knock Out** (reduced AP on target's next turn, more reliable than full stun)
+- **Crush** (AoE + stun chance on all targets)
+- **Shatter** (33% chance to destroy a piece of armor)
+- **Design identity**: Disable high-value targets, break through armor via concussion
+
+#### Daggers — Speed and Precision
+
+- **Lowest AP costs** (2-3 AP per attack, allowing 3-4 attacks per turn)
+- **+3 AP refund on kill** (family bonus, enables kill chains)
+- **Puncture** ignores all armor (kills without damaging equipment — preserves loot)
+- **Deathblow** (200% damage vs incapacitated targets — combo with mace stun)
+- **Rogue class discount**: -1 AP further (Assassin's Stiletto at 2 AP = 4 attacks/turn)
+- **Design identity**: Finish wounded targets, chain kills, combo with stun/disable
+
+#### Swords — Versatility and Defense
+
+- **+5% hit chance** (family bonus — consistent accuracy)
+- **Riposte stance** (counter-attack enemies who attack you)
+- **Gash** (applies bleed for sustained damage)
+- **Swing/Split** (2H: AoE and single-target power options)
+- **Design identity**: Adaptable, reliable, defensive counter-play
+
+#### Axes — Armor and Shield Destruction
+
+- **+10% armor damage** (family bonus — shreds armor durability)
+- **Split Shield** (targets shield directly, can break it in 1-2 hits)
+- **Split Man** (130% damage + 50% armor damage, single-target devastation)
+- **Round Swing** (2H: hits ALL 6 adjacent hexes)
+- **Design identity**: Strip enemy defenses, punish shield-heavy formations
+
+#### Cleavers — Bleed and Execution
+
+- **+10% damage vs unarmored** (family bonus)
+- **Gash/Bleed** mechanics (sustained damage over time, stacks)
+- **Decapitate** (execute strike — damage scales with target's missing HP)
+- **Disembowel** (heavy bleed + fatigue reduction on target)
+- **Design identity**: Wear down enemies over time, finish off the wounded
+
+#### Polearms — Safe Damage from Range 2
+
+- **2-tile reach** (attack over allies, from behind the frontline)
+- **Cannot basic-attack adjacent** (vulnerable if flanked)
+- **Hook** (pull enemies out of formation)
+- **Repel** (push enemies away, create distance)
+- **Sweep** (AoE at range 2)
+- **Design identity**: Safe damage dealer, formation breaker, second-line combatant
+
+#### Bows — Flexible Ranged Pressure
+
+- **No engagement penalty** (family bonus — can shoot from melee)
+- **Quick Shot** (3 AP — two shots per turn with fast bows)
+- **Aimed Shot** (6 AP — full accuracy single shot)
+- **Rain of Arrows** (War Bow: AoE barrage, indirect fire)
+- **Crippling Shot** (slows target's movement and AP)
+- **Design identity**: Consistent ranged damage, target priority, area denial
+
+---
+
+### 10.7 Skill Grants from Weapons
+
+Certain weapons come with skills beyond their family's standard set. When a character equips one of these weapons, the granted skill becomes available regardless of class (as long as the class can equip the weapon).
+
+| Weapon | Granted Skill | Normally From | Notes |
+|--------|--------------|---------------|-------|
+| **Boar Spear** | Brace | Spear family | Only this spear has the Brace counter-charge skill |
+| **Three-Headed Flail** | Triple Lash | Flail family | Unique multi-hit only with this weapon |
+| **Billhook** | Hook | Polearm family | Only billhook and longaxe have Hook |
+| **Longaxe** | Hook, Sweep | Axe/Polearm dual | Dual-family weapon gets skills from both |
+| **Polehammer** | Stun, Hook | Mace/Polearm dual | Dual-family gets mace stun + polearm hook |
+| **Morning Star** | (ignores shield defense) | Mace family | Special mechanic, not a skill |
+| **Rondel Dagger** | Lacerate | Dagger family | Only this dagger has the initiative-reducing bleed |
+| **Glaive** | Sweep | Polearm family | AoE at range 2 |
+| **Warscythe** | Sweep, Lunge | Polearm family | Highest damage polearm with two special skills |
+
+> **Implementation Note**: Weapon-granted skills should be defined as a `grantedSkills: string[]` array on `WeaponDef`. When populating the skill bar, merge family skills with weapon-granted skills. Skills that have specific weapon requirements (like "Greatsword only") should use a `requiredWeaponId` field on `SkillDef`.
+
+---
+
+### 10.8 Implementation Data Model
+
+```typescript
+// New type for character class
+export type CharacterClass = "fighter" | "knight" | "rogue" | "ranger" | "spearman" | "brute";
+
+// Class definition
+export interface ClassDef {
+  id: CharacterClass;
+  name: string;
+  description: string;
+  baseMP: number;                        // Base movement points (before equipment)
+  allowedWeaponFamilies: WeaponFamily[]; // Which weapon families this class can equip
+  allowedShieldTier: "none" | "buckler" | "all";
+  maxArmorTier: "light" | "medium" | "heavy";  // light=leather, medium=mail, heavy=plate
+  passives: ClassPassive[];              // Class-specific passive bonuses
+}
+
+interface ClassPassive {
+  type: "ap_discount" | "damage_bonus" | "stun_bonus" | "fatigue_refund" | "armor_mp_reduction"
+       | "hit_bonus" | "spearwall_count" | "aoe_bonus" | "range_bonus";
+  weaponFamily?: WeaponFamily;           // Restrict passive to specific family
+  value: number;
+}
+
+// Extended WeaponDef (additions to existing interface)
+export interface WeaponDef {
+  // ...existing fields...
+  grantedSkills?: string[];              // Skill IDs granted when this weapon is equipped
+  requiredClass?: CharacterClass;        // Class restriction (beyond proficiency)
+  statRequirements?: StatRequirement[];  // Stat gates for specialized weapons
+  value: number;                         // Gold value for economy
+}
+
+interface StatRequirement {
+  stat: "hp" | "fatigue" | "resolve" | "initiative" | "meleeSkill" | "rangedSkill"
+      | "meleeDefense" | "rangedDefense";
+  minimum: number;
+}
+
+// Extended SkillDef (additions to existing interface)
+export interface SkillDef {
+  // ...existing fields...
+  requiredWeaponId?: string;             // Specific weapon required (e.g., "greatsword")
+  requiredClass?: CharacterClass;        // Class-exclusive skill
+}
+```
+
+### 10.9 Equipment Validation
+
+When a character attempts to equip a weapon, the system checks:
+
+```
+1. Is the weapon's family in the character's class allowedWeaponFamilies?
+   → No: "Cannot equip: [Class] cannot use [Family] weapons"
+
+2. Does the weapon have a requiredClass?
+   → If set and doesn't match: "Cannot equip: Requires [Class] class"
+
+3. Does the weapon have statRequirements?
+   → For each requirement, check character's current stat
+   → If any fail: "Cannot equip: Requires [Stat] ≥ [Value]"
+
+4. Is the weapon a shield? Check allowedShieldTier.
+   → "none": Cannot equip any shield
+   → "buckler": Can only equip buckler
+   → "all": Can equip any shield
+
+5. Is the armor within maxArmorTier?
+   → Check body and head armor slots separately
+```
 
 ---
 
