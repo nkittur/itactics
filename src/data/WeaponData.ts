@@ -82,6 +82,18 @@ const WEAPONS: ReadonlyMap<string, WeaponDef> = new Map([
     minDamage: 35, maxDamage: 55, armorDamageMult: 0.60, armorIgnorePct: 0.30,
     apCost: 6, fatigueCost: 18, range: 2, hands: 2, hitChanceBonus: 0,
   }],
+
+  // ── Ranged ──
+  ["short_bow", {
+    id: "short_bow", name: "Short Bow", family: "bow",
+    minDamage: 20, maxDamage: 35, armorDamageMult: 0.50, armorIgnorePct: 0.15,
+    apCost: 4, fatigueCost: 10, range: 5, hands: 2, hitChanceBonus: 0,
+  }],
+  ["hunting_bow", {
+    id: "hunting_bow", name: "Hunting Bow", family: "bow",
+    minDamage: 25, maxDamage: 45, armorDamageMult: 0.50, armorIgnorePct: 0.20,
+    apCost: 5, fatigueCost: 14, range: 6, hands: 2, hitChanceBonus: -5,
+  }],
 ]);
 
 /** Fallback when a unit has no weapon equipped. */

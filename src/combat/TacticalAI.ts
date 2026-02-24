@@ -11,11 +11,14 @@ import { reachableHexes, findPath } from "@hex/HexPathfinding";
 import { tileAPCost, MAX_AP } from "./ActionPointManager";
 import { getZoCAttacksForMove } from "./ZoneOfControl";
 import { getWeapon, UNARMED } from "@data/WeaponData";
+import { getSkillsForWeapon, skillAPCost, skillRange, BASIC_ATTACK, type SkillDef } from "@data/SkillData";
+import type { ArmorComponent } from "@entities/components/Armor";
 
 export type TacticalAction =
-  | { type: "moveAndAttack"; path: Array<{ q: number; r: number }>; targetId: EntityId }
+  | { type: "moveAndAttack"; path: Array<{ q: number; r: number }>; targetId: EntityId; skill?: SkillDef }
   | { type: "move"; path: Array<{ q: number; r: number }> }
-  | { type: "attack"; targetId: EntityId }
+  | { type: "attack"; targetId: EntityId; skill?: SkillDef }
+  | { type: "activateStance"; skill: SkillDef }
   | { type: "recover" }
   | { type: "wait" };
 
@@ -100,36 +103,62 @@ export function decideTacticalAction(
 
   const equip = world.getComponent<EquipmentComponent>(entityId, "equipment");
   const weapon = equip?.mainHand ? getWeapon(equip.mainHand) : UNARMED;
-  const weaponAPCost = weapon.apCost;
-  const weaponRange = weapon.range;
+  const weaponId = equip?.mainHand ?? "unarmed";
+
+  // Get available skills for this weapon
+  const skills = getSkillsForWeapon(weaponId);
+  const basicSkill = skills.find(s => s.isBasicAttack) ?? BASIC_ATTACK;
+  const basicAPCost = skillAPCost(basicSkill, weapon);
+  const basicRange = skillRange(basicSkill, weapon);
 
   // Check if we should recover (fatigue > 70% of max)
   const fatigue = world.getComponent<FatigueComponent>(entityId, "fatigue");
   if (fatigue && fatigue.current > fatigue.max * 0.7) {
-    // Only recover if no enemies are adjacent
-    const adjacentEnemy = findAdjacentTarget(world, pos, enemyIds, weaponRange);
+    const adjacentEnemy = findAdjacentTarget(world, pos, enemyIds, basicRange);
     if (!adjacentEnemy) {
       return { type: "recover" };
     }
   }
 
-  // Movement budget: reserve AP for attack
-  const moveAP = Math.max(2, MAX_AP - weaponAPCost);
+  // Movement budget: reserve AP for basic attack
+  const moveAP = Math.max(2, MAX_AP - basicAPCost);
 
   // Get all reachable hexes
   const reachable = reachableHexes(grid, { q: pos.q, r: pos.r }, moveAP, tileAPCost);
 
-  // First check: can we attack from current position?
-  const currentTarget = findAdjacentTarget(world, pos, enemyIds, weaponRange);
   let bestScore = -Infinity;
   let bestAction: TacticalAction = { type: "wait" };
 
-  // Score staying and attacking
-  if (currentTarget) {
-    const score = scoreAttackTarget(world, currentTarget, weights);
+  // Evaluate each skill from current position
+  for (const skill of skills) {
+    if (skill.isStance) {
+      // Stance: use defensively when enemies are approaching
+      if (aiType === "defensive" && skill.id === "spearwall") {
+        let nearbyEnemies = 0;
+        for (const eid of enemyIds) {
+          const ep = world.getComponent<PositionComponent>(eid, "position");
+          if (ep && hexDistance(pos, ep) <= 3) nearbyEnemies++;
+        }
+        if (nearbyEnemies > 0) {
+          const stanceScore = nearbyEnemies * 10;
+          if (stanceScore > bestScore) {
+            bestScore = stanceScore;
+            bestAction = { type: "activateStance", skill };
+          }
+        }
+      }
+      continue;
+    }
+    if (skill.targetType !== "enemy") continue;
+
+    const range = skillRange(skill, weapon);
+    const currentTarget = findAdjacentTarget(world, pos, enemyIds, range);
+    if (!currentTarget) continue;
+
+    const score = scoreSkillTarget(world, currentTarget, skill, weights);
     if (score > bestScore) {
       bestScore = score;
-      bestAction = { type: "attack", targetId: currentTarget };
+      bestAction = { type: "attack", targetId: currentTarget, skill: skill.isBasicAttack ? undefined : skill };
     }
   }
 
@@ -163,16 +192,31 @@ export function decideTacticalAction(
     // Terrain score
     const terrainScore = (tile.defenseBonusMelee + tile.elevation * 5) * (weights.terrain / 10);
 
-    // Can we attack from this hex?
-    const target = findAdjacentTarget(world, { q: hq, r: hr, elevation: tile.elevation, facing: 0 } as PositionComponent, enemyIds, weaponRange);
+    // Can we attack from this hex with any skill?
+    let bestSkillAction: { target: EntityId; skill?: SkillDef; score: number } | null = null;
+    const hexPos = { q: hq, r: hr, elevation: tile.elevation, facing: 0 } as PositionComponent;
+    for (const skill of skills) {
+      if (skill.isStance || skill.targetType !== "enemy") continue;
+      const range = skillRange(skill, weapon);
+      const target = findAdjacentTarget(world, hexPos, enemyIds, range);
+      if (!target) continue;
+      const score = scoreSkillTarget(world, target, skill, weights);
+      if (!bestSkillAction || score > bestSkillAction.score) {
+        bestSkillAction = { target, skill: skill.isBasicAttack ? undefined : skill, score };
+      }
+    }
 
-    if (target) {
-      const attackScore = scoreAttackTarget(world, target, weights);
-      const totalScore = attackScore + threatScore + terrainScore + zocScore;
+    if (bestSkillAction) {
+      const totalScore = bestSkillAction.score + threatScore + terrainScore + zocScore;
 
       if (totalScore > bestScore) {
         bestScore = totalScore;
-        bestAction = { type: "moveAndAttack", path: pathResult.path, targetId: target };
+        bestAction = {
+          type: "moveAndAttack",
+          path: pathResult.path,
+          targetId: bestSkillAction.target,
+          skill: bestSkillAction.skill,
+        };
       }
     } else {
       // No attack — score as pure movement toward nearest enemy
@@ -210,25 +254,49 @@ function scoreAttackTarget(
   const health = world.getComponent<HealthComponent>(targetId, "health");
   if (health) {
     const hpPct = health.current / health.max;
-    // Wounded bonus: more wounded = more attractive
     if (hpPct < 0.5) score += weights.woundedTarget;
     else if (hpPct < 0.75) score += weights.woundedTarget * 0.5;
-
-    // Killable bonus: can we likely kill this turn?
     if (health.current < 30) score += 15;
   }
 
-  // Surround bonus: count our allies adjacent to the target
-  const targetPos = world.getComponent<PositionComponent>(targetId, "position");
-  if (targetPos) {
-    let allyCount = 0;
-    for (const n of hexNeighbors(targetPos.q, targetPos.r)) {
-      const tile = world.getComponent<PositionComponent>(targetId, "position");
-      // Simpler: just check grid occupancy — non-null occupant that is AI
-      // This is a heuristic; the actual grid check would need the grid
-      if (tile) allyCount++; // simplified
+  return score;
+}
+
+/**
+ * Score using a specific skill against a target.
+ * Adds bonuses for contextually appropriate skill usage.
+ */
+function scoreSkillTarget(
+  world: World,
+  targetId: EntityId,
+  skill: SkillDef,
+  weights: ScoreWeights,
+): number {
+  let score = scoreAttackTarget(world, targetId, weights);
+
+  // Skill-specific bonuses
+  if (skill.id === "stun") {
+    // Stun is valuable against high-threat targets
+    const health = world.getComponent<HealthComponent>(targetId, "health");
+    if (health && health.current > health.max * 0.5) {
+      score += 10; // Stun healthy enemies to neutralize them
     }
-    // We approximate; exact count requires grid access
+  } else if (skill.id === "split_shield") {
+    // Only valuable if target has a shield
+    const equip = world.getComponent<EquipmentComponent>(targetId, "equipment");
+    if (equip?.offHand && equip.shieldDurability != null && equip.shieldDurability > 0) {
+      score += 15; // High priority to remove shield
+    } else {
+      score -= 50; // Useless without shield
+    }
+  } else if (skill.id === "puncture") {
+    // Valuable against heavily armored targets
+    const armor = world.getComponent<ArmorComponent>(targetId, "armor");
+    const hasArmor = (armor?.body && armor.body.currentDurability > 30) ||
+                     (armor?.head && armor.head.currentDurability > 20);
+    if (hasArmor) {
+      score += 12;
+    }
   }
 
   return score;

@@ -8,7 +8,9 @@ import type { EquipmentComponent } from "@entities/components/Equipment";
 import type { PositionComponent } from "@entities/components/Position";
 import { getWeapon, UNARMED, type WeaponDef } from "@data/WeaponData";
 import { getShield, type ShieldDef } from "@data/ShieldData";
-import { hexNeighbors } from "@hex/HexMath";
+import { BASIC_ATTACK, type SkillDef, skillRange } from "@data/SkillData";
+import { hexDistance, hexNeighbors } from "@hex/HexMath";
+import { hasLineOfSight } from "@hex/HexLineOfSight";
 import { RNG } from "@utils/RNG";
 import { clamp } from "@utils/MathUtils";
 import type { StatusEffectManager } from "./StatusEffectManager";
@@ -349,6 +351,312 @@ export class DamageCalculator {
       armorDamageMult: weapon.armorDamageMult,
       headHitChance: 25,
     };
+  }
+
+  /**
+   * Resolve an attack using a skill definition.
+   * For basic attacks, falls back to weapon family status effects.
+   * For special skills, uses skill.onHit and skill modifiers.
+   */
+  resolveSkillAttack(
+    world: World,
+    attackerId: EntityId,
+    defenderId: EntityId,
+    skill: SkillDef,
+  ): AttackResult {
+    // For basic melee attacks, delegate to existing resolveMelee
+    if (skill.isBasicAttack && skill.rangeType === "melee") {
+      return this.resolveMelee(world, attackerId, defenderId);
+    }
+
+    const attackerStats = world.getComponent<StatsComponent>(attackerId, "stats");
+    const defenderStats = world.getComponent<StatsComponent>(defenderId, "stats");
+    const defenderHealth = world.getComponent<HealthComponent>(defenderId, "health");
+    const defenderArmor = world.getComponent<ArmorComponent>(defenderId, "armor");
+    const attackerEquip = world.getComponent<EquipmentComponent>(attackerId, "equipment");
+    const defenderEquip = world.getComponent<EquipmentComponent>(defenderId, "equipment");
+
+    if (!attackerStats || !defenderStats || !defenderHealth) {
+      return miss(0, "unarmed");
+    }
+
+    const weapon: WeaponDef = attackerEquip?.mainHand
+      ? getWeapon(attackerEquip.mainHand)
+      : UNARMED;
+
+    const shield: ShieldDef | undefined = defenderEquip?.offHand
+      ? getShield(defenderEquip.offHand)
+      : undefined;
+
+    // ── 1. Hit chance ──
+    const attackerPos = world.getComponent<PositionComponent>(attackerId, "position");
+    const defenderPos = world.getComponent<PositionComponent>(defenderId, "position");
+
+    const isRanged = skill.rangeType === "ranged";
+
+    // Ranged: LoS check (auto-miss if blocked)
+    if (isRanged && attackerPos && defenderPos) {
+      if (!hasLineOfSight(this.grid, attackerPos, defenderPos)) {
+        return miss(0, weapon.id);
+      }
+    }
+
+    const shieldBonus = isRanged
+      ? (shield?.rangedDefBonus ?? 0)
+      : (shield?.meleeDefBonus ?? 0);
+
+    const defenderTile = defenderPos ? this.grid.get(defenderPos.q, defenderPos.r) : undefined;
+    const terrainDefBonus = isRanged
+      ? (defenderTile?.defenseBonusRanged ?? 0)
+      : (defenderTile?.defenseBonusMelee ?? 0);
+
+    const attackerElev = attackerPos?.elevation ?? 0;
+    const defenderElev = defenderPos?.elevation ?? 0;
+    const elevationMod = (attackerElev - defenderElev) * 10;
+
+    // No surround bonus for ranged
+    const surroundBonus = isRanged ? 0
+      : (defenderPos ? this.countSurroundBonus(world, attackerId, defenderId) : 0);
+
+    // Range penalty for ranged: -5 per hex beyond half max range
+    let rangePenalty = 0;
+    if (isRanged && attackerPos && defenderPos) {
+      const dist = hexDistance(attackerPos, defenderPos);
+      const maxRange = skillRange(skill, weapon);
+      const halfRange = Math.floor(maxRange / 2);
+      if (dist > halfRange) {
+        rangePenalty = (dist - halfRange) * -5;
+      }
+    }
+
+    const attackerMeleeSkillMod = this.statusEffects
+      ? this.statusEffects.getModifier(world, attackerId, "meleeSkill", attackerStats.meleeSkill)
+      : 0;
+    const defenderMeleeDefMod = this.statusEffects
+      ? this.statusEffects.getModifier(world, defenderId, "meleeDefense", defenderStats.meleeDefense)
+      : 0;
+
+    const hitChance = clamp(
+      (attackerStats.meleeSkill + attackerMeleeSkillMod) + weapon.hitChanceBonus
+        + skill.hitChanceModifier
+        + rangePenalty
+        - (defenderStats.meleeDefense + defenderMeleeDefMod) - shieldBonus
+        - terrainDefBonus
+        + elevationMod
+        + surroundBonus,
+      5,
+      95,
+    );
+
+    const roll = this.rng.nextInt(1, 100);
+    if (roll > hitChance) {
+      return miss(hitChance, weapon.id);
+    }
+
+    // ── 2. Roll raw damage with skill multiplier ──
+    const rawDamage = Math.floor(
+      this.rng.nextInt(weapon.minDamage, weapon.maxDamage) * skill.damageMultiplier,
+    );
+
+    // ── 3. Head hit (25% chance) ──
+    const headHit = this.rng.roll(25);
+
+    // ── 4-5. Armor resolution ──
+    const armorIgnore = skill.armorIgnoreOverride ?? weapon.armorIgnorePct;
+    const armorDmgMult = skill.armorDamageMultOverride ?? weapon.armorDamageMult;
+
+    const armorIgnoreHp = Math.floor(rawDamage * armorIgnore);
+    const armorDurabilityDmg = Math.floor(rawDamage * armorDmgMult);
+
+    const armorSlot = defenderArmor
+      ? (headHit ? defenderArmor.head : defenderArmor.body)
+      : null;
+
+    let armorDamageDealt = 0;
+    let hpDamage: number;
+
+    if (armorSlot && armorSlot.currentDurability > 0) {
+      const absorbed = Math.min(armorDurabilityDmg, armorSlot.currentDurability);
+      armorSlot.currentDurability -= absorbed;
+      armorDamageDealt = absorbed;
+      const overflow = armorDurabilityDmg - absorbed;
+      hpDamage = armorIgnoreHp + overflow;
+    } else {
+      hpDamage = rawDamage;
+    }
+
+    // ── 6. Head hit multiplier ──
+    if (headHit) {
+      hpDamage = Math.floor(hpDamage * 1.5);
+    }
+
+    // ── 7. Apply HP damage ──
+    defenderHealth.current = Math.max(0, defenderHealth.current - hpDamage);
+    const targetKilled = defenderHealth.current <= 0;
+
+    // ── 8. Status effects ──
+    const appliedEffects: string[] = [];
+    if (!targetKilled && this.statusEffects) {
+      if (skill.onHit && skill.onHit.length > 0) {
+        // Skill-defined effects
+        for (const hit of skill.onHit) {
+          if (this.rng.roll(hit.chance)) {
+            this.statusEffects.apply(world, defenderId, hit.effect, hit.duration);
+            appliedEffects.push(hit.effect);
+          }
+        }
+      } else if (skill.isBasicAttack) {
+        // Basic attack: weapon family effects (same as resolveMelee)
+        this.applyWeaponFamilyEffects(world, defenderId, weapon, appliedEffects);
+      }
+    }
+
+    return {
+      hit: true,
+      hitChance,
+      damage: rawDamage,
+      armorDamage: armorDamageDealt,
+      hpDamage,
+      targetKilled,
+      headHit,
+      weaponId: weapon.id,
+      appliedEffects,
+    };
+  }
+
+  /**
+   * Preview a skill attack with full modifier breakdown.
+   */
+  previewSkillAttack(
+    world: World,
+    attackerId: EntityId,
+    defenderId: EntityId,
+    skill: SkillDef,
+  ): DetailedAttackPreview {
+    // For basic melee attacks, delegate to existing preview
+    if (skill.isBasicAttack && skill.rangeType === "melee") {
+      return this.previewMeleeDetailed(world, attackerId, defenderId);
+    }
+
+    const attackerStats = world.getComponent<StatsComponent>(attackerId, "stats");
+    const defenderStats = world.getComponent<StatsComponent>(defenderId, "stats");
+    const attackerEquip = world.getComponent<EquipmentComponent>(attackerId, "equipment");
+    const defenderEquip = world.getComponent<EquipmentComponent>(defenderId, "equipment");
+
+    if (!attackerStats || !defenderStats) {
+      return {
+        hitChance: 5, minDamage: 0, maxDamage: 0,
+        modifiers: [], weaponName: "Unarmed",
+        armorIgnorePct: 0, armorDamageMult: 0, headHitChance: 25,
+      };
+    }
+
+    const weapon: WeaponDef = attackerEquip?.mainHand
+      ? getWeapon(attackerEquip.mainHand) : UNARMED;
+    const shield: ShieldDef | undefined = defenderEquip?.offHand
+      ? getShield(defenderEquip.offHand) : undefined;
+
+    const attackerPos = world.getComponent<PositionComponent>(attackerId, "position");
+    const defenderPos = world.getComponent<PositionComponent>(defenderId, "position");
+
+    const isRanged = skill.rangeType === "ranged";
+    const shieldBonus = isRanged
+      ? (shield?.rangedDefBonus ?? 0)
+      : (shield?.meleeDefBonus ?? 0);
+    const defenderTile = defenderPos ? this.grid.get(defenderPos.q, defenderPos.r) : undefined;
+    const terrainDefBonus = isRanged
+      ? (defenderTile?.defenseBonusRanged ?? 0)
+      : (defenderTile?.defenseBonusMelee ?? 0);
+    const attackerElev = attackerPos?.elevation ?? 0;
+    const defenderElev = defenderPos?.elevation ?? 0;
+    const elevationMod = (attackerElev - defenderElev) * 10;
+    const surroundBonus = isRanged ? 0
+      : (defenderPos ? this.countSurroundBonus(world, attackerId, defenderId) : 0);
+
+    // Range penalty for ranged: -5 per hex beyond half max range
+    let rangePenalty = 0;
+    if (isRanged && attackerPos && defenderPos) {
+      const dist = hexDistance(attackerPos, defenderPos);
+      const maxRange = skillRange(skill, weapon);
+      const halfRange = Math.floor(maxRange / 2);
+      if (dist > halfRange) {
+        rangePenalty = (dist - halfRange) * -5;
+      }
+    }
+
+    const attackerMeleeSkillMod = this.statusEffects
+      ? this.statusEffects.getModifier(world, attackerId, "meleeSkill", attackerStats.meleeSkill) : 0;
+    const defenderMeleeDefMod = this.statusEffects
+      ? this.statusEffects.getModifier(world, defenderId, "meleeDefense", defenderStats.meleeDefense) : 0;
+
+    // Build modifier breakdown
+    const modifiers: HitChanceModifier[] = [];
+    modifiers.push({ label: "Melee Skill", value: attackerStats.meleeSkill });
+    if (attackerMeleeSkillMod !== 0)
+      modifiers.push({ label: "Skill Effects", value: attackerMeleeSkillMod });
+    if (weapon.hitChanceBonus !== 0)
+      modifiers.push({ label: weapon.name, value: weapon.hitChanceBonus });
+    if (skill.hitChanceModifier !== 0)
+      modifiers.push({ label: skill.name, value: skill.hitChanceModifier });
+    if (rangePenalty !== 0)
+      modifiers.push({ label: "Range", value: rangePenalty });
+    modifiers.push({ label: "Defense", value: -defenderStats.meleeDefense });
+    if (defenderMeleeDefMod !== 0)
+      modifiers.push({ label: "Def Effects", value: -defenderMeleeDefMod });
+    if (shieldBonus !== 0)
+      modifiers.push({ label: shield?.name ?? "Shield", value: -shieldBonus });
+    if (terrainDefBonus !== 0)
+      modifiers.push({ label: "Terrain", value: -terrainDefBonus });
+    if (elevationMod !== 0)
+      modifiers.push({ label: "Elevation", value: elevationMod });
+    if (surroundBonus !== 0)
+      modifiers.push({ label: "Surround", value: surroundBonus });
+
+    const rawHit = (attackerStats.meleeSkill + attackerMeleeSkillMod) + weapon.hitChanceBonus
+      + skill.hitChanceModifier + rangePenalty
+      - (defenderStats.meleeDefense + defenderMeleeDefMod) - shieldBonus
+      - terrainDefBonus + elevationMod + surroundBonus;
+    const hitChance = clamp(rawHit, 5, 95);
+
+    const armorIgnore = skill.armorIgnoreOverride ?? weapon.armorIgnorePct;
+    const armorDmgMult = skill.armorDamageMultOverride ?? weapon.armorDamageMult;
+
+    return {
+      hitChance,
+      minDamage: Math.floor(weapon.minDamage * skill.damageMultiplier),
+      maxDamage: Math.floor(weapon.maxDamage * skill.damageMultiplier),
+      modifiers,
+      weaponName: weapon.name,
+      armorIgnorePct: armorIgnore,
+      armorDamageMult: armorDmgMult,
+      headHitChance: 25,
+    };
+  }
+
+  /** Apply weapon family status effects (extracted from resolveMelee). */
+  private applyWeaponFamilyEffects(
+    world: World,
+    defenderId: EntityId,
+    weapon: WeaponDef,
+    appliedEffects: string[],
+  ): void {
+    if (!this.statusEffects) return;
+    if (weapon.family === "mace" && this.rng.roll(10)) {
+      this.statusEffects.apply(world, defenderId, "stun");
+      appliedEffects.push("stun");
+    }
+    if ((weapon.family === "sword" || weapon.family === "cleaver") && this.rng.roll(15)) {
+      this.statusEffects.apply(world, defenderId, "bleed", this.rng.nextInt(2, 3));
+      appliedEffects.push("bleed");
+    }
+    if (weapon.family === "axe" && this.rng.roll(10)) {
+      this.statusEffects.apply(world, defenderId, "bleed", this.rng.nextInt(2, 3));
+      appliedEffects.push("bleed");
+    }
+    if (weapon.family === "dagger" && this.rng.roll(20)) {
+      this.statusEffects.apply(world, defenderId, "bleed", 2);
+      appliedEffects.push("bleed");
+    }
   }
 
   /**

@@ -11,8 +11,12 @@ import { ActionPointManager, tileAPCost, pathAPCost, pathFatigueCost, MAX_AP } f
 import { getZoCAttacksForMove } from "./ZoneOfControl";
 import { StatusEffectManager, type BleedTickResult } from "./StatusEffectManager";
 import { MoraleManager, type MoraleCheckResult } from "./MoraleManager";
-import { getWeapon, UNARMED } from "@data/WeaponData";
+import { SkillExecutor } from "./SkillExecutor";
+import type { ActiveStancesComponent } from "@entities/components/ActiveStances";
+import { getWeapon, UNARMED, type WeaponDef } from "@data/WeaponData";
+import { BASIC_ATTACK, getSkillsForWeapon, skillAPCost, skillFatigueCost, skillRange, type SkillDef } from "@data/SkillData";
 import { decideTacticalAction, type TacticalAction } from "./TacticalAI";
+import { hasLineOfSight } from "@hex/HexLineOfSight";
 import { RNG } from "@utils/RNG";
 import { hexDistance, hexNeighbors } from "@hex/HexMath";
 import { findPath, reachableHexes } from "@hex/HexPathfinding";
@@ -33,11 +37,15 @@ interface UndoInfo {
 export class CombatManager {
   turnOrder: TurnOrder;
   damageCalc: DamageCalculator;
+  skillExecutor: SkillExecutor;
   statusEffects: StatusEffectManager;
   morale: MoraleManager;
   phase: CombatPhase = "playerTurn";
   playerTurnState: PlayerTurnState = "awaitingInput";
   selectedUnit: EntityId | null = null;
+
+  /** Currently selected skill for attack. Null = basic attack. */
+  selectedSkill: SkillDef | null = null;
 
   /** Movement range cache for the currently selected unit. */
   moveRange: Map<string, number> | null = null;
@@ -77,6 +85,13 @@ export class CombatManager {
   onMoraleChange?: (result: MoraleCheckResult) => void;
   onStatusApplied?: (entityId: EntityId, effectId: string) => void;
   onTurnSkipped?: (entityId: EntityId, reason: string) => void;
+  onShieldDestroyed?: (entityId: EntityId) => void;
+  onSpearwallTriggered?: (
+    result: AttackResult,
+    attackerId: EntityId,
+    defenderId: EntityId,
+  ) => void;
+  onStanceActivated?: (entityId: EntityId, stanceId: string) => void;
 
   constructor(
     private world: World,
@@ -89,6 +104,7 @@ export class CombatManager {
     this.morale = new MoraleManager(rng);
     this.damageCalc = new DamageCalculator(rng, grid);
     this.damageCalc.setStatusEffectManager(this.statusEffects);
+    this.skillExecutor = new SkillExecutor(rng, this.damageCalc);
   }
 
   /** Start combat — calculate initial turn order, begin first turn. */
@@ -120,14 +136,37 @@ export class CombatManager {
     return this.undoInfo !== null;
   }
 
+  // ── Skill selection ──
+
+  /** Get available skills for the currently selected unit. */
+  getAvailableSkills(): SkillDef[] {
+    if (!this.selectedUnit) return [];
+    const equip = this.world.getComponent<EquipmentComponent>(this.selectedUnit, "equipment");
+    const weaponId = equip?.mainHand ?? "unarmed";
+    return getSkillsForWeapon(weaponId);
+  }
+
+  /** Select a skill for the next attack. */
+  selectSkill(skill: SkillDef | null): void {
+    this.selectedSkill = skill;
+  }
+
+  /** Get the active skill (selected or basic attack). */
+  getActiveSkill(): SkillDef {
+    return this.selectedSkill ?? BASIC_ATTACK;
+  }
+
   // ── Input handling ──
 
-  /** Handle a hex being tapped during player turn. */
   /** Check if tapping (q,r) would be a valid attack. Does NOT execute. */
   canAttackHex(q: number, r: number): boolean {
     if (this.phase !== "playerTurn") return false;
     if (this.playerTurnState !== "awaitingInput") return false;
     if (!this.selectedUnit) return false;
+
+    const skill = this.getActiveSkill();
+    // Stance skills target self, not enemies
+    if (skill.targetType === "self") return false;
 
     const tile = this.grid.get(q, r);
     const attackerPos = this.world.getComponent<PositionComponent>(
@@ -141,9 +180,15 @@ export class CombatManager {
       this.isEnemyEntity(tile.occupant)
     ) {
       const dist = hexDistance({ q: attackerPos.q, r: attackerPos.r }, { q, r });
-      const weaponRange = this.getWeaponRange(this.selectedUnit);
-      const weaponAP = this.getWeaponAPCost(this.selectedUnit);
-      return dist <= weaponRange && this.apManager.canAfford(weaponAP);
+      const weapon = this.getWeaponDef(this.selectedUnit);
+      const range = skillRange(skill, weapon);
+      const apCost = skillAPCost(skill, weapon);
+      if (dist > range || !this.apManager.canAfford(apCost)) return false;
+      // Ranged attacks require line of sight
+      if (skill.rangeType === "ranged") {
+        return hasLineOfSight(this.grid, attackerPos, { q, r });
+      }
+      return true;
     }
     return false;
   }
@@ -160,17 +205,29 @@ export class CombatManager {
     );
     if (!attackerPos) return false;
 
-    // Tap on enemy within weapon range → attack
+    const skill = this.getActiveSkill();
+
+    // Stance skill: activate on tap of own unit hex
+    if (skill.isStance && skill.targetType === "self") {
+      if (q === attackerPos.q && r === attackerPos.r) {
+        this.executeStance(this.selectedUnit, skill);
+        return true;
+      }
+    }
+
+    // Tap on enemy within skill range → attack
     if (
+      skill.targetType === "enemy" &&
       tile?.occupant &&
       tile.occupant !== this.selectedUnit &&
       this.isEnemyEntity(tile.occupant)
     ) {
       const dist = hexDistance({ q: attackerPos.q, r: attackerPos.r }, { q, r });
-      const weaponRange = this.getWeaponRange(this.selectedUnit);
-      const weaponAP = this.getWeaponAPCost(this.selectedUnit);
+      const weapon = this.getWeaponDef(this.selectedUnit);
+      const range = skillRange(skill, weapon);
+      const apCost = skillAPCost(skill, weapon);
 
-      if (dist <= weaponRange && this.apManager.canAfford(weaponAP)) {
+      if (dist <= range && this.apManager.canAfford(apCost)) {
         this.executeAttack(this.selectedUnit, tile.occupant);
         return true;
       }
@@ -297,9 +354,14 @@ export class CombatManager {
 
     this.onUnitMoved?.(entityId, pathResult.path);
 
+    // Spearwall triggers at destination
+    this.checkSpearwallTriggers(entityId, q, r);
+
     // Continuation: return to awaitingInput (multi-action turn)
     this.pendingContinuation = () => {
-      this.recalculateAndContinue(entityId);
+      if (!this.checkBattleEnd()) {
+        this.recalculateAndContinue(entityId);
+      }
     };
 
     this.onActionComplete?.();
@@ -330,6 +392,7 @@ export class CombatManager {
     this.addFatigue(entityId, -fatigueSpent);
 
     this.undoInfo = null;
+    this.selectedSkill = null;
 
     this.onUnitTeleported?.(entityId, oldQ, oldR);
 
@@ -338,23 +401,36 @@ export class CombatManager {
     this.setPlayerState("awaitingInput");
   }
 
-  /** Execute an attack action. */
+  /** Execute an attack action using the active skill. */
   private executeAttack(attackerId: EntityId, defenderId: EntityId): void {
-    const weaponAPCost = this.getWeaponAPCost(attackerId);
-    const weaponFatigueCost = this.getWeaponFatigueCost(attackerId);
+    const skill = this.getActiveSkill();
+    const weapon = this.getWeaponDef(attackerId);
+    const apCost = skillAPCost(skill, weapon);
+    const fatCost = skillFatigueCost(skill, weapon);
 
-    if (!this.apManager.canAfford(weaponAPCost)) return;
+    if (!this.apManager.canAfford(apCost)) return;
 
     this.playerTurnState = "animating";
 
     // Spend AP and fatigue
-    this.apManager.spend(weaponAPCost);
-    this.addFatigue(attackerId, weaponFatigueCost);
+    this.apManager.spend(apCost);
+    this.addFatigue(attackerId, fatCost);
 
     // Can't undo after attacking
     this.undoInfo = null;
 
-    const result = this.damageCalc.resolveMelee(this.world, attackerId, defenderId);
+    let result: AttackResult;
+
+    if (skill.id === "split_shield") {
+      const splitResult = this.skillExecutor.executeSplitShield(this.world, attackerId, defenderId);
+      result = splitResult;
+      if (splitResult.shieldDestroyed) {
+        this.onShieldDestroyed?.(defenderId);
+      }
+    } else {
+      result = this.damageCalc.resolveSkillAttack(this.world, attackerId, defenderId, skill);
+    }
+
     this.onAttackResult?.(result, attackerId, defenderId);
 
     // Notify about applied status effects
@@ -386,6 +462,26 @@ export class CombatManager {
     };
 
     this.onActionComplete?.();
+  }
+
+  /** Execute a stance skill (self-targeting). */
+  private executeStance(entityId: EntityId, skill: SkillDef): void {
+    const weapon = this.getWeaponDef(entityId);
+    const apCost = skillAPCost(skill, weapon);
+    const fatCost = skillFatigueCost(skill, weapon);
+
+    if (!this.apManager.canAfford(apCost)) return;
+
+    this.apManager.spend(apCost);
+    this.addFatigue(entityId, fatCost);
+    this.undoInfo = null;
+
+    if (skill.id === "spearwall") {
+      this.skillExecutor.activateSpearwall(this.world, entityId);
+    }
+
+    this.onStanceActivated?.(entityId, skill.id);
+    this.recalculateAndContinue(entityId);
   }
 
   /** Recover action: spend full turn, recover 50% max fatigue. */
@@ -423,24 +519,43 @@ export class CombatManager {
     }
   }
 
-  /** Check if the unit can attack any adjacent enemy with current AP. */
+  /** Check if the unit can attack any enemy with current AP and active skill. */
   private canAttackAnyTarget(entityId: EntityId): boolean {
     const pos = this.world.getComponent<PositionComponent>(entityId, "position");
     if (!pos) return false;
 
-    const weaponAP = this.getWeaponAPCost(entityId);
-    if (!this.apManager.canAfford(weaponAP)) return false;
+    const skill = this.getActiveSkill();
+    if (skill.targetType === "self") return false;
 
-    const weaponRange = this.getWeaponRange(entityId);
+    const weapon = this.getWeaponDef(entityId);
+    const range = skillRange(skill, weapon);
+    const apCost = skillAPCost(skill, weapon);
+    if (!this.apManager.canAfford(apCost)) return false;
 
-    for (const n of hexNeighbors(pos.q, pos.r)) {
-      const tile = this.grid.get(n.q, n.r);
-      if (!tile?.occupant || tile.occupant === entityId) continue;
-      if (!this.isEnemyEntity(tile.occupant)) continue;
-      const health = this.world.getComponent<HealthComponent>(tile.occupant, "health");
-      if (!health || health.current <= 0) continue;
-      if (hexDistance({ q: pos.q, r: pos.r }, { q: n.q, r: n.r }) <= weaponRange) {
-        return true;
+    const isRanged = skill.rangeType === "ranged";
+
+    if (isRanged) {
+      // Ranged: scan all enemies for in-range + LoS
+      const enemies = this.getEnemyUnits();
+      for (const eid of enemies) {
+        const ep = this.world.getComponent<PositionComponent>(eid, "position");
+        if (!ep) continue;
+        const dist = hexDistance(pos, ep);
+        if (dist <= range && hasLineOfSight(this.grid, pos, ep)) {
+          return true;
+        }
+      }
+    } else {
+      // Melee: check neighbors
+      for (const n of hexNeighbors(pos.q, pos.r)) {
+        const tile = this.grid.get(n.q, n.r);
+        if (!tile?.occupant || tile.occupant === entityId) continue;
+        if (!this.isEnemyEntity(tile.occupant)) continue;
+        const health = this.world.getComponent<HealthComponent>(tile.occupant, "health");
+        if (!health || health.current <= 0) continue;
+        if (hexDistance(pos, { q: n.q, r: n.r }) <= range) {
+          return true;
+        }
       }
     }
     return false;
@@ -462,6 +577,7 @@ export class CombatManager {
   /** End the current player unit's turn and advance. */
   private endPlayerUnitTurn(): void {
     this.selectedUnit = null;
+    this.selectedSkill = null;
     this.moveRange = null;
     this.undoInfo = null;
     this.playerTurnState = "awaitingInput";
@@ -485,6 +601,9 @@ export class CombatManager {
 
     // Apply fatigue recovery at turn start
     this.applyFatigueRecovery(entityId);
+
+    // Clear expired stances
+    this.skillExecutor.clearStances(this.world, entityId);
 
     // Passive morale recovery
     this.morale.passiveRecovery(this.world, entityId);
@@ -575,8 +694,8 @@ export class CombatManager {
   private executeEnemyAction(entityId: EntityId, action: TacticalAction): void {
     switch (action.type) {
       case "moveAndAttack": {
-        if (!this.executeEnemyMove(entityId, action.path)) return; // died to ZoC
-        this.executeEnemyAttack(entityId, action.targetId);
+        if (!this.executeEnemyMove(entityId, action.path)) return; // died to ZoC or spearwall
+        this.executeEnemyAttack(entityId, action.targetId, action.skill);
         break;
       }
 
@@ -586,7 +705,12 @@ export class CombatManager {
       }
 
       case "attack": {
-        this.executeEnemyAttack(entityId, action.targetId);
+        this.executeEnemyAttack(entityId, action.targetId, action.skill);
+        break;
+      }
+
+      case "activateStance": {
+        this.executeStanceEnemy(entityId, action.skill);
         break;
       }
 
@@ -663,15 +787,43 @@ export class CombatManager {
     if (newTile) pos.elevation = newTile.elevation;
 
     this.onUnitMoved?.(entityId, path);
+
+    // Spearwall triggers at destination
+    this.checkSpearwallTriggers(entityId, dest.q, dest.r);
+    const health = this.world.getComponent<HealthComponent>(entityId, "health");
+    if (health && health.current <= 0) {
+      this.handleDeath(entityId);
+      this.pendingContinuation = () => {
+        if (!this.checkBattleEnd()) {
+          const newRound = this.turnOrder.advance();
+          if (newRound) this.turnOrder.calculateOrder(this.world);
+          this.beginCurrentTurn();
+        }
+      };
+      this.onActionComplete?.();
+      return false;
+    }
+
     return true;
   }
 
   /** Execute an enemy attack with morale/status handling. */
-  private executeEnemyAttack(entityId: EntityId, targetId: EntityId): void {
-    const weaponFat = this.getWeaponFatigueCost(entityId);
-    this.addFatigue(entityId, weaponFat);
+  private executeEnemyAttack(entityId: EntityId, targetId: EntityId, skill?: SkillDef): void {
+    const weapon = this.getWeaponDef(entityId);
+    const useSkill = skill ?? BASIC_ATTACK;
+    const fatCost = skillFatigueCost(useSkill, weapon);
+    this.addFatigue(entityId, fatCost);
 
-    const result = this.damageCalc.resolveMelee(this.world, entityId, targetId);
+    let result: AttackResult;
+    if (useSkill.id === "split_shield") {
+      const splitResult = this.skillExecutor.executeSplitShield(this.world, entityId, targetId);
+      result = splitResult;
+      if (splitResult.shieldDestroyed) {
+        this.onShieldDestroyed?.(targetId);
+      }
+    } else {
+      result = this.damageCalc.resolveSkillAttack(this.world, entityId, targetId, useSkill);
+    }
     this.onAttackResult?.(result, entityId, targetId);
     for (const eff of result.appliedEffects) {
       this.onStatusApplied?.(targetId, eff);
@@ -689,6 +841,17 @@ export class CombatManager {
         }
       }
     }
+  }
+
+  /** Execute a stance skill for an enemy unit. */
+  private executeStanceEnemy(entityId: EntityId, skill: SkillDef): void {
+    const weapon = this.getWeaponDef(entityId);
+    this.addFatigue(entityId, skillFatigueCost(skill, weapon));
+
+    if (skill.id === "spearwall") {
+      this.skillExecutor.activateSpearwall(this.world, entityId);
+    }
+    this.onStanceActivated?.(entityId, skill.id);
   }
 
   // ── Morale + Status helpers ──
@@ -780,6 +943,11 @@ export class CombatManager {
 
   // ── Helpers ──
 
+  private getWeaponDef(entityId: EntityId): WeaponDef {
+    const equip = this.world.getComponent<EquipmentComponent>(entityId, "equipment");
+    return equip?.mainHand ? getWeapon(equip.mainHand) : UNARMED;
+  }
+
   private getWeaponAPCost(entityId: EntityId): number {
     const equip = this.world.getComponent<EquipmentComponent>(entityId, "equipment");
     const weapon = equip?.mainHand ? getWeapon(equip.mainHand) : UNARMED;
@@ -802,6 +970,34 @@ export class CombatManager {
     const fatigue = this.world.getComponent<FatigueComponent>(entityId, "fatigue");
     if (fatigue) {
       fatigue.current = Math.max(0, Math.min(fatigue.max, fatigue.current + amount));
+    }
+  }
+
+  /**
+   * Check if any neighbor of (q,r) has a spearwall stance from the opposite team.
+   * If so, trigger free attacks against the moving entity.
+   */
+  private checkSpearwallTriggers(movingEntityId: EntityId, q: number, r: number): void {
+    const movingIsAI = this.isEnemyEntity(movingEntityId);
+
+    for (const n of hexNeighbors(q, r)) {
+      const tile = this.grid.get(n.q, n.r);
+      if (!tile?.occupant || tile.occupant === movingEntityId) continue;
+
+      const neighborIsAI = this.isEnemyEntity(tile.occupant);
+      if (neighborIsAI === movingIsAI) continue; // Same team, no trigger
+
+      if (this.skillExecutor.hasSpearwall(this.world, tile.occupant)) {
+        const result = this.skillExecutor.triggerSpearwall(
+          this.world, tile.occupant, movingEntityId,
+        );
+        if (result) {
+          this.onSpearwallTriggered?.(result, tile.occupant, movingEntityId);
+          if (result.targetKilled) {
+            return; // Entity died, stop checking
+          }
+        }
+      }
     }
   }
 

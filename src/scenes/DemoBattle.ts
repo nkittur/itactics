@@ -22,7 +22,8 @@ import { UnitInfoPanel } from "@ui/UnitInfoPanel";
 import type { EntityId } from "@entities/Entity";
 import type { HealthComponent } from "@entities/components/Health";
 import type { PositionComponent } from "@entities/components/Position";
-import { hexNeighbors } from "@hex/HexMath";
+import { hexDistance, hexNeighbors } from "@hex/HexMath";
+import { hasLineOfSight } from "@hex/HexLineOfSight";
 import type { AttackResult } from "@combat/DamageCalculator";
 import { getZoCDangerHexes } from "@combat/ZoneOfControl";
 import { getArmorDef } from "@data/ArmorData";
@@ -33,6 +34,8 @@ import { TILT_SIN } from "@rendering/CameraController";
 import { LAYER_HEIGHT } from "@rendering/TileRenderer";
 import { EnemyDetailPanel, type EnemyDetailData } from "@ui/EnemyDetailPanel";
 import { AttackPreviewPanel } from "@ui/AttackPreviewPanel";
+import { SkillBar } from "@ui/SkillBar";
+import { skillAPCost, skillRange } from "@data/SkillData";
 import type { FatigueComponent } from "@entities/components/Fatigue";
 import type { EquipmentComponent } from "@entities/components/Equipment";
 import type { ArmorComponent } from "@entities/components/Armor";
@@ -169,10 +172,13 @@ function spawnUnit(
       : null,
   });
 
+  const shieldId = equip?.shield ?? null;
+  const shieldDef = shieldId ? getShield(shieldId) : undefined;
   world.addComponent(id, {
     type: "equipment",
     mainHand: equip?.weapon ?? null,
-    offHand: equip?.shield ?? null,
+    offHand: shieldId,
+    shieldDurability: shieldDef ? shieldDef.durability : null,
     accessory: null,
     bag: [],
   });
@@ -259,6 +265,7 @@ export class DemoBattle {
 
   // ── Attack preview (tap-to-confirm) ──
   private attackPreviewPanel: AttackPreviewPanel;
+  private skillBar: SkillBar;
   private attackPreviewTarget: { q: number; r: number; entityId: EntityId } | null = null;
 
   // ── Animation queue ──
@@ -317,6 +324,7 @@ export class DemoBattle {
     this.turnOrderBar = new TurnOrderBar(this.uiManager.root);
     this.unitInfoPanel = new UnitInfoPanel(this.uiManager.root);
 
+    this.skillBar = new SkillBar(this.uiManager.root);
     this.enemyDetailPanel = new EnemyDetailPanel(this.uiManager.root);
     this.attackPreviewPanel = new AttackPreviewPanel(this.uiManager.root);
 
@@ -492,6 +500,17 @@ export class DemoBattle {
       this.combat.handleAction(action);
     };
 
+    this.skillBar.onSkillSelect = (skill) => {
+      if (this.animPlaying) return;
+      this.cancelAttackPreview();
+      this.combat.selectSkill(skill);
+      this.skillBar.select(skill.id);
+      // Refresh overlays since range may change
+      if (this.combat.selectedUnit && this.combat.phase === "playerTurn") {
+        this.refreshOverlays();
+      }
+    };
+
     // ── Combat callbacks ──
 
     // Unit moved (animate)
@@ -660,6 +679,7 @@ export class DemoBattle {
     this.combat.onPhaseChange = (phase) => {
       if (phase === "enemyTurn") {
         this.actionBar.setVisible(false);
+        this.skillBar.hide();
         this.unitInfoPanel.hide();
         this.overlayRenderer.clearOverlays();
         this.hideEnemyDetail();
@@ -668,10 +688,12 @@ export class DemoBattle {
         if (this.combat.selectedUnit) {
           this.unitRenderer.setSelected(this.combat.selectedUnit);
           this.showUnitInfo(this.combat.selectedUnit);
+          this.populateSkillBar();
         }
         this.refreshUI();
       } else if (phase === "battleEnd") {
         this.actionBar.setVisible(false);
+        this.skillBar.hide();
         this.unitInfoPanel.hide();
         this.overlayRenderer.clearOverlays();
         this.hideEnemyDetail();
@@ -719,22 +741,54 @@ export class DemoBattle {
       this.overlayRenderer.showZoCDanger(zocDanger, this.layout);
     }
 
-    const attackHexes = this.getAdjacentEnemyHexes(pos);
+    const attackHexes = this.getAttackableEnemyHexes(pos);
     if (attackHexes.size > 0) {
       this.overlayRenderer.showAttackRange(attackHexes, this.layout);
     }
 
   }
 
-  private getAdjacentEnemyHexes(pos: PositionComponent): Set<string> {
+  private getAttackableEnemyHexes(pos: PositionComponent): Set<string> {
     const hexes = new Set<string>();
-    const neighbors = hexNeighbors(pos.q, pos.r);
-    for (const n of neighbors) {
-      const tile = this.grid.get(n.q, n.r);
-      if (tile?.occupant && tile.occupant !== this.combat.selectedUnit) {
-        const team = this.world.getComponent<TeamComponent>(tile.occupant, "team");
-        if (team?.team === "enemy") {
-          hexes.add(`${n.q},${n.r}`);
+    if (!this.combat.selectedUnit) return hexes;
+
+    const skill = this.combat.getActiveSkill();
+    const weapon = this.combat.selectedUnit
+      ? (this.world.getComponent<EquipmentComponent>(this.combat.selectedUnit, "equipment")?.mainHand
+        ? getWeapon(this.world.getComponent<EquipmentComponent>(this.combat.selectedUnit, "equipment")!.mainHand!)
+        : UNARMED)
+      : UNARMED;
+    const range = skillRange(skill, weapon);
+    const isRanged = skill.rangeType === "ranged";
+
+    if (isRanged) {
+      // Scan all enemies within range + LoS
+      const allCombatants = this.world.query("health", "position", "team");
+      for (const eid of allCombatants) {
+        if (eid === this.combat.selectedUnit) continue;
+        const team = this.world.getComponent<TeamComponent>(eid, "team");
+        if (team?.team !== "enemy") continue;
+        const health = this.world.getComponent<HealthComponent>(eid, "health");
+        if (!health || health.current <= 0) continue;
+        const ep = this.world.getComponent<PositionComponent>(eid, "position");
+        if (!ep) continue;
+        const dist = hexDistance(pos, ep);
+        if (dist <= range && hasLineOfSight(this.grid, pos, ep)) {
+          hexes.add(`${ep.q},${ep.r}`);
+        }
+      }
+    } else {
+      // Melee: check neighbors within weapon range
+      const neighbors = hexNeighbors(pos.q, pos.r);
+      for (const n of neighbors) {
+        const tile = this.grid.get(n.q, n.r);
+        if (tile?.occupant && tile.occupant !== this.combat.selectedUnit) {
+          const team = this.world.getComponent<TeamComponent>(tile.occupant, "team");
+          if (team?.team === "enemy") {
+            if (hexDistance(pos, { q: n.q, r: n.r }) <= range) {
+              hexes.add(`${n.q},${n.r}`);
+            }
+          }
         }
       }
     }
@@ -822,8 +876,9 @@ export class DemoBattle {
     const team = this.world.getComponent<TeamComponent>(entityId, "team");
     if (!team) return;
 
-    const preview = this.combat.damageCalc.previewMeleeDetailed(
-      this.world, this.combat.selectedUnit, entityId,
+    const skill = this.combat.getActiveSkill();
+    const preview = this.combat.damageCalc.previewSkillAttack(
+      this.world, this.combat.selectedUnit, entityId, skill,
     );
 
     this.attackPreviewTarget = { q, r, entityId };
@@ -938,6 +993,43 @@ export class DemoBattle {
     );
   }
 
+  private populateSkillBar(): void {
+    const skills = this.combat.getAvailableSkills();
+    if (skills.length <= 1) {
+      // Only basic attack — no need for skill bar
+      this.skillBar.hide();
+      return;
+    }
+    this.skillBar.setSkills(skills, this.combat.apRemaining);
+    this.skillBar.setVisible(true);
+    // Select current active skill
+    const active = this.combat.getActiveSkill();
+    this.skillBar.select(active.id);
+    this.updateSkillAffordability();
+  }
+
+  private updateSkillAffordability(): void {
+    if (!this.combat.selectedUnit) return;
+    const skills = this.combat.getAvailableSkills();
+    const affordable = new Set<string>();
+    const equip = this.world.getComponent<EquipmentComponent>(this.combat.selectedUnit, "equipment");
+    const weapon = equip?.mainHand ? getWeapon(equip.mainHand) : UNARMED;
+    for (const skill of skills) {
+      const apCost = skillAPCost(skill, weapon);
+      if (this.combat.apRemaining >= apCost) {
+        affordable.add(skill.id);
+      }
+    }
+    this.skillBar.updateAffordability(affordable);
+  }
+
+  private refreshOverlays(): void {
+    this.overlayRenderer.clearOverlays();
+    if (this.combat.phase === "playerTurn" && this.combat.playerTurnState === "awaitingInput") {
+      this.showMoveAndAttackOverlays();
+    }
+  }
+
   private refreshUI(): void {
     const entries = this.combat.turnOrder.getOrder();
     const currentEntry = this.combat.turnOrder.current();
@@ -966,6 +1058,7 @@ export class DemoBattle {
     // Update unit info panel with current AP
     if (this.combat.selectedUnit && this.combat.phase === "playerTurn") {
       this.showUnitInfo(this.combat.selectedUnit);
+      this.updateSkillAffordability();
     }
   }
 
