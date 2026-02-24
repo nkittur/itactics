@@ -3,6 +3,7 @@ import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
+import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { HexLayout, hexToPixel } from "@hex/HexLayout";
 import type { HexGrid } from "@hex/HexGrid";
 import { LAYER_HEIGHT } from "@rendering/TileRenderer";
@@ -57,7 +58,6 @@ export class UnitRenderer {
   private grid: HexGrid | null = null;
   private units = new Map<string, UnitEntry>();
   private selectionRing: Mesh | null = null;
-  private selectionMaterial: StandardMaterial | null = null;
   private selectedEntityId: string | null = null;
 
   private healthBars = new Map<string, HealthBarEntry>();
@@ -188,28 +188,20 @@ export class UnitRenderer {
     const { x, y } = hexToPixel(this.layout, entry.q, entry.r);
     const elevY = this.getElevationY(entry.q, entry.r);
 
-    const ring = MeshBuilder.CreateTorus(
-      "selectionRing",
-      {
-        diameter: this.layout.size * 1.0,
-        thickness: this.layout.size * 0.08,
-        tessellation: 24,
-      },
-      this.scene
-    );
-    ring.position.x = x;
-    ring.position.y = RING_Y + elevY;
-    ring.position.z = y;
-    ring.renderingGroupId = 2;
-
-    if (!this.selectionMaterial) {
-      this.selectionMaterial = new StandardMaterial("selectionMat", this.scene);
-      this.selectionMaterial.diffuseColor = Color3.Black();
-      this.selectionMaterial.emissiveColor = SELECTION_COLOR;
-      this.selectionMaterial.specularColor = Color3.Black();
-      this.selectionMaterial.backFaceCulling = false;
+    // Build flat hex outline using lines
+    const r0 = this.layout.size * 0.95;
+    const points: Vector3[] = [];
+    for (let i = 0; i <= 6; i++) {
+      const angle = (Math.PI / 3) * (i % 6);
+      points.push(new Vector3(
+        x + r0 * Math.cos(angle),
+        RING_Y + elevY,
+        y + r0 * Math.sin(angle),
+      ));
     }
-    ring.material = this.selectionMaterial;
+    const ring = MeshBuilder.CreateLines("selectionRing", { points }, this.scene);
+    ring.color = SELECTION_COLOR;
+    ring.renderingGroupId = 2;
 
     this.selectionRing = ring;
   }
@@ -496,11 +488,6 @@ export class UnitRenderer {
       bar.fillMat.dispose();
     }
     this.healthBars.clear();
-
-    if (this.selectionMaterial) {
-      this.selectionMaterial.dispose();
-      this.selectionMaterial = null;
-    }
 
     if (this.hpBgMat) {
       this.hpBgMat.dispose();
