@@ -129,6 +129,27 @@
       font-size: 11px;
       margin-top: 2px;
     }
+    .speed-toggle {
+      position: absolute;
+      top: calc(5px + env(safe-area-inset-top, 0px));
+      right: calc(10px + env(safe-area-inset-right, 0px));
+      width: 44px;
+      height: 32px;
+      border: 1px solid #666688;
+      border-radius: 6px;
+      background: rgba(26, 26, 46, 0.8);
+      color: #ccccff;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      pointer-events: auto;
+      -webkit-tap-highlight-color: transparent;
+      touch-action: manipulation;
+    }
+    .speed-toggle:active {
+      filter: brightness(1.4);
+    }
+
     .damage-popup {
       position: absolute;
       transform: translate(-50%, -100%);

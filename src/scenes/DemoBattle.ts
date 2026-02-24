@@ -25,7 +25,8 @@ import type { PositionComponent } from "@entities/components/Position";
 import { hexNeighbors } from "@hex/HexMath";
 import type { AttackResult } from "@combat/DamageCalculator";
 
-// Terrain generation helpers
+// ── Terrain configs ──
+
 const TERRAIN_CONFIGS: Record<TerrainType, Omit<HexTile, "q" | "r" | "elevation" | "occupant">> = {
   [TerrainType.Grass]: { terrain: TerrainType.Grass, blocksLoS: false, movementCost: 1, defenseBonusMelee: 0, defenseBonusRanged: 0 },
   [TerrainType.Forest]: { terrain: TerrainType.Forest, blocksLoS: true, movementCost: 2, defenseBonusMelee: 0, defenseBonusRanged: 10 },
@@ -43,6 +44,8 @@ export interface TeamComponent {
   team: "player" | "enemy";
   name: string;
 }
+
+// ── Grid + spawn helpers ──
 
 function createDemoGrid(): HexGrid {
   const grid = new HexGrid();
@@ -88,6 +91,22 @@ function createDemoGrid(): HexGrid {
   return grid;
 }
 
+/** Find a free passable hex starting from (q, r), checking neighbors if occupied. */
+function findFreeHex(grid: HexGrid, q: number, r: number): { q: number; r: number } {
+  const tile = grid.get(q, r);
+  if (tile && tile.occupant === null && tile.movementCost < Infinity) {
+    return { q, r };
+  }
+  // Search neighbors
+  for (const n of hexNeighbors(q, r)) {
+    const nt = grid.get(n.q, n.r);
+    if (nt && nt.occupant === null && nt.movementCost < Infinity) {
+      return { q: n.q, r: n.r };
+    }
+  }
+  return { q, r }; // fallback
+}
+
 function spawnUnit(
   world: World,
   grid: HexGrid,
@@ -97,13 +116,16 @@ function spawnUnit(
   name: string,
   stats: { melee: number; defense: number; hp: number; initiative: number }
 ): EntityId {
+  // Ensure no overlap
+  const pos = findFreeHex(grid, q, r);
+
   const id = world.createEntity();
 
   world.addComponent(id, {
     type: "position",
-    q,
-    r,
-    elevation: grid.get(q, r)?.elevation ?? 0,
+    q: pos.q,
+    r: pos.r,
+    elevation: grid.get(pos.q, pos.r)?.elevation ?? 0,
     facing: 0,
   });
 
@@ -182,11 +204,13 @@ function spawnUnit(
     });
   }
 
-  const tile = grid.get(q, r);
+  const tile = grid.get(pos.q, pos.r);
   if (tile) tile.occupant = id;
 
   return id;
 }
+
+// ── DemoBattle ──
 
 export class DemoBattle {
   private sceneManager: SceneManager;
@@ -207,6 +231,18 @@ export class DemoBattle {
 
   private playerIds: EntityId[] = [];
   private enemyIds: EntityId[] = [];
+
+  // ── Animation queue ──
+  private animQueue: Array<(done: () => void) => void> = [];
+  private animPlaying = false;
+
+  // ── Speed toggle ──
+  private speedMultiplier = 1;
+  private speedBtn: HTMLButtonElement;
+
+  private readonly BASE_MOVE_MS = 180;   // per hex step
+  private readonly BASE_LUNGE_MS = 280;  // total lunge
+  private readonly BASE_PAN_MS = 350;    // camera pan
 
   constructor(canvas: HTMLCanvasElement) {
     // Scene setup
@@ -239,11 +275,23 @@ export class DemoBattle {
       this.unitRenderer.addUnit(id, pos.q, pos.r, unitTeam);
     }
 
-    // UI (HTML overlay — works reliably on mobile unlike Babylon.js GUI)
+    // UI
     this.uiManager = new UIManager();
     this.actionBar = new ActionBar(this.uiManager.root);
     this.turnOrderBar = new TurnOrderBar(this.uiManager.root);
     this.unitInfoPanel = new UnitInfoPanel(this.uiManager.root);
+
+    // Speed toggle
+    this.speedBtn = document.createElement("button");
+    this.speedBtn.className = "speed-toggle";
+    this.speedBtn.textContent = "x1";
+    this.speedBtn.addEventListener("pointerup", () => {
+      if (this.speedMultiplier === 1) this.speedMultiplier = 2;
+      else if (this.speedMultiplier === 2) this.speedMultiplier = 4;
+      else this.speedMultiplier = 1;
+      this.speedBtn.textContent = `x${this.speedMultiplier}`;
+    });
+    this.uiManager.root.appendChild(this.speedBtn);
 
     // Input
     this.touchManager = new TouchManager(
@@ -304,59 +352,118 @@ export class DemoBattle {
     );
   }
 
+  // ── Animation queue ──
+
+  private queueAnim(fn: (done: () => void) => void): void {
+    this.animQueue.push(fn);
+    // Don't auto-start — drainQueue is triggered by onActionComplete
+  }
+
+  private drainQueue(): void {
+    if (this.animQueue.length === 0) {
+      this.animPlaying = false;
+      // All animations done — continue the game flow
+      this.combat.continueAfterAnimation();
+      return;
+    }
+    this.animPlaying = true;
+    const next = this.animQueue.shift()!;
+    next(() => this.drainQueue());
+  }
+
+  private moveDuration(): number { return this.BASE_MOVE_MS / this.speedMultiplier; }
+  private lungeDuration(): number { return this.BASE_LUNGE_MS / this.speedMultiplier; }
+  private panDuration(): number { return this.BASE_PAN_MS / this.speedMultiplier; }
+
+  // ── Event wiring ──
+
   private wireEvents(): void {
     // Touch/Click -> Combat
     this.touchManager.onHexTap = (q: number, r: number) => {
-      console.log("[DemoBattle] onHexTap q=%d r=%d phase=%s state=%s selected=%s",
-        q, r, this.combat.phase, this.combat.playerTurnState, this.combat.selectedUnit);
-      const handled = this.combat.handleHexTap(q, r);
-      console.log("[DemoBattle] handleHexTap returned", handled, "newState=", this.combat.playerTurnState);
-      this.refreshUI();
+      if (this.animPlaying) return; // ignore input during animations
+      this.combat.handleHexTap(q, r);
     };
 
     // Action bar -> Combat
     this.actionBar.onAction = (action) => {
+      if (this.animPlaying) return;
       this.combat.handleAction(action);
-      this.refreshUI();
     };
 
-    // Combat: unit moved → update rendering
+    // ── Combat callbacks ──
+
+    // Unit moved (animate)
     this.combat.onUnitMoved = (entityId: EntityId, path: Array<{ q: number; r: number }>) => {
-      if (path.length > 0) {
-        const dest = path[path.length - 1]!;
-        this.unitRenderer.updatePosition(entityId, dest.q, dest.r);
-        // Move selection ring to new position
-        if (this.combat.selectedUnit === entityId) {
-          this.unitRenderer.setSelected(entityId);
-        }
-      }
-      this.refreshUI();
+      if (path.length === 0) return;
+      this.queueAnim((done) => {
+        this.unitRenderer.animateMove(entityId, path, this.moveDuration(), () => {
+          // Ensure final position is exact
+          const dest = path[path.length - 1]!;
+          this.unitRenderer.updatePosition(entityId, dest.q, dest.r);
+          if (this.combat.selectedUnit === entityId) {
+            this.unitRenderer.setSelected(entityId);
+          }
+          done();
+        });
+      });
     };
 
-    // Combat: attack resolved → show damage, update health bars, remove killed
-    this.combat.onAttackResult = (result, _attackerId, defenderId) => {
-      this.showDamagePopup(defenderId, result);
-
-      const health = this.world.getComponent<HealthComponent>(defenderId, "health");
-      if (health) {
-        this.unitRenderer.updateHealthBar(defenderId, health.current, health.max);
+    // Unit teleported (instant — e.g. undo)
+    this.combat.onUnitTeleported = (entityId: EntityId, q: number, r: number) => {
+      this.unitRenderer.updatePosition(entityId, q, r);
+      if (this.combat.selectedUnit === entityId) {
+        this.unitRenderer.setSelected(entityId);
       }
-
-      if (result.targetKilled) {
-        this.unitRenderer.removeUnit(defenderId);
-      }
-      this.refreshUI();
     };
 
-    // Combat: phase changed
+    // Attack resolved (animate lunge, then show result)
+    this.combat.onAttackResult = (result: AttackResult, attackerId: EntityId, defenderId: EntityId) => {
+      // Capture defender position now (before potential death removal)
+      const defPos = this.world.getComponent<PositionComponent>(defenderId, "position");
+      const defWorld = defPos ? hexToPixel(this.layout, defPos.q, defPos.r) : null;
+
+      this.queueAnim((done) => {
+        if (!defWorld) { done(); return; }
+
+        this.unitRenderer.animateLunge(
+          attackerId,
+          defWorld.x,
+          defWorld.y,
+          this.lungeDuration(),
+          () => {
+            this.showDamagePopup(defenderId, result);
+
+            const health = this.world.getComponent<HealthComponent>(defenderId, "health");
+            if (health) {
+              this.unitRenderer.updateHealthBar(defenderId, health.current, health.max);
+            }
+            if (result.targetKilled) {
+              this.unitRenderer.removeUnit(defenderId);
+            }
+            this.refreshUI();
+            done();
+          }
+        );
+      });
+    };
+
+    // Action complete — start draining animation queue
+    this.combat.onActionComplete = () => {
+      if (this.animQueue.length > 0) {
+        if (!this.animPlaying) this.drainQueue();
+      } else {
+        // No animations queued (e.g. enemy waited) — continue immediately
+        this.combat.continueAfterAnimation();
+      }
+    };
+
+    // Phase changed
     this.combat.onPhaseChange = (phase) => {
       if (phase === "enemyTurn") {
         this.actionBar.setVisible(false);
         this.unitInfoPanel.hide();
         this.overlayRenderer.clearOverlays();
-        setTimeout(() => this.refreshUI(), 300);
       } else if (phase === "playerTurn") {
-        this.actionBar.setVisible(true);
         if (this.combat.selectedUnit) {
           this.unitRenderer.setSelected(this.combat.selectedUnit);
           this.showUnitInfo(this.combat.selectedUnit);
@@ -369,14 +476,14 @@ export class DemoBattle {
       }
     };
 
-    // Combat: turn advanced → select new unit and center camera
+    // Turn advanced → select unit, pan camera
     this.combat.onTurnAdvance = (entityId: EntityId) => {
       this.unitRenderer.setSelected(entityId);
       this.showUnitInfo(entityId);
       this.panCameraToUnit(entityId);
     };
 
-    // Combat: player state changed → update overlays
+    // Player state changed → update overlays
     this.combat.onPlayerStateChange = (state) => {
       this.overlayRenderer.clearOverlays();
 
@@ -390,13 +497,13 @@ export class DemoBattle {
     };
   }
 
-  /** Show blue move overlays + red attack overlays for adjacent enemies. */
+  // ── Overlays ──
+
   private showMoveAndAttackOverlays(): void {
     if (!this.combat.selectedUnit || !this.combat.moveRange) return;
 
     this.overlayRenderer.showMovementRange(this.combat.moveRange, this.layout);
 
-    // Also highlight adjacent enemies in red
     const pos = this.world.getComponent<PositionComponent>(this.combat.selectedUnit, "position");
     if (!pos) return;
     const attackHexes = this.getAdjacentEnemyHexes(pos);
@@ -405,7 +512,6 @@ export class DemoBattle {
     }
   }
 
-  /** Show red attack overlays for enemies adjacent to current position. */
   private showAttackOverlay(): void {
     if (!this.combat.selectedUnit) return;
     const pos = this.world.getComponent<PositionComponent>(this.combat.selectedUnit, "position");
@@ -417,7 +523,6 @@ export class DemoBattle {
     }
   }
 
-  /** Get set of hex keys containing enemies adjacent to the given position. */
   private getAdjacentEnemyHexes(pos: PositionComponent): Set<string> {
     const hexes = new Set<string>();
     const neighbors = hexNeighbors(pos.q, pos.r);
@@ -433,15 +538,15 @@ export class DemoBattle {
     return hexes;
   }
 
-  /** Smoothly pan camera to center on a unit. */
+  // ── UI helpers ──
+
   private panCameraToUnit(entityId: EntityId): void {
     const pos = this.world.getComponent<PositionComponent>(entityId, "position");
     if (!pos) return;
     const worldPos = hexToPixel(this.layout, pos.q, pos.r);
-    this.camera.panTo(worldPos.x, worldPos.y);
+    this.camera.panTo(worldPos.x, worldPos.y, this.panDuration());
   }
 
-  /** Show a floating damage popup over a unit. */
   private showDamagePopup(entityId: EntityId, result: AttackResult): void {
     const pos = this.world.getComponent<PositionComponent>(entityId, "position");
     if (!pos) return;
@@ -478,7 +583,6 @@ export class DemoBattle {
   }
 
   private refreshUI(): void {
-    // Update turn order bar
     const entries = this.combat.turnOrder.getOrder();
     const currentEntry = this.combat.turnOrder.current();
     this.turnOrderBar.update(
@@ -490,18 +594,19 @@ export class DemoBattle {
       }
     );
 
-    // Update action bar based on state
-    const isPlayerTurn = this.combat.phase === "playerTurn";
-    console.log("[refreshUI] phase=%s state=%s isPlayerTurn=%s",
-      this.combat.phase, this.combat.playerTurnState, isPlayerTurn);
-    this.actionBar.setVisible(isPlayerTurn);
+    const showActionBar =
+      this.combat.phase === "playerTurn" &&
+      this.combat.playerTurnState !== "animating";
+    this.actionBar.setVisible(showActionBar);
 
-    if (isPlayerTurn) {
+    if (showActionBar) {
       this.actionBar.setEnabled("undo", this.combat.canUndo);
       this.actionBar.setEnabled("wait", this.combat.playerTurnState === "awaitingInput");
       this.actionBar.setEnabled("endTurn", true);
     }
   }
+
+  // ── Lifecycle ──
 
   start(): void {
     this.combat.start();

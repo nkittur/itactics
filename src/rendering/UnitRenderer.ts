@@ -166,6 +166,109 @@ export class UnitRenderer {
     return this.selectedEntityId;
   }
 
+  // ── Animations ──
+
+  /**
+   * Animate a unit moving hex-by-hex along a path.
+   * @param durationPerStep  Milliseconds per hex step.
+   * @param onComplete       Called when the full animation finishes.
+   */
+  animateMove(
+    entityId: string,
+    path: Array<{ q: number; r: number }>,
+    durationPerStep: number,
+    onComplete: () => void
+  ): void {
+    const entry = this.units.get(entityId);
+    if (!entry || path.length === 0) { onComplete(); return; }
+
+    const positions = path.map(p => hexToPixel(this.layout, p.q, p.r));
+    let stepIdx = 0;
+    let fromX = entry.mesh.position.x;
+    let fromZ = entry.mesh.position.z;
+    let stepStart = performance.now();
+
+    const observer = this.scene.onBeforeRenderObservable.add(() => {
+      const t = Math.min(1, (performance.now() - stepStart) / durationPerStep);
+      const target = positions[stepIdx]!;
+
+      entry.mesh.position.x = fromX + (target.x - fromX) * t;
+      entry.mesh.position.z = fromZ + (target.y - fromZ) * t;
+
+      if (t >= 1) {
+        // Update stored hex coords
+        const dest = path[stepIdx]!;
+        entry.q = dest.q;
+        entry.r = dest.r;
+
+        // Move selection ring + health bar
+        if (this.selectedEntityId === entityId && this.selectionRing) {
+          this.selectionRing.position.x = target.x;
+          this.selectionRing.position.z = target.y;
+        }
+        this.moveHealthBar(entityId, target.x, target.y);
+
+        stepIdx++;
+        if (stepIdx >= positions.length) {
+          this.scene.onBeforeRenderObservable.remove(observer);
+          onComplete();
+        } else {
+          fromX = target.x;
+          fromZ = target.y;
+          stepStart = performance.now();
+        }
+      }
+    });
+  }
+
+  /**
+   * Animate a unit lunging toward a target and snapping back (attack).
+   * @param targetWorldX/Z  World position to lunge toward.
+   * @param duration         Total lunge duration in ms.
+   * @param onComplete       Called when animation finishes.
+   */
+  animateLunge(
+    entityId: string,
+    targetWorldX: number,
+    targetWorldZ: number,
+    duration: number,
+    onComplete: () => void
+  ): void {
+    const entry = this.units.get(entityId);
+    if (!entry) { onComplete(); return; }
+
+    const startX = entry.mesh.position.x;
+    const startZ = entry.mesh.position.z;
+    // Lunge halfway to target
+    const midX = (startX + targetWorldX) / 2;
+    const midZ = (startZ + targetWorldZ) / 2;
+    const halfDur = duration / 2;
+    const startTime = performance.now();
+
+    const observer = this.scene.onBeforeRenderObservable.add(() => {
+      const elapsed = performance.now() - startTime;
+
+      if (elapsed < halfDur) {
+        // Moving toward target
+        const t = elapsed / halfDur;
+        entry.mesh.position.x = startX + (midX - startX) * t;
+        entry.mesh.position.z = startZ + (midZ - startZ) * t;
+      } else {
+        // Returning to start
+        const t = Math.min(1, (elapsed - halfDur) / halfDur);
+        entry.mesh.position.x = midX + (startX - midX) * t;
+        entry.mesh.position.z = midZ + (startZ - midZ) * t;
+      }
+
+      if (elapsed >= duration) {
+        entry.mesh.position.x = startX;
+        entry.mesh.position.z = startZ;
+        this.scene.onBeforeRenderObservable.remove(observer);
+        onComplete();
+      }
+    });
+  }
+
   // ── Health bars ──
 
   /**

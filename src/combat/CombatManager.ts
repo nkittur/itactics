@@ -37,7 +37,15 @@ export class CombatManager {
   /** Undo info for reverting the last move. */
   private undoInfo: UndoInfo | null = null;
 
-  // Callbacks for the rendering/UI layer
+  /**
+   * Continuation to run after animations complete.
+   * Set by executeMove, executeAttack, runEnemyTurn.
+   * Consumed by continueAfterAnimation().
+   */
+  private pendingContinuation: (() => void) | null = null;
+
+  // ── Callbacks for the rendering/UI layer ──
+
   onPhaseChange?: (phase: CombatPhase) => void;
   onTurnAdvance?: (entityId: EntityId) => void;
   onAttackResult?: (
@@ -49,9 +57,12 @@ export class CombatManager {
     entityId: EntityId,
     path: Array<{ q: number; r: number }>
   ) => void;
+  /** Fired when a unit is teleported (e.g. undo) — no animation needed. */
+  onUnitTeleported?: (entityId: EntityId, q: number, r: number) => void;
   onBattleEnd?: (victory: boolean) => void;
-  /** Fired whenever the player turn state changes so DemoBattle can update overlays. */
   onPlayerStateChange?: (state: PlayerTurnState) => void;
+  /** Fired after each action that may need animation (move/attack/enemy turn). */
+  onActionComplete?: () => void;
 
   constructor(
     private world: World,
@@ -67,6 +78,16 @@ export class CombatManager {
   start(): void {
     this.turnOrder.calculateOrder(this.world);
     this.beginCurrentTurn();
+  }
+
+  /**
+   * Called by the presentation layer after animations finish.
+   * Runs the pending continuation (advance turn, enter postMove, etc.).
+   */
+  continueAfterAnimation(): void {
+    const fn = this.pendingContinuation;
+    this.pendingContinuation = null;
+    fn?.();
   }
 
   /** Handle a hex being tapped during player turn. */
@@ -158,6 +179,8 @@ export class CombatManager {
     }
   }
 
+  // ── Private action methods ──
+
   /** Execute a move action for the given entity to (q, r). */
   private executeMove(entityId: EntityId, q: number, r: number): void {
     const pos = this.world.getComponent<PositionComponent>(
@@ -185,6 +208,10 @@ export class CombatManager {
 
     this.playerTurnState = "animating";
 
+    // Check remaining movement before clearing moveRange
+    const destKey = `${q},${r}`;
+    const remainingMovement = this.moveRange?.get(destKey) ?? 0;
+
     // Update occupancy on the grid
     const oldTile = this.grid.get(pos.q, pos.r);
     if (oldTile) oldTile.occupant = null;
@@ -197,24 +224,24 @@ export class CombatManager {
     pos.r = r;
     if (newTile) pos.elevation = newTile.elevation;
 
-    // Check remaining movement before clearing moveRange
-    const destKey = `${q},${r}`;
-    const remainingMovement = this.moveRange?.get(destKey) ?? 0;
     this.moveRange = null;
 
     this.onUnitMoved?.(entityId, pathResult.path);
 
-    // Auto-end: moved full distance and no adjacent enemies to attack
-    if (remainingMovement === 0 && !this.hasAdjacentEnemies(entityId)) {
-      this.undoInfo = null;
-      this.endPlayerUnitTurn();
-    } else {
-      // Go to postMove so the unit can attack or undo
-      this.setPlayerState("postMove");
-    }
+    // Set continuation for after animation
+    this.pendingContinuation = () => {
+      if (remainingMovement === 0 && !this.hasAdjacentEnemies(entityId)) {
+        this.undoInfo = null;
+        this.endPlayerUnitTurn();
+      } else {
+        this.setPlayerState("postMove");
+      }
+    };
+
+    this.onActionComplete?.();
   }
 
-  /** Undo the last move. */
+  /** Undo the last move — instant, no animation. */
   private undoMove(): void {
     if (!this.undoInfo) return;
 
@@ -236,18 +263,12 @@ export class CombatManager {
 
     this.undoInfo = null;
 
-    // Update rendering
-    this.unitRenderer_updatePosition(entityId, oldQ, oldR);
+    // Teleport the visual (no animation)
+    this.onUnitTeleported?.(entityId, oldQ, oldR);
 
     // Recalculate move range and go back to awaitingInput
     this.calculateMoveRange(entityId);
     this.setPlayerState("awaitingInput");
-  }
-
-  /** Callback for rendering layer to update unit position on undo. */
-  private unitRenderer_updatePosition(entityId: EntityId, q: number, r: number): void {
-    // Fire onUnitMoved with a single-step path to the old position
-    this.onUnitMoved?.(entityId, [{ q, r }]);
   }
 
   /** Execute an attack action. */
@@ -266,10 +287,14 @@ export class CombatManager {
       this.handleDeath(defenderId);
     }
 
-    // After attacking, end this unit's turn
-    if (!this.checkBattleEnd()) {
-      this.endPlayerUnitTurn();
-    }
+    // Set continuation for after animation
+    this.pendingContinuation = () => {
+      if (!this.checkBattleEnd()) {
+        this.endPlayerUnitTurn();
+      }
+    };
+
+    this.onActionComplete?.();
   }
 
   /** Calculate and cache move range for a unit. */
@@ -332,7 +357,11 @@ export class CombatManager {
     return this.undoInfo !== null;
   }
 
-  /** Run simple enemy AI turn. */
+  /**
+   * Run ONE enemy unit's turn, then wait for animation.
+   * Does NOT recurse — DemoBattle calls continueAfterAnimation()
+   * after animations finish, which runs pendingContinuation.
+   */
   private runEnemyTurn(): void {
     const entry = this.turnOrder.current();
     if (!entry) return;
@@ -405,13 +434,34 @@ export class CombatManager {
         break;
     }
 
-    if (!this.checkBattleEnd()) {
-      const newRound = this.turnOrder.advance();
-      if (newRound) {
-        this.turnOrder.calculateOrder(this.world);
+    // Set continuation: advance and start next turn (after animations)
+    this.pendingContinuation = () => {
+      if (!this.checkBattleEnd()) {
+        const newRound = this.turnOrder.advance();
+        if (newRound) {
+          this.turnOrder.calculateOrder(this.world);
+        }
+        this.beginCurrentTurn();
       }
-      this.beginCurrentTurn();
+    };
+
+    this.onActionComplete?.();
+  }
+
+  // ── Helpers ──
+
+  /** Check whether a unit has any living enemy units on adjacent hexes. */
+  private hasAdjacentEnemies(entityId: EntityId): boolean {
+    const pos = this.world.getComponent<PositionComponent>(entityId, "position");
+    if (!pos) return false;
+    for (const n of hexNeighbors(pos.q, pos.r)) {
+      const tile = this.grid.get(n.q, n.r);
+      if (tile?.occupant && tile.occupant !== entityId && this.isEnemyEntity(tile.occupant)) {
+        const health = this.world.getComponent<HealthComponent>(tile.occupant, "health");
+        if (health && health.current > 0) return true;
+      }
     }
+    return false;
   }
 
   private handleDeath(entityId: EntityId): void {
@@ -468,20 +518,6 @@ export class CombatManager {
       const health = this.world.getComponent<HealthComponent>(id, "health");
       return health && health.current > 0 && this.isEnemyEntity(id);
     });
-  }
-
-  /** Check whether a unit has any living enemy units on adjacent hexes. */
-  private hasAdjacentEnemies(entityId: EntityId): boolean {
-    const pos = this.world.getComponent<PositionComponent>(entityId, "position");
-    if (!pos) return false;
-    for (const n of hexNeighbors(pos.q, pos.r)) {
-      const tile = this.grid.get(n.q, n.r);
-      if (tile?.occupant && tile.occupant !== entityId && this.isEnemyEntity(tile.occupant)) {
-        const health = this.world.getComponent<HealthComponent>(tile.occupant, "health");
-        if (health && health.current > 0) return true;
-      }
-    }
-    return false;
   }
 
   private findAdjacentEnemy(

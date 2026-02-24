@@ -26,6 +26,7 @@ export class CameraController {
     startX: number; startZ: number;
     targetX: number; targetZ: number;
     startTime: number; duration: number;
+    onComplete: (() => void) | null;
   } | null = null;
 
   constructor(scene: Scene, engine: Engine) {
@@ -89,7 +90,7 @@ export class CameraController {
   }
 
   /** Smoothly pan the camera to a world position over durationMs. */
-  panTo(targetX: number, targetZ: number, durationMs = 400): void {
+  panTo(targetX: number, targetZ: number, durationMs = 400, onComplete?: () => void): void {
     this.panAnim = {
       startX: this.camera.position.x,
       startZ: this.camera.position.z,
@@ -97,6 +98,7 @@ export class CameraController {
       targetZ,
       startTime: performance.now(),
       duration: durationMs,
+      onComplete: onComplete ?? null,
     };
   }
 
@@ -109,7 +111,11 @@ export class CameraController {
     this.camera.position.x = startX + (targetX - startX) * ease;
     this.camera.position.z = startZ + (targetZ - startZ) * ease;
 
-    if (t >= 1) this.panAnim = null;
+    if (t >= 1) {
+      const cb = this.panAnim.onComplete;
+      this.panAnim = null;
+      cb?.();
+    }
   }
 
   /**
