@@ -21,6 +21,8 @@ export class OverlayRenderer {
   private movementMaterial: StandardMaterial | null = null;
   private attackMaterial: StandardMaterial | null = null;
   private zocDangerMaterial: StandardMaterial | null = null;
+  private selfTargetMaterial: StandardMaterial | null = null;
+  private targetRingMaterial: StandardMaterial | null = null;
 
   constructor(scene: Scene) {
     this.scene = scene;
@@ -149,6 +151,79 @@ export class OverlayRenderer {
   }
 
   /**
+   * Display gold disc overlay at renderingGroupId 3 (above unit sprites).
+   * Used for self-targeting skill hexes so the overlay is visible on top of the unit.
+   */
+  showSelfTargetRange(hexes: Set<string>, layout: HexLayout): void {
+    if (!this.selfTargetMaterial) {
+      this.selfTargetMaterial = new StandardMaterial("selfTargetMat", this.scene);
+      this.selfTargetMaterial.diffuseColor = Color3.Black();
+      this.selfTargetMaterial.emissiveColor = new Color3(0.9, 0.75, 0.2);
+      this.selfTargetMaterial.alpha = 0.45;
+      this.selfTargetMaterial.specularColor = Color3.Black();
+      this.selfTargetMaterial.backFaceCulling = false;
+    }
+
+    for (const key of hexes) {
+      const coords = parseHexKey(key);
+      if (!coords) continue;
+
+      const { x, y } = hexToPixel(layout, coords.q, coords.r);
+
+      const disc = MeshBuilder.CreateDisc(
+        `selfOverlay_${key}`,
+        { radius: layout.size * 0.9, tessellation: 6 },
+        this.scene
+      );
+      disc.rotation.x = -Math.PI / 2;
+      disc.rotation.y = Math.PI / 6;
+      disc.position.x = x;
+      disc.position.y = this.overlayY(coords.q, coords.r, 0.05);
+      disc.position.z = y;
+      disc.renderingGroupId = 3;
+      disc.material = this.selfTargetMaterial;
+
+      this.overlays.push(disc);
+    }
+  }
+
+  /**
+   * Display thick gold ring outlines on skill target hexes.
+   * Renders at renderingGroupId 3 (above unit sprites).
+   */
+  showTargetRings(hexes: Set<string>, layout: HexLayout): void {
+    if (!this.targetRingMaterial) {
+      this.targetRingMaterial = new StandardMaterial("targetRingMat", this.scene);
+      this.targetRingMaterial.diffuseColor = Color3.Black();
+      this.targetRingMaterial.emissiveColor = new Color3(1.0, 0.85, 0.2);
+      this.targetRingMaterial.alpha = 0.9;
+      this.targetRingMaterial.specularColor = Color3.Black();
+      this.targetRingMaterial.backFaceCulling = false;
+    }
+
+    for (const key of hexes) {
+      const coords = parseHexKey(key);
+      if (!coords) continue;
+
+      const { x, y } = hexToPixel(layout, coords.q, coords.r);
+
+      const ring = MeshBuilder.CreateTorus(
+        `targetRing_${key}`,
+        { diameter: layout.size * 1.75, thickness: 0.18, tessellation: 32 },
+        this.scene
+      );
+      ring.rotation.x = Math.PI / 2;
+      ring.position.x = x;
+      ring.position.y = this.overlayY(coords.q, coords.r, 0.06);
+      ring.position.z = y;
+      ring.renderingGroupId = 3;
+      ring.material = this.targetRingMaterial;
+
+      this.overlays.push(ring);
+    }
+  }
+
+  /**
    * Remove all overlay meshes from the scene.
    */
   clearOverlays(): void {
@@ -175,6 +250,14 @@ export class OverlayRenderer {
     if (this.zocDangerMaterial) {
       this.zocDangerMaterial.dispose();
       this.zocDangerMaterial = null;
+    }
+    if (this.selfTargetMaterial) {
+      this.selfTargetMaterial.dispose();
+      this.selfTargetMaterial = null;
+    }
+    if (this.targetRingMaterial) {
+      this.targetRingMaterial.dispose();
+      this.targetRingMaterial = null;
     }
   }
 }

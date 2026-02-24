@@ -486,6 +486,16 @@ export class DemoBattle {
         return;
       }
 
+      // Self-targeting skill: show stance preview on own hex
+      if (this.combat.playerTurnState === "skillTargeting"
+          && this.combat.pendingSkill?.targetType === "self") {
+        const targetHexes = this.combat.getSkillTargetHexes();
+        if (targetHexes.has(`${q},${r}`)) {
+          this.showStancePreview(q, r);
+          return;
+        }
+      }
+
       // Normal handling (move, etc.)
       this.combat.handleHexTap(q, r);
     };
@@ -896,7 +906,16 @@ export class DemoBattle {
 
     this.attackPreviewTarget = { q, r, entityId };
     this.unitInfoPanel.hide();
-    this.attackPreviewPanel.show({ targetName: team.name, preview });
+    this.attackPreviewPanel.show({ targetName: team.name, preview, skill });
+  }
+
+  private showStancePreview(q: number, r: number): void {
+    const skill = this.combat.pendingSkill;
+    if (!skill || !this.combat.selectedUnit) return;
+
+    this.attackPreviewTarget = { q, r, entityId: this.combat.selectedUnit };
+    this.unitInfoPanel.hide();
+    this.attackPreviewPanel.showStance({ skill });
   }
 
   private confirmAttackPreview(): void {
@@ -1030,9 +1049,17 @@ export class DemoBattle {
 
   private showSkillTargetOverlays(): void {
     const targetHexes = this.combat.getSkillTargetHexes();
-    if (targetHexes.size > 0) {
+    if (targetHexes.size === 0) return;
+
+    const isSelf = this.combat.pendingSkill?.targetType === "self";
+    if (isSelf) {
+      // Gold overlay at renderingGroupId 3 (above unit sprites)
+      this.overlayRenderer.showSelfTargetRange(targetHexes, this.layout);
+    } else {
       this.overlayRenderer.showAttackRange(targetHexes, this.layout);
     }
+    // Thick gold ring outline on all skill targets
+    this.overlayRenderer.showTargetRings(targetHexes, this.layout);
   }
 
   private refreshOverlays(): void {
