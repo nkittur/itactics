@@ -32,6 +32,8 @@ export interface EnemyDetailData {
 export class EnemyDetailPanel {
   private container: HTMLDivElement;
   private content: HTMLDivElement;
+  /** Called when the backdrop is tapped to dismiss the panel. */
+  onDismiss: (() => void) | null = null;
 
   constructor(root: HTMLDivElement) {
     this.container = document.createElement("div");
@@ -42,6 +44,15 @@ export class EnemyDetailPanel {
     this.content = document.createElement("div");
     this.content.className = "enemy-detail-panel";
     this.container.appendChild(this.content);
+
+    // Tap backdrop to dismiss
+    this.container.addEventListener("pointerup", (e) => {
+      if (e.target === this.container) {
+        this.onDismiss?.();
+      }
+    });
+    // Prevent taps on panel content from dismissing
+    this.content.addEventListener("pointerup", (e) => e.stopPropagation());
   }
 
   show(data: EnemyDetailData): void {

@@ -346,6 +346,7 @@ export class DemoBattle {
 
     this.undoButton = new UndoButton(this.uiManager.root);
     this.enemyDetailPanel = new EnemyDetailPanel(this.uiManager.root);
+    this.enemyDetailPanel.onDismiss = () => this.hideEnemyDetail();
     this.attackPreviewPanel = new AttackPreviewPanel(this.uiManager.root);
 
     // Speed toggle
