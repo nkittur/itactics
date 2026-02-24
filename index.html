@@ -273,6 +273,29 @@
       font-size: 10px;
       color: #8899aa;
     }
+
+    /* ── Attack preview panel (tap-to-confirm) ── */
+    .attack-preview-panel {
+      position: absolute;
+      bottom: calc(80px + env(safe-area-inset-bottom, 0px));
+      left: 50%;
+      transform: translateX(-50%);
+      width: 220px;
+      padding: 8px 10px;
+      background: rgba(26, 26, 46, 0.92);
+      border-radius: 6px;
+      border: 1px solid #ffcc44;
+      pointer-events: auto;
+      color: #ddd;
+      font-size: 12px;
+      line-height: 1.4;
+    }
+    .attack-preview-hint {
+      font-size: 10px;
+      color: #ffcc44;
+      text-align: center;
+      margin-top: 6px;
+    }
   </style>
 </head>
 <body>

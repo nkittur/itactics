@@ -32,6 +32,7 @@ import { SCENARIOS, getScenario, getDefaultScenarioId, type ScenarioDef } from "
 import { TILT_SIN } from "@rendering/CameraController";
 import { LAYER_HEIGHT } from "@rendering/TileRenderer";
 import { EnemyDetailPanel, type EnemyDetailData } from "@ui/EnemyDetailPanel";
+import { AttackPreviewPanel } from "@ui/AttackPreviewPanel";
 import type { FatigueComponent } from "@entities/components/Fatigue";
 import type { EquipmentComponent } from "@entities/components/Equipment";
 import type { ArmorComponent } from "@entities/components/Armor";
@@ -254,6 +255,11 @@ export class DemoBattle {
 
   // ── Enemy detail panel (long-press) ──
   private enemyDetailPanel: EnemyDetailPanel;
+  private enemyDetailOpen = false;
+
+  // ── Attack preview (tap-to-confirm) ──
+  private attackPreviewPanel: AttackPreviewPanel;
+  private attackPreviewTarget: { q: number; r: number; entityId: EntityId } | null = null;
 
   // ── Animation queue ──
   private animQueue: Array<(done: () => void) => void> = [];
@@ -312,6 +318,7 @@ export class DemoBattle {
     this.unitInfoPanel = new UnitInfoPanel(this.uiManager.root);
 
     this.enemyDetailPanel = new EnemyDetailPanel(this.uiManager.root);
+    this.attackPreviewPanel = new AttackPreviewPanel(this.uiManager.root);
 
     // Speed toggle
     this.speedBtn = document.createElement("button");
@@ -435,19 +442,48 @@ export class DemoBattle {
   // ── Event wiring ──
 
   private wireEvents(): void {
-    // Touch/Click -> Combat
+    // Touch/Click -> Combat (with attack preview interception)
     this.touchManager.onHexTap = (q: number, r: number) => {
       if (this.animPlaying) return;
+
+      // If enemy detail panel is open, close it and consume the tap
+      if (this.enemyDetailOpen) {
+        this.hideEnemyDetail();
+        return;
+      }
+
+      // If attack preview is showing, handle confirm/cancel
+      if (this.attackPreviewTarget) {
+        if (q === this.attackPreviewTarget.q && r === this.attackPreviewTarget.r) {
+          this.confirmAttackPreview();
+        } else {
+          this.cancelAttackPreview();
+          if (this.combat.canAttackHex(q, r)) {
+            this.showAttackPreview(q, r);
+          } else {
+            this.combat.handleHexTap(q, r);
+          }
+        }
+        return;
+      }
+
+      // Check if this tap would be an attack — show preview instead
+      if (this.combat.canAttackHex(q, r)) {
+        this.showAttackPreview(q, r);
+        return;
+      }
+
+      // Normal handling (move, etc.)
       this.combat.handleHexTap(q, r);
     };
 
-    // Long-press -> Enemy detail panel
+    // Long-press -> Enemy detail panel (stays open until next tap)
     this.touchManager.onHexLongPress = (q: number, r: number) => {
       if (this.animPlaying) return;
       this.showEnemyDetail(q, r);
     };
     this.touchManager.onLongPressEnd = () => {
-      this.hideEnemyDetail();
+      // No-op: panel stays open until next tap
     };
 
     // Action bar -> Combat
@@ -627,6 +663,7 @@ export class DemoBattle {
         this.unitInfoPanel.hide();
         this.overlayRenderer.clearOverlays();
         this.hideEnemyDetail();
+        this.cancelAttackPreview();
       } else if (phase === "playerTurn") {
         if (this.combat.selectedUnit) {
           this.unitRenderer.setSelected(this.combat.selectedUnit);
@@ -638,6 +675,7 @@ export class DemoBattle {
         this.unitInfoPanel.hide();
         this.overlayRenderer.clearOverlays();
         this.hideEnemyDetail();
+        this.cancelAttackPreview();
       }
     };
 
@@ -652,6 +690,7 @@ export class DemoBattle {
     this.combat.onPlayerStateChange = (state) => {
       this.overlayRenderer.clearOverlays();
       this.hideEnemyDetail();
+      this.cancelAttackPreview();
 
       if (state === "awaitingInput") {
         this.showMoveAndAttackOverlays();
@@ -708,6 +747,8 @@ export class DemoBattle {
     const tile = this.grid.get(q, r);
     if (!tile?.occupant) return;
 
+    this.cancelAttackPreview();
+
     const entityId = tile.occupant;
     const health = this.world.getComponent<HealthComponent>(entityId, "health");
     const team = this.world.getComponent<TeamComponent>(entityId, "team");
@@ -743,26 +784,6 @@ export class DemoBattle {
     // Status effects
     const statusEffects = this.combat.statusEffects.getActiveEffects(this.world, entityId);
 
-    // Attack preview: only if we have a selected player unit adjacent to this enemy
-    let attackPreview = null;
-    if (this.combat.selectedUnit && team.team === "enemy") {
-      const attackerPos = this.world.getComponent<PositionComponent>(this.combat.selectedUnit, "position");
-      const defenderPos = this.world.getComponent<PositionComponent>(entityId, "position");
-      if (attackerPos && defenderPos) {
-        // Check adjacency
-        const neighbors = hexNeighbors(attackerPos.q, attackerPos.r);
-        const isAdjacent = neighbors.some(n => n.q === defenderPos.q && n.r === defenderPos.r);
-        if (isAdjacent) {
-          const weaponAP = this.combat.selectedWeaponAPCost;
-          if (this.combat.apRemaining >= weaponAP) {
-            attackPreview = this.combat.damageCalc.previewMeleeDetailed(
-              this.world, this.combat.selectedUnit, entityId,
-            );
-          }
-        }
-      }
-    }
-
     const data: EnemyDetailData = {
       name: team.name,
       currentHp: health.current,
@@ -780,14 +801,51 @@ export class DemoBattle {
       meleeDefense: stats.meleeDefense,
       resolve: stats.resolve,
       initiative: stats.initiative,
-      attackPreview,
     };
 
     this.enemyDetailPanel.show(data);
+    this.enemyDetailOpen = true;
   }
 
   private hideEnemyDetail(): void {
     this.enemyDetailPanel.hide();
+    this.enemyDetailOpen = false;
+  }
+
+  // ── Attack preview (tap-to-confirm) ──
+
+  private showAttackPreview(q: number, r: number): void {
+    const tile = this.grid.get(q, r);
+    if (!tile?.occupant || !this.combat.selectedUnit) return;
+
+    const entityId = tile.occupant;
+    const team = this.world.getComponent<TeamComponent>(entityId, "team");
+    if (!team) return;
+
+    const preview = this.combat.damageCalc.previewMeleeDetailed(
+      this.world, this.combat.selectedUnit, entityId,
+    );
+
+    this.attackPreviewTarget = { q, r, entityId };
+    this.unitInfoPanel.hide();
+    this.attackPreviewPanel.show({ targetName: team.name, preview });
+  }
+
+  private confirmAttackPreview(): void {
+    if (!this.attackPreviewTarget) return;
+    const { q, r } = this.attackPreviewTarget;
+    this.attackPreviewTarget = null;
+    this.attackPreviewPanel.hide();
+    this.combat.handleHexTap(q, r);
+  }
+
+  private cancelAttackPreview(): void {
+    if (!this.attackPreviewTarget) return;
+    this.attackPreviewTarget = null;
+    this.attackPreviewPanel.hide();
+    if (this.combat.selectedUnit && this.combat.phase === "playerTurn") {
+      this.showUnitInfo(this.combat.selectedUnit);
+    }
   }
 
   // ── UI helpers ──

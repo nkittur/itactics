@@ -1,5 +1,3 @@
-import type { DetailedAttackPreview } from "@combat/DamageCalculator";
-
 export interface EnemyDetailData {
   name: string;
   currentHp: number;
@@ -25,13 +23,11 @@ export interface EnemyDetailData {
   meleeDefense: number;
   resolve: number;
   initiative: number;
-  /** Attack preview if in range, null if not. */
-  attackPreview: DetailedAttackPreview | null;
 }
 
 /**
  * Full-screen modal panel that shows detailed enemy info on long-press.
- * Includes stat breakdown, equipment, effects, and combat preview with modifiers.
+ * Includes stat breakdown, equipment, morale, and status effects.
  */
 export class EnemyDetailPanel {
   private container: HTMLDivElement;
@@ -101,49 +97,6 @@ export class EnemyDetailPanel {
     if (data.statusEffects && data.statusEffects.length > 0) {
       const effectsRow = el("div", "edp-effects", data.statusEffects.join(", "));
       this.content.appendChild(effectsRow);
-    }
-
-    // Attack preview
-    if (data.attackPreview) {
-      const ap = data.attackPreview;
-      const divider = el("div", "edp-divider");
-      this.content.appendChild(divider);
-
-      const hitRow = el("div", "edp-hit-header");
-      hitRow.innerHTML =
-        `<span class="edp-hit-label">Hit Chance</span>` +
-        `<span class="edp-hit-value">${ap.hitChance}%</span>`;
-      this.content.appendChild(hitRow);
-
-      // Modifier breakdown
-      const modList = el("div", "edp-modifiers");
-      for (const mod of ap.modifiers) {
-        const sign = mod.value >= 0 ? "+" : "";
-        const color = mod.value > 0 ? "#88cc88" : mod.value < 0 ? "#cc8888" : "#999";
-        const row = el("div", "edp-mod-row");
-        row.innerHTML =
-          `<span class="edp-mod-label">${mod.label}</span>` +
-          `<span class="edp-mod-value" style="color:${color}">${sign}${mod.value}</span>`;
-        modList.appendChild(row);
-      }
-      this.content.appendChild(modList);
-
-      // Damage range
-      const dmgRow = el("div", "edp-dmg-row");
-      dmgRow.innerHTML =
-        `<span class="edp-label">Damage</span>` +
-        `<span class="edp-value">${ap.minDamage}-${ap.maxDamage}</span>`;
-      this.content.appendChild(dmgRow);
-
-      // Armor interaction
-      if (ap.armorIgnorePct > 0 || ap.armorDamageMult > 0) {
-        const armorRow = el("div", "edp-armor-info");
-        const parts: string[] = [];
-        if (ap.armorIgnorePct > 0) parts.push(`${Math.round(ap.armorIgnorePct * 100)}% ignore armor`);
-        if (ap.armorDamageMult > 0) parts.push(`${Math.round(ap.armorDamageMult * 100)}% vs armor`);
-        armorRow.textContent = parts.join(" / ");
-        this.content.appendChild(armorRow);
-      }
     }
   }
 

@@ -123,6 +123,31 @@ export class CombatManager {
   // ── Input handling ──
 
   /** Handle a hex being tapped during player turn. */
+  /** Check if tapping (q,r) would be a valid attack. Does NOT execute. */
+  canAttackHex(q: number, r: number): boolean {
+    if (this.phase !== "playerTurn") return false;
+    if (this.playerTurnState !== "awaitingInput") return false;
+    if (!this.selectedUnit) return false;
+
+    const tile = this.grid.get(q, r);
+    const attackerPos = this.world.getComponent<PositionComponent>(
+      this.selectedUnit, "position",
+    );
+    if (!attackerPos) return false;
+
+    if (
+      tile?.occupant &&
+      tile.occupant !== this.selectedUnit &&
+      this.isEnemyEntity(tile.occupant)
+    ) {
+      const dist = hexDistance({ q: attackerPos.q, r: attackerPos.r }, { q, r });
+      const weaponRange = this.getWeaponRange(this.selectedUnit);
+      const weaponAP = this.getWeaponAPCost(this.selectedUnit);
+      return dist <= weaponRange && this.apManager.canAfford(weaponAP);
+    }
+    return false;
+  }
+
   handleHexTap(q: number, r: number): boolean {
     if (this.phase !== "playerTurn") return false;
     if (this.playerTurnState !== "awaitingInput") return false;
