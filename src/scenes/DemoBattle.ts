@@ -34,7 +34,7 @@ import { TILT_SIN } from "@rendering/CameraController";
 import { LAYER_HEIGHT } from "@rendering/TileRenderer";
 import { EnemyDetailPanel, type EnemyDetailData } from "@ui/EnemyDetailPanel";
 import { AttackPreviewPanel } from "@ui/AttackPreviewPanel";
-import { SkillBar } from "@ui/SkillBar";
+import { UndoButton } from "@ui/UndoButton";
 import { skillAPCost, skillRange } from "@data/SkillData";
 import type { FatigueComponent } from "@entities/components/Fatigue";
 import type { EquipmentComponent } from "@entities/components/Equipment";
@@ -42,6 +42,8 @@ import type { ArmorComponent } from "@entities/components/Armor";
 import type { StatsComponent } from "@entities/components/Stats";
 import type { MoraleComponent } from "@entities/components/Morale";
 import type { AIType } from "@entities/components/AIBehavior";
+import type { SpriteCharType } from "@rendering/SpriteAnimator";
+import type { SpriteRefComponent } from "@entities/components/SpriteRef";
 
 // ── Terrain configs ──
 
@@ -124,6 +126,7 @@ function spawnUnit(
   stats: { melee: number; defense: number; hp: number; initiative: number },
   equip?: UnitEquipment,
   aiType?: AIType,
+  sprite?: SpriteCharType,
 ): EntityId {
   // Ensure no overlap
   const pos = findFreeHex(grid, q, r);
@@ -209,7 +212,7 @@ function spawnUnit(
 
   world.addComponent(id, {
     type: "spriteRef",
-    atlasKey: team,
+    atlasKey: sprite ?? (team === "player" ? "soldier" : "orc"),
     framePrefix: "idle",
     currentFrame: 0,
     tint: null,
@@ -265,7 +268,7 @@ export class DemoBattle {
 
   // ── Attack preview (tap-to-confirm) ──
   private attackPreviewPanel: AttackPreviewPanel;
-  private skillBar: SkillBar;
+  private undoButton: UndoButton;
   private attackPreviewTarget: { q: number; r: number; entityId: EntityId } | null = null;
 
   // ── Animation queue ──
@@ -314,8 +317,9 @@ export class DemoBattle {
     for (const id of [...this.playerIds, ...this.enemyIds]) {
       const pos = this.world.getComponent<{ type: "position"; q: number; r: number }>(id, "position")!;
       const teamComp = this.world.getComponent<TeamComponent>(id, "team")!;
+      const spriteRef = this.world.getComponent<SpriteRefComponent>(id, "spriteRef");
       const unitTeam = teamComp.team === "player" ? UnitTeam.Player : UnitTeam.Enemy;
-      this.unitRenderer.addUnit(id, pos.q, pos.r, unitTeam);
+      this.unitRenderer.addUnit(id, pos.q, pos.r, unitTeam, spriteRef?.atlasKey as SpriteCharType | undefined);
     }
 
     // UI
@@ -324,7 +328,7 @@ export class DemoBattle {
     this.turnOrderBar = new TurnOrderBar(this.uiManager.root);
     this.unitInfoPanel = new UnitInfoPanel(this.uiManager.root);
 
-    this.skillBar = new SkillBar(this.uiManager.root);
+    this.undoButton = new UndoButton(this.uiManager.root);
     this.enemyDetailPanel = new EnemyDetailPanel(this.uiManager.root);
     this.attackPreviewPanel = new AttackPreviewPanel(this.uiManager.root);
 
@@ -383,6 +387,7 @@ export class DemoBattle {
           headArmor: unit.headArmor,
         },
         unit.aiType,
+        unit.sprite,
       );
       if (unit.team === "player") {
         this.playerIds.push(id);
@@ -500,15 +505,17 @@ export class DemoBattle {
       this.combat.handleAction(action);
     };
 
-    this.skillBar.onSkillSelect = (skill) => {
+    // Skill button -> activate skill targeting
+    this.actionBar.onSkillSelect = (skill) => {
       if (this.animPlaying) return;
       this.cancelAttackPreview();
-      this.combat.selectSkill(skill);
-      this.skillBar.select(skill.id);
-      // Refresh overlays since range may change
-      if (this.combat.selectedUnit && this.combat.phase === "playerTurn") {
-        this.refreshOverlays();
-      }
+      this.combat.activateSkill(skill);
+    };
+
+    // Undo button
+    this.undoButton.onUndo = () => {
+      if (this.animPlaying) return;
+      this.combat.handleUndo();
     };
 
     // ── Combat callbacks ──
@@ -679,7 +686,8 @@ export class DemoBattle {
     this.combat.onPhaseChange = (phase) => {
       if (phase === "enemyTurn") {
         this.actionBar.setVisible(false);
-        this.skillBar.hide();
+        this.actionBar.clearSkills();
+        this.undoButton.setVisible(false);
         this.unitInfoPanel.hide();
         this.overlayRenderer.clearOverlays();
         this.hideEnemyDetail();
@@ -692,7 +700,8 @@ export class DemoBattle {
         this.refreshUI();
       } else if (phase === "battleEnd") {
         this.actionBar.setVisible(false);
-        this.skillBar.hide();
+        this.actionBar.clearSkills();
+        this.undoButton.setVisible(false);
         this.unitInfoPanel.hide();
         this.overlayRenderer.clearOverlays();
         this.hideEnemyDetail();
@@ -707,7 +716,7 @@ export class DemoBattle {
       this.panCameraToUnit(entityId);
     };
 
-    // Player state changed → update overlays + skill bar
+    // Player state changed → update overlays + action bar skills
     this.combat.onPlayerStateChange = (state) => {
       this.overlayRenderer.clearOverlays();
       this.hideEnemyDetail();
@@ -715,9 +724,11 @@ export class DemoBattle {
 
       if (state === "awaitingInput") {
         this.showMoveAndAttackOverlays();
-        this.populateSkillBar();
-      } else {
-        this.skillBar.hide();
+        this.populateActionBarSkills();
+        this.actionBar.setSkillActive(null);
+      } else if (state === "skillTargeting") {
+        this.showSkillTargetOverlays();
+        this.actionBar.setSkillActive(this.combat.pendingSkill?.id ?? null);
       }
 
       this.refreshUI();
@@ -878,7 +889,7 @@ export class DemoBattle {
     const team = this.world.getComponent<TeamComponent>(entityId, "team");
     if (!team) return;
 
-    const skill = this.combat.getActiveSkill();
+    const skill = this.combat.pendingSkill ?? this.combat.getActiveSkill();
     const preview = this.combat.damageCalc.previewSkillAttack(
       this.world, this.combat.selectedUnit, entityId, skill,
     );
@@ -995,18 +1006,9 @@ export class DemoBattle {
     );
   }
 
-  private populateSkillBar(): void {
+  private populateActionBarSkills(): void {
     const skills = this.combat.getAvailableSkills();
-    if (skills.length <= 1) {
-      // Only basic attack — no need for skill bar
-      this.skillBar.hide();
-      return;
-    }
-    this.skillBar.setSkills(skills, this.combat.apRemaining);
-    this.skillBar.setVisible(true);
-    // Select current active skill
-    const active = this.combat.getActiveSkill();
-    this.skillBar.select(active.id);
+    this.actionBar.setSkills(skills);
     this.updateSkillAffordability();
   }
 
@@ -1017,18 +1019,30 @@ export class DemoBattle {
     const equip = this.world.getComponent<EquipmentComponent>(this.combat.selectedUnit, "equipment");
     const weapon = equip?.mainHand ? getWeapon(equip.mainHand) : UNARMED;
     for (const skill of skills) {
+      if (skill.isBasicAttack) continue;
       const apCost = skillAPCost(skill, weapon);
       if (this.combat.apRemaining >= apCost) {
         affordable.add(skill.id);
       }
     }
-    this.skillBar.updateAffordability(affordable);
+    this.actionBar.updateSkillAffordability(affordable);
+  }
+
+  private showSkillTargetOverlays(): void {
+    const targetHexes = this.combat.getSkillTargetHexes();
+    if (targetHexes.size > 0) {
+      this.overlayRenderer.showAttackRange(targetHexes, this.layout);
+    }
   }
 
   private refreshOverlays(): void {
     this.overlayRenderer.clearOverlays();
-    if (this.combat.phase === "playerTurn" && this.combat.playerTurnState === "awaitingInput") {
-      this.showMoveAndAttackOverlays();
+    if (this.combat.phase === "playerTurn") {
+      if (this.combat.playerTurnState === "awaitingInput") {
+        this.showMoveAndAttackOverlays();
+      } else if (this.combat.playerTurnState === "skillTargeting") {
+        this.showSkillTargetOverlays();
+      }
     }
   }
 
@@ -1050,12 +1064,17 @@ export class DemoBattle {
     this.actionBar.setVisible(showActionBar);
 
     if (showActionBar) {
-      this.actionBar.setEnabled("undo", this.combat.canUndo);
-      this.actionBar.setEnabled("wait", this.combat.playerTurnState === "awaitingInput");
+      const isInputState = this.combat.playerTurnState === "awaitingInput" || this.combat.playerTurnState === "skillTargeting";
+      this.actionBar.setEnabled("wait", isInputState);
       this.actionBar.setEnabled("endTurn", true);
-      // Recover requires full AP (9) — only available at start of turn with no actions taken
-      this.actionBar.setEnabled("recover", this.combat.apRemaining >= 9);
     }
+
+    // Undo button: visible only when canUndo and in player turn
+    this.undoButton.setVisible(
+      this.combat.phase === "playerTurn" &&
+      this.combat.canUndo &&
+      this.combat.playerTurnState !== "animating",
+    );
 
     // Update unit info panel with current AP
     if (this.combat.selectedUnit && this.combat.phase === "playerTurn") {

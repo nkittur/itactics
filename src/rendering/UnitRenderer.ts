@@ -93,14 +93,14 @@ export class UnitRenderer {
     return (tile?.elevation ?? 0) * LAYER_HEIGHT;
   }
 
-  addUnit(entityId: string, q: number, r: number, team: UnitTeam): void {
+  addUnit(entityId: string, q: number, r: number, team: UnitTeam, charType?: SpriteCharType): void {
     if (this.units.has(entityId)) {
       this.removeUnit(entityId);
     }
 
     const { x, y } = hexToPixel(this.layout, q, r);
     const elevY = this.getElevationY(q, r);
-    const charType: SpriteCharType = team === UnitTeam.Enemy ? "orc" : "soldier";
+    const resolvedCharType: SpriteCharType = charType ?? (team === UnitTeam.Enemy ? "orc" : "soldier");
 
     // Create a plane mesh for the sprite
     const spriteSize = this.layout.size * 12;
@@ -126,8 +126,8 @@ export class UnitRenderer {
     mat.transparencyMode = 2; // MATERIAL_ALPHABLEND
 
     // Initial idle texture
-    const spriteState = this.spriteAnimator.createState(charType);
-    const texture = this.spriteAnimator.cloneTexture(charType, "idle");
+    const spriteState = this.spriteAnimator.createState(resolvedCharType);
+    const texture = this.spriteAnimator.cloneTexture(resolvedCharType, "idle");
     mat.diffuseTexture = texture;
 
     mesh.material = mat;
@@ -327,9 +327,8 @@ export class UnitRenderer {
     const entry = this.units.get(entityId);
     if (!entry) { onComplete(); return; }
 
-    // Attack animation: 6 frames × 120ms = 720ms at base speed.
     // Scale frame time so the full animation fits within `duration`.
-    const attackFrames = this.spriteAnimator.getFrameCount("attack");
+    const attackFrames = this.spriteAnimator.getFrameCount(entry.spriteState.charType, "attack");
     const baseAnimMs = attackFrames * this.spriteAnimator.frameMs;
     const animDuration = Math.max(duration, baseAnimMs);
 

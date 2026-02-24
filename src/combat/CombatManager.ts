@@ -22,7 +22,7 @@ import { hexDistance, hexNeighbors } from "@hex/HexMath";
 import { findPath, reachableHexes } from "@hex/HexPathfinding";
 
 export type CombatPhase = "deployment" | "playerTurn" | "enemyTurn" | "battleEnd";
-export type PlayerTurnState = "awaitingInput" | "animating";
+export type PlayerTurnState = "awaitingInput" | "skillTargeting" | "animating";
 
 interface UndoInfo {
   entityId: EntityId;
@@ -46,6 +46,9 @@ export class CombatManager {
 
   /** Currently selected skill for attack. Null = basic attack. */
   selectedSkill: SkillDef | null = null;
+
+  /** Skill pending target selection (activation mode). */
+  pendingSkill: SkillDef | null = null;
 
   /** Movement range cache for the currently selected unit. */
   moveRange: Map<string, number> | null = null;
@@ -156,15 +159,76 @@ export class CombatManager {
     return this.selectedSkill ?? BASIC_ATTACK;
   }
 
+  /** Enter skill targeting mode — shows valid targets for the skill. */
+  activateSkill(skill: SkillDef): void {
+    if (this.phase !== "playerTurn") return;
+    if (!this.selectedUnit) return;
+    this.pendingSkill = skill;
+    this.setPlayerState("skillTargeting");
+  }
+
+  /** Cancel skill targeting, return to normal input. */
+  cancelSkill(): void {
+    this.pendingSkill = null;
+    this.setPlayerState("awaitingInput");
+  }
+
+  /** Get hexes that are valid targets for the pending skill. */
+  getSkillTargetHexes(): Set<string> {
+    const hexes = new Set<string>();
+    if (!this.selectedUnit || !this.pendingSkill) return hexes;
+
+    const pos = this.world.getComponent<PositionComponent>(this.selectedUnit, "position");
+    if (!pos) return hexes;
+
+    const skill = this.pendingSkill;
+    const weapon = this.getWeaponDef(this.selectedUnit);
+    const range = skillRange(skill, weapon);
+    const apCost = skillAPCost(skill, weapon);
+    if (!this.apManager.canAfford(apCost)) return hexes;
+
+    if (skill.targetType === "self") {
+      hexes.add(`${pos.q},${pos.r}`);
+    } else if (skill.targetType === "enemy") {
+      const isRanged = skill.rangeType === "ranged";
+      if (isRanged) {
+        const enemies = this.getEnemyUnits();
+        for (const eid of enemies) {
+          const ep = this.world.getComponent<PositionComponent>(eid, "position");
+          if (!ep) continue;
+          const dist = hexDistance(pos, ep);
+          if (dist <= range && hasLineOfSight(this.grid, pos, ep)) {
+            hexes.add(`${ep.q},${ep.r}`);
+          }
+        }
+      } else {
+        for (const n of hexNeighbors(pos.q, pos.r)) {
+          const tile = this.grid.get(n.q, n.r);
+          if (!tile?.occupant || tile.occupant === this.selectedUnit) continue;
+          if (!this.isEnemyEntity(tile.occupant)) continue;
+          const health = this.world.getComponent<HealthComponent>(tile.occupant, "health");
+          if (!health || health.current <= 0) continue;
+          if (hexDistance(pos, { q: n.q, r: n.r }) <= range) {
+            hexes.add(`${n.q},${n.r}`);
+          }
+        }
+      }
+    }
+
+    return hexes;
+  }
+
   // ── Input handling ──
 
   /** Check if tapping (q,r) would be a valid attack. Does NOT execute. */
   canAttackHex(q: number, r: number): boolean {
     if (this.phase !== "playerTurn") return false;
-    if (this.playerTurnState !== "awaitingInput") return false;
+    if (this.playerTurnState !== "awaitingInput" && this.playerTurnState !== "skillTargeting") return false;
     if (!this.selectedUnit) return false;
 
-    const skill = this.getActiveSkill();
+    const skill = this.playerTurnState === "skillTargeting" && this.pendingSkill
+      ? this.pendingSkill
+      : this.getActiveSkill();
     // Stance skills target self, not enemies
     if (skill.targetType === "self") return false;
 
@@ -195,7 +259,7 @@ export class CombatManager {
 
   handleHexTap(q: number, r: number): boolean {
     if (this.phase !== "playerTurn") return false;
-    if (this.playerTurnState !== "awaitingInput") return false;
+    if (this.playerTurnState !== "awaitingInput" && this.playerTurnState !== "skillTargeting") return false;
     if (!this.selectedUnit) return false;
 
     const tile = this.grid.get(q, r);
@@ -205,17 +269,34 @@ export class CombatManager {
     );
     if (!attackerPos) return false;
 
-    const skill = this.getActiveSkill();
+    // ── Skill targeting mode: execute pending skill on valid target, or cancel ──
+    if (this.playerTurnState === "skillTargeting" && this.pendingSkill) {
+      const skill = this.pendingSkill;
+      const targetHexes = this.getSkillTargetHexes();
+      const key = `${q},${r}`;
 
-    // Stance skill: activate on tap of own unit hex
-    if (skill.isStance && skill.targetType === "self") {
-      if (q === attackerPos.q && r === attackerPos.r) {
-        this.executeStance(this.selectedUnit, skill);
+      if (targetHexes.has(key)) {
+        // Valid target — execute the skill
+        this.selectedSkill = skill;
+        this.pendingSkill = null;
+
+        if (skill.isStance && skill.targetType === "self") {
+          this.executeStance(this.selectedUnit, skill);
+        } else if (skill.targetType === "enemy" && tile?.occupant) {
+          this.executeAttack(this.selectedUnit, tile.occupant);
+        }
         return true;
+      } else {
+        // Invalid target — cancel skill targeting
+        this.cancelSkill();
+        return false;
       }
     }
 
-    // Tap on enemy within skill range → attack
+    // ── Normal awaitingInput mode ──
+    const skill = this.getActiveSkill();
+
+    // Tap on enemy within basic attack range → attack
     if (
       skill.targetType === "enemy" &&
       tile?.occupant &&
@@ -234,8 +315,8 @@ export class CombatManager {
     }
 
     // Tap on reachable hex → move
-    const key = `${q},${r}`;
-    if (this.moveRange && this.moveRange.has(key) && !tile?.occupant) {
+    const moveKey = `${q},${r}`;
+    if (this.moveRange && this.moveRange.has(moveKey) && !tile?.occupant) {
       this.executeMove(this.selectedUnit, q, r);
       return true;
     }
@@ -244,14 +325,15 @@ export class CombatManager {
   }
 
   /** Handle action bar button press. */
-  handleAction(action: "undo" | "wait" | "endTurn" | "recover"): void {
+  handleAction(action: "wait" | "endTurn"): void {
     if (this.phase !== "playerTurn") return;
 
-    switch (action) {
-      case "undo":
-        this.undoMove();
-        break;
+    // Cancel skill targeting if active
+    if (this.playerTurnState === "skillTargeting") {
+      this.pendingSkill = null;
+    }
 
+    switch (action) {
       case "wait":
         this.turnOrder.wait();
         this.moveRange = null;
@@ -263,11 +345,13 @@ export class CombatManager {
         this.undoInfo = null;
         this.endPlayerUnitTurn();
         break;
-
-      case "recover":
-        this.executeRecover();
-        break;
     }
+  }
+
+  /** Handle undo button press (separate from action bar). */
+  handleUndo(): void {
+    if (this.phase !== "playerTurn") return;
+    this.undoMove();
   }
 
   // ── Private action methods ──
@@ -393,6 +477,7 @@ export class CombatManager {
 
     this.undoInfo = null;
     this.selectedSkill = null;
+    this.pendingSkill = null;
 
     this.onUnitTeleported?.(entityId, oldQ, oldR);
 
@@ -484,22 +569,6 @@ export class CombatManager {
     this.recalculateAndContinue(entityId);
   }
 
-  /** Recover action: spend full turn, recover 50% max fatigue. */
-  private executeRecover(): void {
-    if (!this.selectedUnit) return;
-
-    const fatigue = this.world.getComponent<FatigueComponent>(this.selectedUnit, "fatigue");
-    if (fatigue) {
-      const recovery = Math.floor(fatigue.max * 0.5);
-      fatigue.current = Math.max(0, fatigue.current - recovery);
-    }
-
-    // Recover uses all AP
-    this.apManager.spend(this.apManager.remaining);
-    this.undoInfo = null;
-    this.endPlayerUnitTurn();
-  }
-
   /**
    * After an action completes, recalculate move range and decide whether
    * to continue the turn or auto-end it.
@@ -576,8 +645,21 @@ export class CombatManager {
 
   /** End the current player unit's turn and advance. */
   private endPlayerUnitTurn(): void {
+    // Convert remaining AP to stamina recovery (1 AP → 2 fatigue recovered)
+    if (this.selectedUnit) {
+      const leftoverAP = this.apManager.remaining;
+      if (leftoverAP > 0) {
+        const fatigue = this.world.getComponent<FatigueComponent>(this.selectedUnit, "fatigue");
+        if (fatigue) {
+          const recovery = leftoverAP * 2;
+          fatigue.current = Math.max(0, fatigue.current - recovery);
+        }
+      }
+    }
+
     this.selectedUnit = null;
     this.selectedSkill = null;
+    this.pendingSkill = null;
     this.moveRange = null;
     this.undoInfo = null;
     this.playerTurnState = "awaitingInput";

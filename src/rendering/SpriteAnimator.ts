@@ -7,17 +7,68 @@ import { Texture } from "@babylonjs/core/Materials/Textures/texture";
  */
 export type SpriteAnim = "idle" | "walk" | "attack" | "hurt" | "death";
 
-/** Frame counts for each animation strip. */
-const FRAME_COUNTS: Record<SpriteAnim, number> = {
-  idle: 6,
-  walk: 8,
-  attack: 6,
-  hurt: 4,
-  death: 4,
-};
-
 /** Character type determines which sprite folder to load from. */
-export type SpriteCharType = "soldier" | "orc";
+export type SpriteCharType =
+  | "archer"
+  | "armored-axeman"
+  | "armored-orc"
+  | "armored-skeleton"
+  | "elite-orc"
+  | "greatsword-skeleton"
+  | "knight"
+  | "knight-templar"
+  | "lancer"
+  | "orc"
+  | "orc-rider"
+  | "priest"
+  | "skeleton"
+  | "skeleton-archer"
+  | "slime"
+  | "soldier"
+  | "swordsman"
+  | "werebear"
+  | "werewolf"
+  | "wizard";
+
+/** All character types for iteration. */
+export const ALL_CHAR_TYPES: SpriteCharType[] = [
+  "archer", "armored-axeman", "armored-orc", "armored-skeleton",
+  "elite-orc", "greatsword-skeleton", "knight", "knight-templar",
+  "lancer", "orc", "orc-rider", "priest", "skeleton", "skeleton-archer",
+  "slime", "soldier", "swordsman", "werebear", "werewolf", "wizard",
+];
+
+/** Per-character frame counts for each animation. */
+interface AnimFrameCounts {
+  idle: number;
+  walk: number;
+  attack: number;
+  hurt: number;
+  death: number;
+}
+
+const CHAR_FRAMES: Record<SpriteCharType, AnimFrameCounts> = {
+  "archer":              { idle: 6, walk: 8, attack: 9, hurt: 4, death: 4 },
+  "armored-axeman":      { idle: 6, walk: 8, attack: 9, hurt: 4, death: 4 },
+  "armored-orc":         { idle: 6, walk: 8, attack: 7, hurt: 4, death: 4 },
+  "armored-skeleton":    { idle: 6, walk: 8, attack: 8, hurt: 4, death: 4 },
+  "elite-orc":           { idle: 6, walk: 8, attack: 7, hurt: 4, death: 4 },
+  "greatsword-skeleton": { idle: 6, walk: 9, attack: 9, hurt: 4, death: 4 },
+  "knight":              { idle: 6, walk: 8, attack: 7, hurt: 4, death: 4 },
+  "knight-templar":      { idle: 6, walk: 8, attack: 7, hurt: 4, death: 4 },
+  "lancer":              { idle: 6, walk: 8, attack: 6, hurt: 4, death: 4 },
+  "orc":                 { idle: 6, walk: 8, attack: 6, hurt: 4, death: 4 },
+  "orc-rider":           { idle: 6, walk: 8, attack: 8, hurt: 4, death: 4 },
+  "priest":              { idle: 6, walk: 8, attack: 9, hurt: 4, death: 4 },
+  "skeleton":            { idle: 6, walk: 8, attack: 6, hurt: 4, death: 4 },
+  "skeleton-archer":     { idle: 6, walk: 8, attack: 9, hurt: 4, death: 4 },
+  "slime":               { idle: 6, walk: 6, attack: 6, hurt: 4, death: 4 },
+  "soldier":             { idle: 6, walk: 8, attack: 6, hurt: 4, death: 4 },
+  "swordsman":           { idle: 6, walk: 8, attack: 7, hurt: 5, death: 4 },
+  "werebear":            { idle: 6, walk: 8, attack: 9, hurt: 4, death: 4 },
+  "werewolf":            { idle: 6, walk: 8, attack: 9, hurt: 4, death: 4 },
+  "wizard":              { idle: 6, walk: 8, attack: 6, hurt: 4, death: 4 },
+};
 
 /** Maps animation names to filenames. */
 const ANIM_FILES: Record<SpriteAnim, string> = {
@@ -41,7 +92,7 @@ export interface SpriteState {
 /**
  * Manages sprite strip textures and frame animation state.
  *
- * Pre-loads template textures for all animations of soldier and orc.
+ * Pre-loads template textures for all animations of all character types.
  * Provides cloned textures per-unit (independent UV offsets) and
  * manages per-unit animation state (frame counter, looping, callbacks).
  */
@@ -62,14 +113,15 @@ export class SpriteAnimator {
   }
 
   private preloadTemplates(): void {
-    for (const charType of ["soldier", "orc"] as SpriteCharType[]) {
+    for (const charType of ALL_CHAR_TYPES) {
+      const frames = CHAR_FRAMES[charType];
       for (const anim of Object.keys(ANIM_FILES) as SpriteAnim[]) {
         const url = `sprites/${charType}/${ANIM_FILES[anim]}`;
         const tex = new Texture(url, this.scene, false, false, Texture.NEAREST_SAMPLINGMODE);
         tex.hasAlpha = true;
         tex.wrapU = Texture.CLAMP_ADDRESSMODE;
         tex.wrapV = Texture.CLAMP_ADDRESSMODE;
-        tex.uScale = 1 / FRAME_COUNTS[anim];
+        tex.uScale = 1 / frames[anim];
         tex.uOffset = 0;
         this.templates.set(this.templateKey(charType, anim), tex);
       }
@@ -81,14 +133,15 @@ export class SpriteAnimator {
     const key = this.templateKey(charType, anim);
     const template = this.templates.get(key)!;
     const clone = template.clone();
-    clone.uScale = 1 / FRAME_COUNTS[anim];
+    const frameCount = CHAR_FRAMES[charType][anim];
+    clone.uScale = 1 / frameCount;
     clone.uOffset = 0;
     return clone;
   }
 
-  /** Get the frame count for an animation. */
-  getFrameCount(anim: SpriteAnim): number {
-    return FRAME_COUNTS[anim];
+  /** Get the frame count for a character's animation. */
+  getFrameCount(charType: SpriteCharType, anim: SpriteAnim): number {
+    return CHAR_FRAMES[charType][anim];
   }
 
   /** Create a new sprite state for a unit. */
@@ -127,7 +180,7 @@ export class SpriteAnimator {
    */
   tick(state: SpriteState, texture: Texture, deltaMs: number): void {
     state.frameTimer += deltaMs;
-    const frameCount = FRAME_COUNTS[state.currentAnim];
+    const frameCount = CHAR_FRAMES[state.charType][state.currentAnim];
 
     if (state.frameTimer >= this.frameMs) {
       state.frameTimer -= this.frameMs;
