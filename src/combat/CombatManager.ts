@@ -609,9 +609,9 @@ export class CombatManager {
     this.calculateMoveRange(entityId);
 
     const canMove = this.moveRange && this.moveRange.size > 1; // >1 because start hex is included
-    const canAttack = this.canAttackAnyTarget(entityId);
+    const canAct = this.canUseAnySkill(entityId);
 
-    if (!canMove && !canAttack) {
+    if (!canMove && !canAct) {
       // No valid actions left — auto-end turn
       this.undoInfo = null;
       this.endPlayerUnitTurn();
@@ -620,23 +620,55 @@ export class CombatManager {
     }
   }
 
-  /** Check if the unit can attack any enemy with current AP and active skill. */
-  private canAttackAnyTarget(entityId: EntityId): boolean {
+  /**
+   * Check if the unit can use any skill — attacks with enemies in range,
+   * or self-targeted skills like stances. Checks ALL available skills,
+   * not just the currently selected one.
+   */
+  private canUseAnySkill(entityId: EntityId): boolean {
     const pos = this.world.getComponent<PositionComponent>(entityId, "position");
     if (!pos) return false;
 
-    const skill = this.getActiveSkill();
-    if (skill.targetType === "self") return false;
-
+    const equip = this.world.getComponent<EquipmentComponent>(entityId, "equipment");
+    const weaponId = equip?.mainHand ?? "unarmed";
     const weapon = this.getWeaponDef(entityId);
-    const range = skillRange(skill, weapon);
-    const apCost = this.getEffectiveAPCost(entityId, skill, weapon);
-    if (!this.apManager.canAfford(apCost)) return false;
+    const skills = getSkillsForWeapon(weaponId);
 
+    for (const skill of skills) {
+      if (skill.isBasicAttack) continue; // basic attack checked separately below
+      const apCost = this.getEffectiveAPCost(entityId, skill, weapon);
+      if (!this.apManager.canAfford(apCost)) continue;
+
+      // Self-targeted skills (stances) are always usable if affordable
+      if (skill.targetType === "self") return true;
+
+      // Enemy-targeted skills: check if any enemy is in range
+      if (this.canSkillReachEnemy(entityId, pos, skill, weapon)) return true;
+    }
+
+    // Check basic attack separately
+    const basicSkill = this.getActiveSkill();
+    if (basicSkill.targetType === "enemy") {
+      const apCost = this.getEffectiveAPCost(entityId, basicSkill, weapon);
+      if (this.apManager.canAfford(apCost)) {
+        if (this.canSkillReachEnemy(entityId, pos, basicSkill, weapon)) return true;
+      }
+    }
+
+    return false;
+  }
+
+  /** Check if a specific skill can reach any enemy from the given position. */
+  private canSkillReachEnemy(
+    entityId: EntityId,
+    pos: PositionComponent,
+    skill: SkillDef,
+    weapon: WeaponDef,
+  ): boolean {
+    const range = skillRange(skill, weapon);
     const isRanged = skill.rangeType === "ranged";
 
     if (isRanged) {
-      // Ranged: scan all enemies for in-range + LoS
       const enemies = this.getEnemyUnits();
       for (const eid of enemies) {
         const ep = this.world.getComponent<PositionComponent>(eid, "position");
@@ -647,7 +679,6 @@ export class CombatManager {
         }
       }
     } else {
-      // Melee: check neighbors
       for (const n of hexNeighbors(pos.q, pos.r)) {
         const tile = this.grid.get(n.q, n.r);
         if (!tile?.occupant || tile.occupant === entityId) continue;
