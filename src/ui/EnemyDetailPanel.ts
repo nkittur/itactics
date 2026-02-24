@@ -2,6 +2,10 @@ export interface EnemyDetailData {
   name: string;
   currentHp: number;
   maxHp: number;
+  /** Character class name (e.g. "Fighter"), if any. */
+  className?: string;
+  /** Class passive descriptions (e.g. "Dagger AP -1"). */
+  classPassives?: string[];
   /** Weapon name + damage range. */
   weaponName: string;
   weaponDamage: string;
@@ -59,9 +63,19 @@ export class EnemyDetailPanel {
     this.container.style.display = "flex";
     this.content.innerHTML = "";
 
-    // Header: name
-    const header = el("div", "edp-header", data.name);
+    // Header: name + class
+    const header = el("div", "edp-header",
+      data.className ? `${data.name}  (${data.className})` : data.name);
     this.content.appendChild(header);
+
+    // Class passives
+    if (data.classPassives && data.classPassives.length > 0) {
+      const classRow = el("div", "edp-section");
+      for (const p of data.classPassives) {
+        classRow.appendChild(el("div", "edp-passive", p));
+      }
+      this.content.appendChild(classRow);
+    }
 
     // HP bar
     const hpRow = el("div", "edp-row");

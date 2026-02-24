@@ -881,10 +881,35 @@ export class DemoBattle {
     // Status effects
     const statusEffects = this.combat.statusEffects.getActiveEffects(this.world, entityId);
 
+    // Class info
+    const cc = this.world.getComponent<CharacterClassComponent>(entityId, "characterClass");
+    const unitClassDef = cc ? getClassDef(cc.classId) : undefined;
+    const classPassives: string[] = [];
+    if (unitClassDef) {
+      for (const p of unitClassDef.passives) {
+        switch (p.type) {
+          case "armor_mp_reduction":
+            classPassives.push(`Armor MP penalty -${p.value}`);
+            break;
+          case "ap_discount":
+            classPassives.push(`${(p.qualifier ?? "").charAt(0).toUpperCase() + (p.qualifier ?? "").slice(1)} AP -${p.value}`);
+            break;
+          case "damage_bonus":
+            classPassives.push(`${p.qualifier ?? ""} damage +${p.value}%`);
+            break;
+          case "hit_bonus":
+            classPassives.push(`${(p.qualifier ?? "").charAt(0).toUpperCase() + (p.qualifier ?? "").slice(1)} hit +${p.value}`);
+            break;
+        }
+      }
+    }
+
     const data: EnemyDetailData = {
       name: team.name,
       currentHp: health.current,
       maxHp: health.max,
+      className: unitClassDef?.name,
+      classPassives: classPassives.length > 0 ? classPassives : undefined,
       weaponName: weapon.name,
       weaponDamage: `${weapon.minDamage}-${weapon.maxDamage}`,
       shieldName: shield?.name,
