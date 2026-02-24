@@ -346,11 +346,7 @@ export class DemoBattle {
     // Bottom UI (action bar + info panel) ≈ 220px, top UI (turn order) ≈ 40px
     // Shift camera target down-screen so grid appears centered in usable area
     const center = hexToPixel(this.layout, Math.floor(scenario.gridWidth / 2), Math.floor(scenario.gridHeight / 2));
-    const canvasH = canvas.clientHeight || 700;
-    const bottomUI = 220;
-    const topUI = 40;
-    const uiOffset = ((bottomUI - topUI) / 2 / canvasH) * this.camera.orthoSize * 2 / TILT_SIN;
-    this.camera.centerOn(center.x, center.y - uiOffset);
+    this.camera.centerOn(center.x, center.y - this.uiPanOffset);
 
     // Handle resize
     window.addEventListener("resize", () => {
@@ -796,11 +792,20 @@ export class DemoBattle {
 
   // ── UI helpers ──
 
+  /** World-Z offset to shift camera target up-screen, compensating for bottom-heavy UI. */
+  private get uiPanOffset(): number {
+    const canvas = this.sceneManager.engine.getRenderingCanvas();
+    const canvasH = canvas?.clientHeight || 700;
+    const bottomUI = 220;
+    const topUI = 40;
+    return ((bottomUI - topUI) / 2 / canvasH) * this.camera.orthoSize * 2 / TILT_SIN;
+  }
+
   private panCameraToUnit(entityId: EntityId): void {
     const pos = this.world.getComponent<PositionComponent>(entityId, "position");
     if (!pos) return;
     const worldPos = hexToPixel(this.layout, pos.q, pos.r);
-    this.camera.panTo(worldPos.x, worldPos.y, this.panDuration());
+    this.camera.panTo(worldPos.x, worldPos.y - this.uiPanOffset, this.panDuration());
   }
 
   private showTextPopup(entityId: EntityId, text: string, color: string): void {
