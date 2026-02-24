@@ -408,16 +408,17 @@ export class UnitRenderer {
     });
   }
 
-  /** Play hurt animation on a unit (non-blocking). */
-  playHurt(entityId: string): void {
+  /** Play hurt animation on a unit. Calls onComplete after returning to idle. */
+  playHurt(entityId: string, onComplete?: () => void): void {
     const entry = this.units.get(entityId);
-    if (!entry) return;
+    if (!entry) { onComplete?.(); return; }
 
     this.setAnimation(entityId, "hurt", false, () => {
       // Return to idle after hurt plays
       if (this.units.has(entityId)) {
         this.setAnimation(entityId, "idle");
       }
+      onComplete?.();
     });
   }
 

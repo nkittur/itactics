@@ -588,10 +588,11 @@ export class DemoBattle {
                 done();
               });
             } else if (result.hit) {
-              // Play hurt animation (non-blocking)
-              this.unitRenderer.playHurt(defenderId);
-              this.refreshUI();
-              done();
+              // Play hurt animation, then continue
+              this.unitRenderer.playHurt(defenderId, () => {
+                this.refreshUI();
+                done();
+              });
             } else {
               this.refreshUI();
               done();
@@ -628,9 +629,10 @@ export class DemoBattle {
                 done();
               });
             } else if (result.hit) {
-              this.unitRenderer.playHurt(defenderId);
-              this.refreshUI();
-              done();
+              this.unitRenderer.playHurt(defenderId, () => {
+                this.refreshUI();
+                done();
+              });
             } else {
               this.refreshUI();
               done();
