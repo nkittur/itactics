@@ -87,7 +87,7 @@ export class UnitRenderer {
     const charType: SpriteCharType = team === UnitTeam.Enemy ? "orc" : "soldier";
 
     // Create a plane mesh for the sprite
-    const spriteSize = this.layout.size * 1.2;
+    const spriteSize = this.layout.size * 12;
     const mesh = MeshBuilder.CreatePlane(
       `unit_${entityId}`,
       { width: spriteSize, height: spriteSize },
