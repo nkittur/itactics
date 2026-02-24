@@ -701,11 +701,12 @@ export class DemoBattle {
       }
     };
 
-    // Turn advanced → select unit, pan camera
+    // Turn advanced → select unit, pan camera, populate skills
     this.combat.onTurnAdvance = (entityId: EntityId) => {
       this.unitRenderer.setSelected(entityId);
       this.showUnitInfo(entityId);
       this.panCameraToUnit(entityId);
+      this.populateSkillBar();
     };
 
     // Player state changed → update overlays
