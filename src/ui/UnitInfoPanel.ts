@@ -7,6 +7,8 @@ export class UnitInfoPanel {
   private fatigueFill: HTMLDivElement;
   private fatigueText: HTMLDivElement;
   private weaponText: HTMLDivElement;
+  private moraleText: HTMLDivElement;
+  private statusText: HTMLDivElement;
 
   constructor(root: HTMLDivElement) {
     this.container = document.createElement("div");
@@ -61,6 +63,19 @@ export class UnitInfoPanel {
     this.weaponText.style.color = "#ccaa88";
     this.weaponText.style.marginTop = "2px";
     this.container.appendChild(this.weaponText);
+
+    // Morale state
+    this.moraleText = document.createElement("div");
+    this.moraleText.style.fontSize = "10px";
+    this.moraleText.style.marginTop = "2px";
+    this.container.appendChild(this.moraleText);
+
+    // Status effects
+    this.statusText = document.createElement("div");
+    this.statusText.style.fontSize = "9px";
+    this.statusText.style.color = "#cc8844";
+    this.statusText.style.marginTop = "1px";
+    this.container.appendChild(this.statusText);
   }
 
   show(
@@ -70,6 +85,8 @@ export class UnitInfoPanel {
     ap?: number,
     fatigue?: { current: number; max: number },
     weaponName?: string,
+    moraleState?: string,
+    statusEffects?: string[],
   ): void {
     this.container.style.display = "block";
     this.nameText.textContent = name;
@@ -113,6 +130,29 @@ export class UnitInfoPanel {
       this.weaponText.style.display = "block";
     } else {
       this.weaponText.style.display = "none";
+    }
+
+    // Morale
+    if (moraleState && moraleState !== "steady") {
+      const moraleColors: Record<string, string> = {
+        confident: "#44cc44",
+        wavering: "#cccc44",
+        breaking: "#cc8844",
+        fleeing: "#cc4444",
+      };
+      this.moraleText.textContent = moraleState.charAt(0).toUpperCase() + moraleState.slice(1);
+      this.moraleText.style.color = moraleColors[moraleState] ?? "#999999";
+      this.moraleText.style.display = "block";
+    } else {
+      this.moraleText.style.display = "none";
+    }
+
+    // Status effects
+    if (statusEffects && statusEffects.length > 0) {
+      this.statusText.textContent = statusEffects.join(", ");
+      this.statusText.style.display = "block";
+    } else {
+      this.statusText.style.display = "none";
     }
   }
 

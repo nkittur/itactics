@@ -9,6 +9,8 @@ import { TurnOrder } from "./TurnOrder";
 import { DamageCalculator, type AttackResult } from "./DamageCalculator";
 import { ActionPointManager, tileAPCost, pathAPCost, pathFatigueCost, MAX_AP } from "./ActionPointManager";
 import { getZoCAttacksForMove } from "./ZoneOfControl";
+import { StatusEffectManager, type BleedTickResult } from "./StatusEffectManager";
+import { MoraleManager, type MoraleCheckResult } from "./MoraleManager";
 import { getWeapon, UNARMED } from "@data/WeaponData";
 import { decideAIAction } from "./SimpleAI";
 import { RNG } from "@utils/RNG";
@@ -31,6 +33,8 @@ interface UndoInfo {
 export class CombatManager {
   turnOrder: TurnOrder;
   damageCalc: DamageCalculator;
+  statusEffects: StatusEffectManager;
+  morale: MoraleManager;
   phase: CombatPhase = "playerTurn";
   playerTurnState: PlayerTurnState = "awaitingInput";
   selectedUnit: EntityId | null = null;
@@ -69,6 +73,10 @@ export class CombatManager {
     attackerId: EntityId,
     defenderId: EntityId,
   ) => void;
+  onBleedTick?: (result: BleedTickResult) => void;
+  onMoraleChange?: (result: MoraleCheckResult) => void;
+  onStatusApplied?: (entityId: EntityId, effectId: string) => void;
+  onTurnSkipped?: (entityId: EntityId, reason: string) => void;
 
   constructor(
     private world: World,
@@ -77,7 +85,10 @@ export class CombatManager {
   ) {
     const rng = new RNG(seed ?? Date.now());
     this.turnOrder = new TurnOrder();
+    this.statusEffects = new StatusEffectManager(rng);
+    this.morale = new MoraleManager(rng);
     this.damageCalc = new DamageCalculator(rng, grid);
+    this.damageCalc.setStatusEffectManager(this.statusEffects);
   }
 
   /** Start combat — calculate initial turn order, begin first turn. */
@@ -321,8 +332,25 @@ export class CombatManager {
     const result = this.damageCalc.resolveMelee(this.world, attackerId, defenderId);
     this.onAttackResult?.(result, attackerId, defenderId);
 
+    // Notify about applied status effects
+    for (const eff of result.appliedEffects) {
+      this.onStatusApplied?.(defenderId, eff);
+    }
+
     if (result.targetKilled) {
       this.handleDeath(defenderId);
+      // Morale: ally death check + enemy kill boost
+      this.triggerAllyMoraleChecks(defenderId);
+      this.triggerEnemyKillBoost(attackerId);
+    } else if (result.hit) {
+      // Morale: heavy damage check
+      const moraleResult = this.morale.onHeavyDamage(this.world, defenderId, result.hpDamage);
+      if (moraleResult) {
+        this.onMoraleChange?.(moraleResult);
+        if (moraleResult.newState === "fleeing") {
+          this.statusEffects.apply(this.world, defenderId, "fleeing");
+        }
+      }
     }
 
     // Continuation: check battle end, then return to awaitingInput
@@ -428,21 +456,64 @@ export class CombatManager {
     const entry = this.turnOrder.current();
     if (!entry) return;
 
+    const entityId = entry.entityId;
+
     // Apply fatigue recovery at turn start
-    this.applyFatigueRecovery(entry.entityId);
+    this.applyFatigueRecovery(entityId);
 
-    this.onTurnAdvance?.(entry.entityId);
+    // Passive morale recovery
+    this.morale.passiveRecovery(this.world, entityId);
 
-    const isEnemy = this.isEnemyEntity(entry.entityId);
+    // Tick status effects (bleed damage, duration countdown)
+    const bleedResult = this.statusEffects.tickTurnStart(this.world, entityId);
+    if (bleedResult) {
+      this.onBleedTick?.(bleedResult);
+      if (bleedResult.killed) {
+        this.handleDeath(entityId);
+        this.pendingContinuation = () => {
+          if (!this.checkBattleEnd()) {
+            // Trigger ally morale checks for bleed death
+            this.triggerAllyMoraleChecks(entityId);
+            const newRound = this.turnOrder.advance();
+            if (newRound) this.turnOrder.calculateOrder(this.world);
+            this.beginCurrentTurn();
+          }
+        };
+        this.onActionComplete?.();
+        return;
+      }
+    }
+
+    this.onTurnAdvance?.(entityId);
+
+    // Stunned units skip their turn
+    if (this.statusEffects.hasEffect(this.world, entityId, "stun")) {
+      this.onTurnSkipped?.(entityId, "Stunned");
+      this.pendingContinuation = () => {
+        const newRound = this.turnOrder.advance();
+        if (newRound) this.turnOrder.calculateOrder(this.world);
+        this.beginCurrentTurn();
+      };
+      this.onActionComplete?.();
+      return;
+    }
+
+    const isEnemy = this.isEnemyEntity(entityId);
+
+    // Fleeing units (both player and enemy) run away automatically
+    if (this.statusEffects.hasEffect(this.world, entityId, "fleeing")) {
+      this.runFleeingTurn(entityId);
+      return;
+    }
 
     if (isEnemy) {
       this.setPhase("enemyTurn");
       this.runEnemyTurn();
     } else {
       this.setPhase("playerTurn");
-      this.selectedUnit = entry.entityId;
+      this.selectedUnit = entityId;
       this.apManager.resetForTurn();
-      this.calculateMoveRange(entry.entityId);
+      this.calculateMoveRange(entityId);
       this.setPlayerState("awaitingInput");
     }
   }
@@ -537,8 +608,21 @@ export class CombatManager {
 
             const result = this.damageCalc.resolveMelee(this.world, entityId, adjacentTarget);
             this.onAttackResult?.(result, entityId, adjacentTarget);
+            for (const eff of result.appliedEffects) {
+              this.onStatusApplied?.(adjacentTarget, eff);
+            }
             if (result.targetKilled) {
               this.handleDeath(adjacentTarget);
+              this.triggerAllyMoraleChecks(adjacentTarget);
+              this.triggerEnemyKillBoost(entityId);
+            } else if (result.hit) {
+              const mr = this.morale.onHeavyDamage(this.world, adjacentTarget, result.hpDamage);
+              if (mr) {
+                this.onMoraleChange?.(mr);
+                if (mr.newState === "fleeing") {
+                  this.statusEffects.apply(this.world, adjacentTarget, "fleeing");
+                }
+              }
             }
           }
         }
@@ -551,8 +635,21 @@ export class CombatManager {
 
         const result = this.damageCalc.resolveMelee(this.world, entityId, action.targetId);
         this.onAttackResult?.(result, entityId, action.targetId);
+        for (const eff of result.appliedEffects) {
+          this.onStatusApplied?.(action.targetId, eff);
+        }
         if (result.targetKilled) {
           this.handleDeath(action.targetId);
+          this.triggerAllyMoraleChecks(action.targetId);
+          this.triggerEnemyKillBoost(entityId);
+        } else if (result.hit) {
+          const mr = this.morale.onHeavyDamage(this.world, action.targetId, result.hpDamage);
+          if (mr) {
+            this.onMoraleChange?.(mr);
+            if (mr.newState === "fleeing") {
+              this.statusEffects.apply(this.world, action.targetId, "fleeing");
+            }
+          }
         }
         break;
       }
@@ -571,6 +668,93 @@ export class CombatManager {
       }
     };
 
+    this.onActionComplete?.();
+  }
+
+  // ── Morale + Status helpers ──
+
+  /** Trigger morale checks for allies of a dead entity. */
+  private triggerAllyMoraleChecks(deadEntityId: EntityId): void {
+    const wasEnemy = this.isEnemyEntity(deadEntityId);
+    const allies = wasEnemy ? this.getEnemyUnits() : this.getPlayerUnits();
+    const results = this.morale.onAllyDeath(this.world, deadEntityId, allies);
+    for (const r of results) {
+      this.onMoraleChange?.(r);
+      if (r.newState === "fleeing") {
+        this.statusEffects.apply(this.world, r.entityId, "fleeing");
+      }
+    }
+  }
+
+  /** Boost morale for the attacker's team when an enemy is killed. */
+  private triggerEnemyKillBoost(killerId: EntityId): void {
+    const killerIsEnemy = this.isEnemyEntity(killerId);
+    const allies = killerIsEnemy ? this.getEnemyUnits() : this.getPlayerUnits();
+    this.morale.onEnemyKill(this.world, allies);
+  }
+
+  /** Run a fleeing unit's turn — move away from enemies. */
+  private runFleeingTurn(entityId: EntityId): void {
+    const isEnemy = this.isEnemyEntity(entityId);
+    this.setPhase(isEnemy ? "enemyTurn" : "playerTurn");
+    this.onTurnSkipped?.(entityId, "Fleeing");
+
+    const pos = this.world.getComponent<PositionComponent>(entityId, "position");
+    if (pos) {
+      // Find hex farthest from nearest enemy
+      const enemies = isEnemy ? this.getPlayerUnits() : this.getEnemyUnits();
+      const reachable = reachableHexes(
+        this.grid, { q: pos.q, r: pos.r }, 4, tileAPCost,
+      );
+
+      let bestHex: { q: number; r: number } | null = null;
+      let bestDist = -1;
+
+      for (const [key] of reachable) {
+        const [hq, hr] = key.split(",").map(Number);
+        if (hq === undefined || hr === undefined) continue;
+        const tile = this.grid.get(hq, hr);
+        if (tile?.occupant && tile.occupant !== entityId) continue;
+
+        let minEnemyDist = Infinity;
+        for (const eid of enemies) {
+          const ep = this.world.getComponent<PositionComponent>(eid, "position");
+          if (ep) {
+            const d = hexDistance({ q: hq, r: hr }, { q: ep.q, r: ep.r });
+            if (d < minEnemyDist) minEnemyDist = d;
+          }
+        }
+        if (minEnemyDist > bestDist) {
+          bestDist = minEnemyDist;
+          bestHex = { q: hq, r: hr };
+        }
+      }
+
+      if (bestHex && (bestHex.q !== pos.q || bestHex.r !== pos.r)) {
+        const pathResult = findPath(
+          this.grid, { q: pos.q, r: pos.r }, bestHex, 4, tileAPCost,
+        );
+        if (pathResult.found && pathResult.path.length > 0) {
+          const dest = pathResult.path[pathResult.path.length - 1]!;
+          const oldTile = this.grid.get(pos.q, pos.r);
+          if (oldTile) oldTile.occupant = null;
+          const newTile = this.grid.get(dest.q, dest.r);
+          if (newTile) newTile.occupant = entityId;
+          pos.q = dest.q;
+          pos.r = dest.r;
+          if (newTile) pos.elevation = newTile.elevation;
+          this.onUnitMoved?.(entityId, pathResult.path);
+        }
+      }
+    }
+
+    this.pendingContinuation = () => {
+      if (!this.checkBattleEnd()) {
+        const newRound = this.turnOrder.advance();
+        if (newRound) this.turnOrder.calculateOrder(this.world);
+        this.beginCurrentTurn();
+      }
+    };
     this.onActionComplete?.();
   }
 

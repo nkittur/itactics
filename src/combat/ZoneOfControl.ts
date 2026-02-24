@@ -3,6 +3,7 @@ import type { HexGrid } from "@hex/HexGrid";
 import type { EntityId } from "@entities/Entity";
 import type { PositionComponent } from "@entities/components/Position";
 import type { HealthComponent } from "@entities/components/Health";
+import type { StatusEffectsComponent } from "@entities/components/StatusEffects";
 import { hexNeighbors } from "@hex/HexMath";
 
 /**
@@ -48,7 +49,9 @@ export function getZoCThreats(
     const health = world.getComponent<HealthComponent>(tile.occupant, "health");
     if (!health || health.current <= 0) continue;
 
-    // TODO: When StatusEffectManager exists, skip stunned enemies here
+    // Stunned enemies don't exert ZoC
+    const statusEffects = world.getComponent<StatusEffectsComponent>(tile.occupant, "statusEffects");
+    if (statusEffects?.effects.some((e) => e.id === "stun")) continue;
 
     threats.push(tile.occupant);
   }

@@ -11,6 +11,7 @@ import { getShield, type ShieldDef } from "@data/ShieldData";
 import { hexNeighbors } from "@hex/HexMath";
 import { RNG } from "@utils/RNG";
 import { clamp } from "@utils/MathUtils";
+import type { StatusEffectManager } from "./StatusEffectManager";
 
 export interface AttackResult {
   hit: boolean;
@@ -25,6 +26,8 @@ export interface AttackResult {
   headHit: boolean;
   /** Weapon used for this attack. */
   weaponId: string;
+  /** Status effects applied on hit (e.g. "stun", "bleed"). */
+  appliedEffects: string[];
 }
 
 /**
@@ -39,10 +42,17 @@ export interface AttackResult {
  * 6. Head hit: 1.5x HP damage
  */
 export class DamageCalculator {
+  private statusEffects: StatusEffectManager | null = null;
+
   constructor(
     private rng: RNG,
     private grid: HexGrid,
   ) {}
+
+  /** Set the status effect manager (optional, enables effect application). */
+  setStatusEffectManager(sem: StatusEffectManager): void {
+    this.statusEffects = sem;
+  }
 
   /** Resolve a melee attack between attacker and defender. */
   resolveMelee(
@@ -90,9 +100,17 @@ export class DamageCalculator {
       ? this.countSurroundBonus(world, attackerId, defenderId)
       : 0;
 
+    // Status effect modifiers
+    const attackerMeleeSkillMod = this.statusEffects
+      ? this.statusEffects.getModifier(world, attackerId, "meleeSkill", attackerStats.meleeSkill)
+      : 0;
+    const defenderMeleeDefMod = this.statusEffects
+      ? this.statusEffects.getModifier(world, defenderId, "meleeDefense", defenderStats.meleeDefense)
+      : 0;
+
     const hitChance = clamp(
-      attackerStats.meleeSkill + weapon.hitChanceBonus
-        - defenderStats.meleeDefense - shieldBonus
+      (attackerStats.meleeSkill + attackerMeleeSkillMod) + weapon.hitChanceBonus
+        - (defenderStats.meleeDefense + defenderMeleeDefMod) - shieldBonus
         - terrainDefBonus
         + elevationMod
         + surroundBonus,
@@ -144,6 +162,31 @@ export class DamageCalculator {
     defenderHealth.current = Math.max(0, defenderHealth.current - hpDamage);
     const targetKilled = defenderHealth.current <= 0;
 
+    // ── 8. Apply weapon family status effects ──
+    const appliedEffects: string[] = [];
+    if (!targetKilled && this.statusEffects) {
+      // Maces: 10% chance to stun
+      if (weapon.family === "mace" && this.rng.roll(10)) {
+        this.statusEffects.apply(world, defenderId, "stun");
+        appliedEffects.push("stun");
+      }
+      // Swords and cleavers: 15% chance to bleed (2-3 turns)
+      if ((weapon.family === "sword" || weapon.family === "cleaver") && this.rng.roll(15)) {
+        this.statusEffects.apply(world, defenderId, "bleed", this.rng.nextInt(2, 3));
+        appliedEffects.push("bleed");
+      }
+      // Axes: 10% chance to bleed
+      if (weapon.family === "axe" && this.rng.roll(10)) {
+        this.statusEffects.apply(world, defenderId, "bleed", this.rng.nextInt(2, 3));
+        appliedEffects.push("bleed");
+      }
+      // Daggers: 20% chance to bleed (shorter duration)
+      if (weapon.family === "dagger" && this.rng.roll(20)) {
+        this.statusEffects.apply(world, defenderId, "bleed", 2);
+        appliedEffects.push("bleed");
+      }
+    }
+
     return {
       hit: true,
       hitChance,
@@ -153,6 +196,7 @@ export class DamageCalculator {
       targetKilled,
       headHit,
       weaponId: weapon.id,
+      appliedEffects,
     };
   }
   /**
@@ -200,5 +244,6 @@ function miss(hitChance: number, weaponId: string): AttackResult {
     targetKilled: false,
     headHit: false,
     weaponId,
+    appliedEffects: [],
   };
 }

@@ -545,6 +545,53 @@ export class DemoBattle {
       });
     };
 
+    // Bleed tick popup
+    this.combat.onBleedTick = (result) => {
+      this.showTextPopup(result.entityId, `-${result.damage} bleed`, "#cc4444");
+      const health = this.world.getComponent<HealthComponent>(result.entityId, "health");
+      if (health) {
+        this.unitRenderer.updateHealthBar(result.entityId, health.current, health.max);
+      }
+      if (result.killed) {
+        this.unitRenderer.playDeath(result.entityId, () => {
+          this.unitRenderer.removeUnit(result.entityId);
+        });
+      }
+    };
+
+    // Morale change popup
+    this.combat.onMoraleChange = (result) => {
+      const stateLabels: Record<string, string> = {
+        wavering: "Wavering!",
+        breaking: "Breaking!",
+        fleeing: "Fleeing!",
+        confident: "Confident!",
+      };
+      const label = stateLabels[result.newState];
+      if (label) {
+        const color = result.newState === "confident" ? "#44cc44" : "#cccc44";
+        this.showTextPopup(result.entityId, label, color);
+      }
+    };
+
+    // Status effect applied popup
+    this.combat.onStatusApplied = (entityId, effectId) => {
+      const labels: Record<string, string> = {
+        stun: "Stunned!",
+        bleed: "Bleeding!",
+        daze: "Dazed!",
+      };
+      const label = labels[effectId];
+      if (label) {
+        this.showTextPopup(entityId, label, "#cc8844");
+      }
+    };
+
+    // Turn skipped popup
+    this.combat.onTurnSkipped = (entityId, reason) => {
+      this.showTextPopup(entityId, reason, "#999999");
+    };
+
     // Action complete — start draining animation queue
     this.combat.onActionComplete = () => {
       if (this.animQueue.length > 0) {
@@ -642,6 +689,24 @@ export class DemoBattle {
     this.camera.panTo(worldPos.x, worldPos.y, this.panDuration());
   }
 
+  private showTextPopup(entityId: EntityId, text: string, color: string): void {
+    const pos = this.world.getComponent<PositionComponent>(entityId, "position");
+    if (!pos) return;
+
+    const worldPos = hexToPixel(this.layout, pos.q, pos.r);
+    const screenPos = this.camera.worldToScreen(worldPos.x, worldPos.y);
+
+    const popup = document.createElement("div");
+    popup.className = "damage-popup";
+    popup.textContent = text;
+    popup.style.left = `${screenPos.x}px`;
+    popup.style.top = `${screenPos.y - 20}px`;
+    popup.style.color = color;
+
+    this.uiManager.root.appendChild(popup);
+    popup.addEventListener("animationend", () => popup.remove());
+  }
+
   private showDamagePopup(entityId: EntityId, result: AttackResult): void {
     const pos = this.world.getComponent<PositionComponent>(entityId, "position");
     if (!pos) return;
@@ -679,6 +744,9 @@ export class DemoBattle {
     const weapon = equip?.mainHand ? getWeapon(equip.mainHand) : UNARMED;
     const isCurrentPlayer = this.combat.selectedUnit === entityId && this.combat.phase === "playerTurn";
 
+    const moraleState = this.combat.morale.getState(this.world, entityId);
+    const statusEffects = this.combat.statusEffects.getActiveEffects(this.world, entityId);
+
     this.unitInfoPanel.show(
       team.name,
       health.current,
@@ -686,6 +754,8 @@ export class DemoBattle {
       isCurrentPlayer ? this.combat.apRemaining : undefined,
       fatigue ? { current: fatigue.current, max: fatigue.max } : undefined,
       weapon.name,
+      moraleState ?? undefined,
+      statusEffects.length > 0 ? statusEffects : undefined,
     );
   }
 
