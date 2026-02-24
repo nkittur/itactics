@@ -27,8 +27,10 @@ import type { AttackResult } from "@combat/DamageCalculator";
 import { getZoCDangerHexes } from "@combat/ZoneOfControl";
 import { getArmorDef } from "@data/ArmorData";
 import { getWeapon, UNARMED } from "@data/WeaponData";
+import { SCENARIOS, getScenario, getDefaultScenarioId, type ScenarioDef } from "@data/ScenarioData";
 import type { FatigueComponent } from "@entities/components/Fatigue";
 import type { EquipmentComponent } from "@entities/components/Equipment";
+import type { AIType } from "@entities/components/AIBehavior";
 
 // ── Terrain configs ──
 
@@ -52,45 +54,27 @@ export interface TeamComponent {
 
 // ── Grid + spawn helpers ──
 
-function createDemoGrid(): HexGrid {
+function createGridFromScenario(scenario: ScenarioDef): HexGrid {
   const grid = new HexGrid();
-  const width = 10;
-  const height = 8;
 
-  let seed = 42;
-  const rand = () => {
-    seed = (seed * 16807 + 0) % 2147483647;
-    return (seed - 1) / 2147483646;
-  };
-
-  for (let r = 0; r < height; r++) {
-    for (let q = 0; q < width; q++) {
-      const roll = rand();
-      let terrain: TerrainType;
-      let elevation = 0;
-
-      if (roll < 0.55) {
-        terrain = TerrainType.Grass;
-      } else if (roll < 0.75) {
-        terrain = TerrainType.Forest;
-      } else if (roll < 0.85) {
-        terrain = TerrainType.Hills;
-        elevation = 1;
-      } else if (roll < 0.92) {
-        terrain = TerrainType.Swamp;
-      } else {
-        terrain = TerrainType.Sand;
-      }
-
-      const config = TERRAIN_CONFIGS[terrain]!;
-      grid.set(q, r, {
-        q,
-        r,
-        elevation,
-        occupant: null,
-        ...config,
-      });
+  // Fill with grass
+  for (let r = 0; r < scenario.gridHeight; r++) {
+    for (let q = 0; q < scenario.gridWidth; q++) {
+      const config = TERRAIN_CONFIGS[TerrainType.Grass]!;
+      grid.set(q, r, { q, r, elevation: 0, occupant: null, ...config });
     }
+  }
+
+  // Apply scenario terrain overrides
+  for (const tile of scenario.tiles) {
+    const config = TERRAIN_CONFIGS[tile.terrain]!;
+    grid.set(tile.q, tile.r, {
+      q: tile.q,
+      r: tile.r,
+      elevation: tile.elevation,
+      occupant: null,
+      ...config,
+    });
   }
 
   return grid;
@@ -128,6 +112,7 @@ function spawnUnit(
   name: string,
   stats: { melee: number; defense: number; hp: number; initiative: number },
   equip?: UnitEquipment,
+  aiType?: AIType,
 ): EntityId {
   // Ensure no overlap
   const pos = findFreeHex(grid, q, r);
@@ -225,7 +210,7 @@ function spawnUnit(
   if (team === "enemy") {
     world.addComponent(id, {
       type: "aiBehavior",
-      aiType: "aggressive" as const,
+      aiType: (aiType ?? "aggressive") as AIType,
       aggroRadius: 10,
       preferredRange: 1,
       fleeThreshold: 10,
@@ -281,9 +266,14 @@ export class DemoBattle {
     );
     this.layout = createLayout(1.0);
 
+    // Load scenario from URL param or default
+    const params = new URLSearchParams(window.location.search);
+    const scenarioId = params.get("scenario") ?? getDefaultScenarioId();
+    const scenario = getScenario(scenarioId) ?? getScenario(getDefaultScenarioId())!;
+
     // Game state
     this.world = new World();
-    this.grid = createDemoGrid();
+    this.grid = createGridFromScenario(scenario);
 
     // Rendering
     this.tileRenderer = new TileRenderer(this.sceneManager.scene);
@@ -292,8 +282,8 @@ export class DemoBattle {
     this.unitRenderer = new UnitRenderer(this.sceneManager.scene, this.layout);
     this.overlayRenderer = new OverlayRenderer(this.sceneManager.scene);
 
-    // Spawn units
-    this.spawnAllUnits();
+    // Spawn units from scenario
+    this.spawnFromScenario(scenario);
 
     // Render units
     for (const id of [...this.playerIds, ...this.enemyIds]) {
@@ -321,6 +311,9 @@ export class DemoBattle {
     });
     this.uiManager.root.appendChild(this.speedBtn);
 
+    // Scenario selector
+    this.createScenarioSelector();
+
     // Input
     this.touchManager = new TouchManager(
       canvas,
@@ -336,7 +329,7 @@ export class DemoBattle {
     this.wireEvents();
 
     // Center camera on grid
-    const center = hexToPixel(this.layout, 5, 4);
+    const center = hexToPixel(this.layout, Math.floor(scenario.gridWidth / 2), Math.floor(scenario.gridHeight / 2));
     this.camera.centerOn(center.x, center.y);
 
     // Handle resize
@@ -346,58 +339,58 @@ export class DemoBattle {
     });
   }
 
-  private spawnAllUnits(): void {
-    // Player units — well-equipped mercenaries
-    this.playerIds.push(
-      spawnUnit(this.world, this.grid, 1, 2, "player", "Swordsman", {
-        melee: 70, defense: 15, hp: 60, initiative: 100,
-      }, {
-        weapon: "arming_sword", shield: "heater_shield",
-        bodyArmor: "mail_hauberk", headArmor: "mail_coif",
-      })
-    );
-    this.playerIds.push(
-      spawnUnit(this.world, this.grid, 1, 4, "player", "Axeman", {
-        melee: 65, defense: 10, hp: 70, initiative: 90,
-      }, {
-        weapon: "hand_axe", shield: "wooden_shield",
-        bodyArmor: "leather_jerkin", headArmor: "leather_cap",
-      })
-    );
-    this.playerIds.push(
-      spawnUnit(this.world, this.grid, 1, 6, "player", "Spearman", {
-        melee: 60, defense: 20, hp: 55, initiative: 110,
-      }, {
-        weapon: "spear", shield: "buckler",
-        bodyArmor: "linen_tunic", headArmor: "hood",
-      })
-    );
+  private spawnFromScenario(scenario: ScenarioDef): void {
+    for (const unit of scenario.units) {
+      const id = spawnUnit(
+        this.world, this.grid,
+        unit.q, unit.r,
+        unit.team, unit.name, unit.stats,
+        {
+          weapon: unit.weapon,
+          shield: unit.shield,
+          bodyArmor: unit.bodyArmor,
+          headArmor: unit.headArmor,
+        },
+        unit.aiType,
+      );
+      if (unit.team === "player") {
+        this.playerIds.push(id);
+      } else {
+        this.enemyIds.push(id);
+      }
+    }
+  }
 
-    // Enemy units — brigands with scrappy equipment
-    this.enemyIds.push(
-      spawnUnit(this.world, this.grid, 8, 1, "enemy", "Brigand", {
-        melee: 55, defense: 10, hp: 50, initiative: 95,
-      }, {
-        weapon: "short_sword", shield: "buckler",
-        bodyArmor: "leather_jerkin", headArmor: "hood",
-      })
-    );
-    this.enemyIds.push(
-      spawnUnit(this.world, this.grid, 8, 4, "enemy", "Raider", {
-        melee: 60, defense: 5, hp: 55, initiative: 85,
-      }, {
-        weapon: "hand_axe",
-        bodyArmor: "leather_jerkin", headArmor: "leather_cap",
-      })
-    );
-    this.enemyIds.push(
-      spawnUnit(this.world, this.grid, 8, 6, "enemy", "Thug", {
-        melee: 45, defense: 5, hp: 45, initiative: 80,
-      }, {
-        weapon: "dagger",
-        bodyArmor: "linen_tunic",
-      })
-    );
+  private createScenarioSelector(): void {
+    const bar = document.createElement("div");
+    bar.className = "scenario-bar";
+    bar.style.cssText = "position:absolute;top:env(safe-area-inset-top,4px);left:50%;transform:translateX(-50%);display:flex;gap:4px;pointer-events:auto;z-index:10;";
+
+    for (const s of SCENARIOS) {
+      const btn = document.createElement("button");
+      btn.className = "action-btn";
+      btn.textContent = s.name;
+      btn.style.cssText = "font-size:10px;padding:4px 8px;background:#4a4a5a;color:#ddd;border:none;border-radius:4px;cursor:pointer;";
+      btn.title = s.description;
+
+      const params = new URLSearchParams(window.location.search);
+      const currentId = params.get("scenario") ?? getDefaultScenarioId();
+      if (s.id === currentId) {
+        btn.style.background = "#6a6a8a";
+        btn.style.fontWeight = "bold";
+      }
+
+      btn.addEventListener("pointerup", (e) => {
+        e.stopPropagation();
+        const url = new URL(window.location.href);
+        url.searchParams.set("scenario", s.id);
+        window.location.href = url.toString();
+      });
+
+      bar.appendChild(btn);
+    }
+
+    this.uiManager.root.appendChild(bar);
   }
 
   // ── Animation queue ──

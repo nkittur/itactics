@@ -12,7 +12,7 @@ import { getZoCAttacksForMove } from "./ZoneOfControl";
 import { StatusEffectManager, type BleedTickResult } from "./StatusEffectManager";
 import { MoraleManager, type MoraleCheckResult } from "./MoraleManager";
 import { getWeapon, UNARMED } from "@data/WeaponData";
-import { decideAIAction } from "./SimpleAI";
+import { decideTacticalAction, type TacticalAction } from "./TacticalAI";
 import { RNG } from "@utils/RNG";
 import { hexDistance, hexNeighbors } from "@hex/HexMath";
 import { findPath, reachableHexes } from "@hex/HexPathfinding";
@@ -532,8 +532,7 @@ export class CombatManager {
   }
 
   /**
-   * Run ONE enemy unit's turn using the AI, then wait for animation.
-   * The AI operates with a fixed AP budget.
+   * Run ONE enemy unit's turn using TacticalAI, then wait for animation.
    */
   private runEnemyTurn(): void {
     const entry = this.turnOrder.current();
@@ -542,114 +541,35 @@ export class CombatManager {
     const entityId = entry.entityId;
     const playerUnits = this.getPlayerUnits();
 
-    // Enemy uses AP-based movement budget
-    const enemyAPBudget = MAX_AP;
-    const weaponAPCost = this.getWeaponAPCost(entityId);
-    // Reserve AP for attack if possible
-    const moveAP = enemyAPBudget - weaponAPCost;
+    const action = decideTacticalAction(this.world, this.grid, entityId, playerUnits);
 
-    const action = decideAIAction(this.world, this.grid, entityId, playerUnits, moveAP > 0 ? moveAP : 2);
+    this.executeEnemyAction(entityId, action);
+  }
 
+  /** Execute a TacticalAI action for an enemy unit. */
+  private executeEnemyAction(entityId: EntityId, action: TacticalAction): void {
     switch (action.type) {
+      case "moveAndAttack": {
+        if (!this.executeEnemyMove(entityId, action.path)) return; // died to ZoC
+        this.executeEnemyAttack(entityId, action.targetId);
+        break;
+      }
+
       case "move": {
-        const pos = this.world.getComponent<PositionComponent>(entityId, "position");
-        if (pos && action.path.length > 0) {
-          // ── ZoC: Resolve free attacks on enemy movement ──
-          const zocAttackers = getZoCAttacksForMove(
-            this.world, this.grid, entityId,
-            pos.q, pos.r, action.path,
-          );
-
-          for (const zocAttacker of zocAttackers) {
-            const zocResult = this.damageCalc.resolveMelee(this.world, zocAttacker, entityId);
-            this.onZoCAttack?.(zocResult, zocAttacker, entityId);
-
-            if (zocResult.targetKilled) {
-              this.handleDeath(entityId);
-              // Enemy died from ZoC — skip rest of turn
-              this.pendingContinuation = () => {
-                if (!this.checkBattleEnd()) {
-                  const newRound = this.turnOrder.advance();
-                  if (newRound) this.turnOrder.calculateOrder(this.world);
-                  this.beginCurrentTurn();
-                }
-              };
-              this.onActionComplete?.();
-              return;
-            }
-          }
-
-          const dest = action.path[action.path.length - 1]!;
-
-          // Apply fatigue for movement
-          const fatCost = pathFatigueCost(this.grid, action.path, pos.q, pos.r);
-          this.addFatigue(entityId, fatCost);
-
-          const oldTile = this.grid.get(pos.q, pos.r);
-          if (oldTile) oldTile.occupant = null;
-
-          const newTile = this.grid.get(dest.q, dest.r);
-          if (newTile) newTile.occupant = entityId;
-
-          pos.q = dest.q;
-          pos.r = dest.r;
-          if (newTile) pos.elevation = newTile.elevation;
-
-          this.onUnitMoved?.(entityId, action.path);
-        }
-
-        // Try to attack after moving
-        const posAfterMove = this.world.getComponent<PositionComponent>(entityId, "position");
-        if (posAfterMove) {
-          const adjacentTarget = this.findAdjacentEnemy(posAfterMove, playerUnits);
-          if (adjacentTarget) {
-            const weaponFat = this.getWeaponFatigueCost(entityId);
-            this.addFatigue(entityId, weaponFat);
-
-            const result = this.damageCalc.resolveMelee(this.world, entityId, adjacentTarget);
-            this.onAttackResult?.(result, entityId, adjacentTarget);
-            for (const eff of result.appliedEffects) {
-              this.onStatusApplied?.(adjacentTarget, eff);
-            }
-            if (result.targetKilled) {
-              this.handleDeath(adjacentTarget);
-              this.triggerAllyMoraleChecks(adjacentTarget);
-              this.triggerEnemyKillBoost(entityId);
-            } else if (result.hit) {
-              const mr = this.morale.onHeavyDamage(this.world, adjacentTarget, result.hpDamage);
-              if (mr) {
-                this.onMoraleChange?.(mr);
-                if (mr.newState === "fleeing") {
-                  this.statusEffects.apply(this.world, adjacentTarget, "fleeing");
-                }
-              }
-            }
-          }
-        }
+        this.executeEnemyMove(entityId, action.path);
         break;
       }
 
       case "attack": {
-        const weaponFat = this.getWeaponFatigueCost(entityId);
-        this.addFatigue(entityId, weaponFat);
+        this.executeEnemyAttack(entityId, action.targetId);
+        break;
+      }
 
-        const result = this.damageCalc.resolveMelee(this.world, entityId, action.targetId);
-        this.onAttackResult?.(result, entityId, action.targetId);
-        for (const eff of result.appliedEffects) {
-          this.onStatusApplied?.(action.targetId, eff);
-        }
-        if (result.targetKilled) {
-          this.handleDeath(action.targetId);
-          this.triggerAllyMoraleChecks(action.targetId);
-          this.triggerEnemyKillBoost(entityId);
-        } else if (result.hit) {
-          const mr = this.morale.onHeavyDamage(this.world, action.targetId, result.hpDamage);
-          if (mr) {
-            this.onMoraleChange?.(mr);
-            if (mr.newState === "fleeing") {
-              this.statusEffects.apply(this.world, action.targetId, "fleeing");
-            }
-          }
+      case "recover": {
+        const fatigue = this.world.getComponent<FatigueComponent>(entityId, "fatigue");
+        if (fatigue) {
+          const recovery = Math.floor(fatigue.max * 0.5);
+          fatigue.current = Math.max(0, fatigue.current - recovery);
         }
         break;
       }
@@ -669,6 +589,81 @@ export class CombatManager {
     };
 
     this.onActionComplete?.();
+  }
+
+  /**
+   * Execute enemy movement with ZoC resolution.
+   * Returns false if the unit died from ZoC (turn ends immediately).
+   */
+  private executeEnemyMove(entityId: EntityId, path: Array<{ q: number; r: number }>): boolean {
+    const pos = this.world.getComponent<PositionComponent>(entityId, "position");
+    if (!pos || path.length === 0) return true;
+
+    // ZoC resolution
+    const zocAttackers = getZoCAttacksForMove(
+      this.world, this.grid, entityId,
+      pos.q, pos.r, path,
+    );
+
+    for (const zocAttacker of zocAttackers) {
+      const zocResult = this.damageCalc.resolveMelee(this.world, zocAttacker, entityId);
+      this.onZoCAttack?.(zocResult, zocAttacker, entityId);
+
+      if (zocResult.targetKilled) {
+        this.handleDeath(entityId);
+        this.pendingContinuation = () => {
+          if (!this.checkBattleEnd()) {
+            const newRound = this.turnOrder.advance();
+            if (newRound) this.turnOrder.calculateOrder(this.world);
+            this.beginCurrentTurn();
+          }
+        };
+        this.onActionComplete?.();
+        return false;
+      }
+    }
+
+    const dest = path[path.length - 1]!;
+    const fatCost = pathFatigueCost(this.grid, path, pos.q, pos.r);
+    this.addFatigue(entityId, fatCost);
+
+    const oldTile = this.grid.get(pos.q, pos.r);
+    if (oldTile) oldTile.occupant = null;
+
+    const newTile = this.grid.get(dest.q, dest.r);
+    if (newTile) newTile.occupant = entityId;
+
+    pos.q = dest.q;
+    pos.r = dest.r;
+    if (newTile) pos.elevation = newTile.elevation;
+
+    this.onUnitMoved?.(entityId, path);
+    return true;
+  }
+
+  /** Execute an enemy attack with morale/status handling. */
+  private executeEnemyAttack(entityId: EntityId, targetId: EntityId): void {
+    const weaponFat = this.getWeaponFatigueCost(entityId);
+    this.addFatigue(entityId, weaponFat);
+
+    const result = this.damageCalc.resolveMelee(this.world, entityId, targetId);
+    this.onAttackResult?.(result, entityId, targetId);
+    for (const eff of result.appliedEffects) {
+      this.onStatusApplied?.(targetId, eff);
+    }
+    if (result.targetKilled) {
+      this.handleDeath(targetId);
+      this.triggerAllyMoraleChecks(targetId);
+      this.triggerEnemyKillBoost(entityId);
+    } else if (result.hit) {
+      const mr = this.morale.onHeavyDamage(this.world, targetId, result.hpDamage);
+      if (mr) {
+        this.onMoraleChange?.(mr);
+        if (mr.newState === "fleeing") {
+          this.statusEffects.apply(this.world, targetId, "fleeing");
+        }
+      }
+    }
   }
 
   // ── Morale + Status helpers ──
@@ -805,6 +800,24 @@ export class CombatManager {
       if (tile) tile.occupant = null;
     }
     this.turnOrder.remove(entityId);
+
+    // Defensive: ensure no dead units remain as occupants on any tile
+    this.cleanupDeadOccupants();
+  }
+
+  /**
+   * Scan all tiles and clear occupants that are dead (health <= 0).
+   * This is a defensive cleanup to prevent stale occupancy from blocking movement.
+   */
+  private cleanupDeadOccupants(): void {
+    for (const tile of this.grid.toArray()) {
+      if (tile.occupant) {
+        const health = this.world.getComponent<HealthComponent>(tile.occupant, "health");
+        if (health && health.current <= 0) {
+          tile.occupant = null;
+        }
+      }
+    }
   }
 
   private checkBattleEnd(): boolean {
