@@ -327,35 +327,61 @@ export class UnitRenderer {
     const entry = this.units.get(entityId);
     if (!entry) { onComplete(); return; }
 
-    this.setAnimation(entityId, "attack");
+    // Attack animation: 6 frames × 120ms = 720ms at base speed.
+    // Scale frame time so the full animation fits within `duration`.
+    const attackFrames = this.spriteAnimator.getFrameCount("attack");
+    const baseAnimMs = attackFrames * this.spriteAnimator.frameMs;
+    const animDuration = Math.max(duration, baseAnimMs);
+
+    // Physical lunge occupies the middle portion of the animation
+    const lungeStart = animDuration * 0.2;
+    const lungeEnd = animDuration * 0.5;
+    const lungeDur = lungeEnd - lungeStart;
 
     const startX = entry.mesh.position.x;
     const startZ = entry.mesh.position.z;
     const midX = (startX + targetWorldX) / 2;
     const midZ = (startZ + targetWorldZ) / 2;
-    const halfDur = duration / 2;
     const startTime = performance.now();
+
+    let animDone = false;
+    let lungeDone = false;
+
+    // Play attack animation non-looping; fires when all frames complete
+    this.setAnimation(entityId, "attack", false, () => {
+      animDone = true;
+      if (lungeDone) {
+        this.setAnimation(entityId, "idle");
+        onComplete();
+      }
+    });
 
     const observer = this.scene.onBeforeRenderObservable.add(() => {
       const elapsed = performance.now() - startTime;
 
-      if (elapsed < halfDur) {
-        const t = elapsed / halfDur;
+      // Physical lunge: forward then back
+      if (elapsed < lungeStart) {
+        // Before lunge — stay at start
+      } else if (elapsed < lungeStart + lungeDur / 2) {
+        // Lunge forward
+        const t = (elapsed - lungeStart) / (lungeDur / 2);
         entry.mesh.position.x = startX + (midX - startX) * t;
         entry.mesh.position.z = startZ + (midZ - startZ) * t;
-      } else {
-        const t = Math.min(1, (elapsed - halfDur) / halfDur);
+      } else if (elapsed < lungeEnd) {
+        // Lunge back
+        const t = (elapsed - lungeStart - lungeDur / 2) / (lungeDur / 2);
         entry.mesh.position.x = midX + (startX - midX) * t;
         entry.mesh.position.z = midZ + (startZ - midZ) * t;
-      }
-
-
-      if (elapsed >= duration) {
+      } else if (!lungeDone) {
+        // Snap to start, lunge movement complete
         entry.mesh.position.x = startX;
         entry.mesh.position.z = startZ;
+        lungeDone = true;
         this.scene.onBeforeRenderObservable.remove(observer);
-        this.setAnimation(entityId, "idle");
-        onComplete();
+        if (animDone) {
+          this.setAnimation(entityId, "idle");
+          onComplete();
+        }
       }
     });
   }
