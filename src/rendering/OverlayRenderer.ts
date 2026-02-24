@@ -56,7 +56,7 @@ export class OverlayRenderer {
       // Flat-top hex orientation
       disc.rotation.y = Math.PI / 6;
       disc.position.x = x;
-      disc.position.y = 0.02; // just above tile surface
+      disc.position.y = 0.25; // above all tile elevations
       disc.position.z = y;
       disc.material = this.movementMaterial;
 
@@ -97,7 +97,7 @@ export class OverlayRenderer {
       // Flat-top hex orientation
       disc.rotation.y = Math.PI / 6;
       disc.position.x = x;
-      disc.position.y = 0.03; // slightly above movement overlays
+      disc.position.y = 0.26; // slightly above movement overlays
       disc.position.z = y;
       disc.material = this.attackMaterial;
 

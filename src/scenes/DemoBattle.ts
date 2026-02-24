@@ -438,10 +438,21 @@ export class DemoBattle {
               this.unitRenderer.updateHealthBar(defenderId, health.current, health.max);
             }
             if (result.targetKilled) {
-              this.unitRenderer.removeUnit(defenderId);
+              // Play death animation, then remove
+              this.unitRenderer.playDeath(defenderId, () => {
+                this.unitRenderer.removeUnit(defenderId);
+                this.refreshUI();
+                done();
+              });
+            } else if (result.hit) {
+              // Play hurt animation (non-blocking)
+              this.unitRenderer.playHurt(defenderId);
+              this.refreshUI();
+              done();
+            } else {
+              this.refreshUI();
+              done();
             }
-            this.refreshUI();
-            done();
           }
         );
       });

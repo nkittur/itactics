@@ -4,8 +4,10 @@ import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { HexLayout, hexToPixel } from "@hex/HexLayout";
+import { SpriteAnimator, type SpriteAnim, type SpriteCharType, type SpriteState } from "./SpriteAnimator";
+import { Texture } from "@babylonjs/core/Materials/Textures/texture";
 
-/** Which team a unit belongs to, determines its base color. */
+/** Which team a unit belongs to, determines its sprite type. */
 export enum UnitTeam {
   Player = "player",
   Enemy = "enemy",
@@ -15,9 +17,12 @@ export enum UnitTeam {
 /** Internal record for a rendered unit. */
 interface UnitEntry {
   mesh: Mesh;
+  material: StandardMaterial;
   team: UnitTeam;
   q: number;
   r: number;
+  spriteState: SpriteState;
+  currentTexture: Texture;
 }
 
 /** Health bar meshes for a single unit. */
@@ -28,23 +33,21 @@ interface HealthBarEntry {
   pct: number;
 }
 
-/** Team to base color mapping. */
-const TEAM_COLORS: Record<UnitTeam, Color3> = {
-  [UnitTeam.Player]: Color3.FromHexString("#4477cc"),  // blue
-  [UnitTeam.Enemy]: Color3.FromHexString("#cc4444"),    // red
-  [UnitTeam.Neutral]: Color3.FromHexString("#88aa44"),  // olive green
-};
-
 const SELECTION_COLOR = Color3.FromHexString("#ffcc00"); // yellow
 
+/** Height above ground for unit sprites. Above all tile elevations (max 0.2). */
+const UNIT_Y = 0.5;
+/** Height for selection ring. Between tiles and unit sprite. */
+const RING_Y = 0.35;
+/** Health bar height. Above unit sprite. */
+const HP_BAR_Y = 0.7;
+
 /**
- * Renders units as colored disc meshes on the hex grid.
+ * Renders units as animated sprite planes on the hex grid.
  *
- * Each unit is a simple flat disc positioned slightly above the hex tile
- * (y=0.1). Player units are blue, enemy units are red. When a unit is
- * selected, a yellow selection ring is displayed around it.
- *
- * Damaged units show a health bar above their disc.
+ * Each unit is a flat plane with a sprite strip texture, positioned above
+ * the hex tiles. Player units use Soldier sprites, enemy units use Orc sprites.
+ * Frame animation is driven per-frame by SpriteAnimator.
  */
 export class UnitRenderer {
   private scene: Scene;
@@ -57,9 +60,22 @@ export class UnitRenderer {
   private healthBars = new Map<string, HealthBarEntry>();
   private hpBgMat: StandardMaterial | null = null;
 
+  private spriteAnimator: SpriteAnimator;
+  private lastTickTime = 0;
+
   constructor(scene: Scene, layout: HexLayout) {
     this.scene = scene;
     this.layout = layout;
+    this.spriteAnimator = new SpriteAnimator(scene);
+
+    // Drive sprite animation each frame
+    this.lastTickTime = performance.now();
+    scene.registerBeforeRender(() => {
+      const now = performance.now();
+      const delta = now - this.lastTickTime;
+      this.lastTickTime = now;
+      this.tickAllSprites(delta);
+    });
   }
 
   addUnit(entityId: string, q: number, r: number, team: UnitTeam): void {
@@ -68,25 +84,38 @@ export class UnitRenderer {
     }
 
     const { x, y } = hexToPixel(this.layout, q, r);
+    const charType: SpriteCharType = team === UnitTeam.Enemy ? "orc" : "soldier";
 
-    const mesh = MeshBuilder.CreateDisc(
+    // Create a plane mesh for the sprite
+    const spriteSize = this.layout.size * 1.2;
+    const mesh = MeshBuilder.CreatePlane(
       `unit_${entityId}`,
-      { radius: this.layout.size * 0.4, tessellation: 16 },
+      { width: spriteSize, height: spriteSize },
       this.scene
     );
+    // Lay flat on XZ plane, facing upward (camera looks down)
     mesh.rotation.x = -Math.PI / 2;
     mesh.position.x = x;
-    mesh.position.y = 0.1;
+    mesh.position.y = UNIT_Y;
     mesh.position.z = y;
+    mesh.isPickable = false;
 
+    // Create material with sprite texture
     const mat = new StandardMaterial(`unitMat_${entityId}`, this.scene);
-    mat.diffuseColor = Color3.Black();
-    mat.emissiveColor = TEAM_COLORS[team];
     mat.specularColor = Color3.Black();
+    mat.emissiveColor = new Color3(0.6, 0.6, 0.6); // brighten sprite
     mat.backFaceCulling = false;
+    mat.useAlphaFromDiffuseTexture = true;
+    mat.transparencyMode = 2; // MATERIAL_ALPHABLEND
+
+    // Initial idle texture
+    const spriteState = this.spriteAnimator.createState(charType);
+    const texture = this.spriteAnimator.cloneTexture(charType, "idle");
+    mat.diffuseTexture = texture;
+
     mesh.material = mat;
 
-    this.units.set(entityId, { mesh, team, q, r });
+    this.units.set(entityId, { mesh, material: mat, team, q, r, spriteState, currentTexture: texture });
   }
 
   removeUnit(entityId: string): void {
@@ -97,7 +126,8 @@ export class UnitRenderer {
       this.setSelected(null);
     }
 
-    entry.mesh.material?.dispose();
+    entry.currentTexture.dispose();
+    entry.material.dispose();
     entry.mesh.dispose();
     this.units.delete(entityId);
 
@@ -147,7 +177,7 @@ export class UnitRenderer {
       this.scene
     );
     ring.position.x = x;
-    ring.position.y = 0.15;
+    ring.position.y = RING_Y;
     ring.position.z = y;
 
     if (!this.selectionMaterial) {
@@ -166,12 +196,44 @@ export class UnitRenderer {
     return this.selectedEntityId;
   }
 
-  // ── Animations ──
+  // ── Sprite Animation ──
+
+  /** Set the sprite animation for a unit. */
+  setAnimation(
+    entityId: string,
+    anim: SpriteAnim,
+    loop = true,
+    onComplete?: () => void
+  ): void {
+    const entry = this.units.get(entityId);
+    if (!entry) return;
+
+    if (entry.spriteState.currentAnim === anim) return;
+
+    // Dispose old texture clone, get new one
+    entry.currentTexture.dispose();
+    const newTex = this.spriteAnimator.setAnimation(
+      entry.spriteState,
+      anim,
+      loop,
+      onComplete
+    );
+    entry.currentTexture = newTex;
+    entry.material.diffuseTexture = newTex;
+  }
+
+  /** Tick all sprite animations each frame. */
+  private tickAllSprites(deltaMs: number): void {
+    for (const [, entry] of this.units) {
+      this.spriteAnimator.tick(entry.spriteState, entry.currentTexture, deltaMs);
+    }
+  }
+
+  // ── Movement/Attack Animations ──
 
   /**
    * Animate a unit moving hex-by-hex along a path.
-   * @param durationPerStep  Milliseconds per hex step.
-   * @param onComplete       Called when the full animation finishes.
+   * Switches to "walk" animation during movement, back to "idle" on complete.
    */
   animateMove(
     entityId: string,
@@ -181,6 +243,8 @@ export class UnitRenderer {
   ): void {
     const entry = this.units.get(entityId);
     if (!entry || path.length === 0) { onComplete(); return; }
+
+    this.setAnimation(entityId, "walk");
 
     const positions = path.map(p => hexToPixel(this.layout, p.q, p.r));
     let stepIdx = 0;
@@ -196,12 +260,10 @@ export class UnitRenderer {
       entry.mesh.position.z = fromZ + (target.y - fromZ) * t;
 
       if (t >= 1) {
-        // Update stored hex coords
         const dest = path[stepIdx]!;
         entry.q = dest.q;
         entry.r = dest.r;
 
-        // Move selection ring + health bar
         if (this.selectedEntityId === entityId && this.selectionRing) {
           this.selectionRing.position.x = target.x;
           this.selectionRing.position.z = target.y;
@@ -211,6 +273,7 @@ export class UnitRenderer {
         stepIdx++;
         if (stepIdx >= positions.length) {
           this.scene.onBeforeRenderObservable.remove(observer);
+          this.setAnimation(entityId, "idle");
           onComplete();
         } else {
           fromX = target.x;
@@ -223,9 +286,7 @@ export class UnitRenderer {
 
   /**
    * Animate a unit lunging toward a target and snapping back (attack).
-   * @param targetWorldX/Z  World position to lunge toward.
-   * @param duration         Total lunge duration in ms.
-   * @param onComplete       Called when animation finishes.
+   * Plays "attack" animation during the lunge.
    */
   animateLunge(
     entityId: string,
@@ -237,9 +298,10 @@ export class UnitRenderer {
     const entry = this.units.get(entityId);
     if (!entry) { onComplete(); return; }
 
+    this.setAnimation(entityId, "attack");
+
     const startX = entry.mesh.position.x;
     const startZ = entry.mesh.position.z;
-    // Lunge halfway to target
     const midX = (startX + targetWorldX) / 2;
     const midZ = (startZ + targetWorldZ) / 2;
     const halfDur = duration / 2;
@@ -249,12 +311,10 @@ export class UnitRenderer {
       const elapsed = performance.now() - startTime;
 
       if (elapsed < halfDur) {
-        // Moving toward target
         const t = elapsed / halfDur;
         entry.mesh.position.x = startX + (midX - startX) * t;
         entry.mesh.position.z = startZ + (midZ - startZ) * t;
       } else {
-        // Returning to start
         const t = Math.min(1, (elapsed - halfDur) / halfDur);
         entry.mesh.position.x = midX + (startX - midX) * t;
         entry.mesh.position.z = midZ + (startZ - midZ) * t;
@@ -264,16 +324,32 @@ export class UnitRenderer {
         entry.mesh.position.x = startX;
         entry.mesh.position.z = startZ;
         this.scene.onBeforeRenderObservable.remove(observer);
+        this.setAnimation(entityId, "idle");
         onComplete();
       }
     });
   }
 
+  /** Play hurt animation on a unit (non-blocking). */
+  playHurt(entityId: string): void {
+    const entry = this.units.get(entityId);
+    if (!entry) return;
+
+    this.setAnimation(entityId, "hurt", false, () => {
+      // Return to idle after hurt plays
+      if (this.units.has(entityId)) {
+        this.setAnimation(entityId, "idle");
+      }
+    });
+  }
+
+  /** Play death animation on a unit. Calls onComplete when done. */
+  playDeath(entityId: string, onComplete?: () => void): void {
+    this.setAnimation(entityId, "death", false, onComplete);
+  }
+
   // ── Health bars ──
 
-  /**
-   * Show or update a health bar above a unit. Hides bar at full health.
-   */
   updateHealthBar(entityId: string, current: number, max: number): void {
     const entry = this.units.get(entityId);
     if (!entry) return;
@@ -287,12 +363,10 @@ export class UnitRenderer {
     const barWidth = this.layout.size * 0.7;
     const barHeight = this.layout.size * 0.08;
     const barZ = y + this.layout.size * 0.55;
-    const barY = 0.2;
     const pct = Math.max(0.01, current / max);
 
     let bar = this.healthBars.get(entityId);
     if (!bar) {
-      // Lazy-create shared background material
       if (!this.hpBgMat) {
         this.hpBgMat = new StandardMaterial("hpBgMat", this.scene);
         this.hpBgMat.diffuseColor = Color3.Black();
@@ -328,24 +402,21 @@ export class UnitRenderer {
 
     bar.pct = pct;
 
-    // Position background (centered on unit X)
     bar.bg.position.x = x;
-    bar.bg.position.y = barY;
+    bar.bg.position.y = HP_BAR_Y;
     bar.bg.position.z = barZ;
 
-    // Scale fill and left-align
     bar.fill.scaling.x = pct;
     bar.fill.position.x = x - barWidth * (1 - pct) / 2;
-    bar.fill.position.y = barY + 0.01;
+    bar.fill.position.y = HP_BAR_Y + 0.01;
     bar.fill.position.z = barZ;
 
-    // Color by health percentage
     if (pct > 0.5) {
-      bar.fillMat.emissiveColor = new Color3(0.2, 0.8, 0.2);   // green
+      bar.fillMat.emissiveColor = new Color3(0.2, 0.8, 0.2);
     } else if (pct > 0.25) {
-      bar.fillMat.emissiveColor = new Color3(0.8, 0.8, 0.2);   // yellow
+      bar.fillMat.emissiveColor = new Color3(0.8, 0.8, 0.2);
     } else {
-      bar.fillMat.emissiveColor = new Color3(0.8, 0.2, 0.2);   // red
+      bar.fillMat.emissiveColor = new Color3(0.8, 0.2, 0.2);
     }
   }
 
@@ -376,12 +447,10 @@ export class UnitRenderer {
   clear(): void {
     this.setSelected(null);
 
-    for (const [id] of this.units) {
-      const entry = this.units.get(id);
-      if (entry) {
-        entry.mesh.material?.dispose();
-        entry.mesh.dispose();
-      }
+    for (const [, entry] of this.units) {
+      entry.currentTexture.dispose();
+      entry.material.dispose();
+      entry.mesh.dispose();
     }
     this.units.clear();
 
@@ -405,5 +474,6 @@ export class UnitRenderer {
 
   dispose(): void {
     this.clear();
+    this.spriteAnimator.dispose();
   }
 }
