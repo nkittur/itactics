@@ -174,26 +174,104 @@
       100% { opacity: 0; transform: translate(-50%, -250%); }
     }
 
-    .attack-preview {
-      position: absolute;
-      transform: translate(-50%, -120%);
+    /* ── Enemy detail panel (long-press) ── */
+    .enemy-detail-backdrop {
+      position: fixed;
+      top: 0; left: 0; width: 100%; height: 100%;
       display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 1px;
-      pointer-events: none;
-      text-shadow: 0 0 3px #000, 0 0 3px #000;
-      line-height: 1.1;
+      align-items: flex-start;
+      justify-content: center;
+      padding-top: calc(50px + env(safe-area-inset-top, 0px));
+      pointer-events: auto;
+      z-index: 20;
     }
-    .ap-hit {
-      font-size: 13px;
-      font-weight: 700;
-      color: #ffcc44;
-    }
-    .ap-dmg {
-      font-size: 10px;
-      font-weight: 600;
+    .enemy-detail-panel {
+      width: 220px;
+      max-height: 70vh;
+      overflow-y: auto;
+      padding: 10px 12px;
+      background: rgba(20, 20, 40, 0.95);
+      border-radius: 8px;
+      border: 1px solid #555577;
       color: #ddd;
+      font-size: 12px;
+      line-height: 1.4;
+    }
+    .edp-header {
+      font-size: 14px;
+      font-weight: 700;
+      color: #fff;
+      margin-bottom: 6px;
+    }
+    .edp-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 4px;
+    }
+    .edp-label { color: #999; font-size: 11px; min-width: 24px; }
+    .edp-value { color: #ccc; font-size: 11px; white-space: nowrap; }
+    .edp-bar {
+      flex: 1;
+      height: 8px;
+      background: #333;
+      border-radius: 3px;
+      overflow: hidden;
+    }
+    .edp-bar-fill { display: block; height: 100%; border-radius: 3px; }
+    .edp-bar-fill.hp-green { background: #44bb44; }
+    .edp-bar-fill.hp-yellow { background: #bbbb44; }
+    .edp-bar-fill.hp-red { background: #bb4444; }
+    .edp-stats {
+      display: flex;
+      gap: 8px;
+      font-size: 10px;
+      color: #aaa;
+      margin-bottom: 6px;
+      flex-wrap: wrap;
+    }
+    .edp-section { margin-bottom: 4px; }
+    .edp-equip {
+      font-size: 11px;
+      color: #ccaa88;
+    }
+    .edp-equip.edp-armor { color: #8899aa; }
+    .edp-morale { font-size: 11px; margin-right: 8px; }
+    .edp-fatigue { font-size: 10px; color: #cc8844; }
+    .edp-effects {
+      font-size: 10px;
+      color: #cc8844;
+      margin-bottom: 4px;
+    }
+    .edp-divider {
+      border-top: 1px solid #444466;
+      margin: 6px 0;
+    }
+    .edp-hit-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      margin-bottom: 4px;
+    }
+    .edp-hit-label { font-size: 12px; color: #aaa; }
+    .edp-hit-value { font-size: 16px; font-weight: 700; color: #ffcc44; }
+    .edp-modifiers { margin-bottom: 6px; }
+    .edp-mod-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 10px;
+      padding: 1px 0;
+    }
+    .edp-mod-label { color: #888; }
+    .edp-mod-value { font-weight: 600; min-width: 32px; text-align: right; }
+    .edp-dmg-row {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 2px;
+    }
+    .edp-armor-info {
+      font-size: 10px;
+      color: #8899aa;
     }
   </style>
 </head>

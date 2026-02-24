@@ -4,6 +4,8 @@ import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { HexLayout, hexToPixel } from "@hex/HexLayout";
+import type { HexGrid } from "@hex/HexGrid";
+import { LAYER_HEIGHT } from "@rendering/TileRenderer";
 import { SpriteAnimator, type SpriteAnim, type SpriteCharType, type SpriteState } from "./SpriteAnimator";
 import { Texture } from "@babylonjs/core/Materials/Textures/texture";
 
@@ -35,17 +37,12 @@ interface HealthBarEntry {
 
 const SELECTION_COLOR = Color3.FromHexString("#ffcc00"); // yellow
 
-/** Height above ground for unit sprites. Above all tile elevations (max 0.2). */
+/** Height above tile surface for unit sprites. */
 const UNIT_Y = 0.5;
-/** Height for selection ring. Between tiles and unit sprite. */
+/** Height for selection ring. Between tile and unit sprite. */
 const RING_Y = 0.35;
 /** Health bar height. Above unit sprite. */
 const HP_BAR_Y = 0.7;
-/**
- * Z offset to shift sprite so character's feet land ~1/4 up the hex tile.
- * Positive Z = screen up. Tuned so feet sit just above hex center.
- */
-const SPRITE_Z_OFFSET = 1.0;
 
 /**
  * Renders units as animated sprite planes on the hex grid.
@@ -57,6 +54,7 @@ const SPRITE_Z_OFFSET = 1.0;
 export class UnitRenderer {
   private scene: Scene;
   private layout: HexLayout;
+  private grid: HexGrid | null = null;
   private units = new Map<string, UnitEntry>();
   private selectionRing: Mesh | null = null;
   private selectionMaterial: StandardMaterial | null = null;
@@ -83,12 +81,25 @@ export class UnitRenderer {
     });
   }
 
+  /** Set the grid reference for elevation lookups. */
+  setGrid(grid: HexGrid): void {
+    this.grid = grid;
+  }
+
+  /** Get the Y position for a hex tile's elevation. */
+  private getElevationY(q: number, r: number): number {
+    if (!this.grid) return 0;
+    const tile = this.grid.get(q, r);
+    return (tile?.elevation ?? 0) * LAYER_HEIGHT;
+  }
+
   addUnit(entityId: string, q: number, r: number, team: UnitTeam): void {
     if (this.units.has(entityId)) {
       this.removeUnit(entityId);
     }
 
     const { x, y } = hexToPixel(this.layout, q, r);
+    const elevY = this.getElevationY(q, r);
     const charType: SpriteCharType = team === UnitTeam.Enemy ? "orc" : "soldier";
 
     // Create a plane mesh for the sprite
@@ -98,11 +109,11 @@ export class UnitRenderer {
       { width: spriteSize, height: spriteSize },
       this.scene
     );
-    // Lay flat on XZ plane, facing upward (camera looks down)
+    // Lay flat on XZ plane, facing upward
     mesh.rotation.x = -Math.PI / 2;
     mesh.position.x = x;
-    mesh.position.y = UNIT_Y;
-    mesh.position.z = y + SPRITE_Z_OFFSET;
+    mesh.position.y = UNIT_Y + elevY;
+    mesh.position.z = y;
     mesh.isPickable = false;
     mesh.renderingGroupId = 2; // render above overlays
 
@@ -145,17 +156,20 @@ export class UnitRenderer {
     if (!entry) return;
 
     const { x, y } = hexToPixel(this.layout, q, r);
+    const elevY = this.getElevationY(q, r);
     entry.mesh.position.x = x;
-    entry.mesh.position.z = y + SPRITE_Z_OFFSET;
+    entry.mesh.position.y = UNIT_Y + elevY;
+    entry.mesh.position.z = y;
     entry.q = q;
     entry.r = r;
 
     if (this.selectedEntityId === entityId && this.selectionRing) {
       this.selectionRing.position.x = x;
+      this.selectionRing.position.y = RING_Y + elevY;
       this.selectionRing.position.z = y;
     }
 
-    this.moveHealthBar(entityId, x, y);
+    this.moveHealthBar(entityId, x, y, elevY);
   }
 
   setSelected(entityId: string | null): void {
@@ -172,6 +186,7 @@ export class UnitRenderer {
     if (!entry) return;
 
     const { x, y } = hexToPixel(this.layout, entry.q, entry.r);
+    const elevY = this.getElevationY(entry.q, entry.r);
 
     const ring = MeshBuilder.CreateTorus(
       "selectionRing",
@@ -183,7 +198,7 @@ export class UnitRenderer {
       this.scene
     );
     ring.position.x = x;
-    ring.position.y = RING_Y;
+    ring.position.y = RING_Y + elevY;
     ring.position.z = y;
     ring.renderingGroupId = 2;
 
@@ -255,11 +270,13 @@ export class UnitRenderer {
 
     const positions = path.map(p => {
       const px = hexToPixel(this.layout, p.q, p.r);
-      return { x: px.x, z: px.y + SPRITE_Z_OFFSET, rawZ: px.y };
+      const elevY = this.getElevationY(p.q, p.r);
+      return { x: px.x, z: px.y, y: UNIT_Y + elevY, elevY };
     });
     let stepIdx = 0;
     let fromX = entry.mesh.position.x;
     let fromZ = entry.mesh.position.z;
+    let fromY = entry.mesh.position.y;
     let stepStart = performance.now();
 
     const observer = this.scene.onBeforeRenderObservable.add(() => {
@@ -268,6 +285,7 @@ export class UnitRenderer {
 
       entry.mesh.position.x = fromX + (target.x - fromX) * t;
       entry.mesh.position.z = fromZ + (target.z - fromZ) * t;
+      entry.mesh.position.y = fromY + (target.y - fromY) * t;
 
       if (t >= 1) {
         const dest = path[stepIdx]!;
@@ -276,9 +294,10 @@ export class UnitRenderer {
 
         if (this.selectedEntityId === entityId && this.selectionRing) {
           this.selectionRing.position.x = target.x;
-          this.selectionRing.position.z = target.rawZ;
+          this.selectionRing.position.y = RING_Y + target.elevY;
+          this.selectionRing.position.z = target.z;
         }
-        this.moveHealthBar(entityId, target.x, target.rawZ);
+        this.moveHealthBar(entityId, target.x, target.z, target.elevY);
 
         stepIdx++;
         if (stepIdx >= positions.length) {
@@ -288,6 +307,7 @@ export class UnitRenderer {
         } else {
           fromX = target.x;
           fromZ = target.z;
+          fromY = target.y;
           stepStart = performance.now();
         }
       }
@@ -312,9 +332,8 @@ export class UnitRenderer {
 
     const startX = entry.mesh.position.x;
     const startZ = entry.mesh.position.z;
-    const targetZ = targetWorldZ + SPRITE_Z_OFFSET;
     const midX = (startX + targetWorldX) / 2;
-    const midZ = (startZ + targetZ) / 2;
+    const midZ = (startZ + targetWorldZ) / 2;
     const halfDur = duration / 2;
     const startTime = performance.now();
 
@@ -330,6 +349,7 @@ export class UnitRenderer {
         entry.mesh.position.x = midX + (startX - midX) * t;
         entry.mesh.position.z = midZ + (startZ - midZ) * t;
       }
+
 
       if (elapsed >= duration) {
         entry.mesh.position.x = startX;
@@ -371,6 +391,7 @@ export class UnitRenderer {
     }
 
     const { x, y } = hexToPixel(this.layout, entry.q, entry.r);
+    const elevY = this.getElevationY(entry.q, entry.r);
     const barWidth = this.layout.size * 0.7;
     const barHeight = this.layout.size * 0.08;
     const barZ = y + this.layout.size * 0.55;
@@ -416,12 +437,12 @@ export class UnitRenderer {
     bar.pct = pct;
 
     bar.bg.position.x = x;
-    bar.bg.position.y = HP_BAR_Y;
+    bar.bg.position.y = HP_BAR_Y + elevY;
     bar.bg.position.z = barZ;
 
     bar.fill.scaling.x = pct;
     bar.fill.position.x = x - barWidth * (1 - pct) / 2;
-    bar.fill.position.y = HP_BAR_Y + 0.01;
+    bar.fill.position.y = HP_BAR_Y + 0.01 + elevY;
     bar.fill.position.z = barZ;
 
     if (pct > 0.5) {
@@ -442,16 +463,18 @@ export class UnitRenderer {
     this.healthBars.delete(entityId);
   }
 
-  private moveHealthBar(entityId: string, worldX: number, worldZ: number): void {
+  private moveHealthBar(entityId: string, worldX: number, worldZ: number, elevY = 0): void {
     const bar = this.healthBars.get(entityId);
     if (!bar) return;
     const barWidth = this.layout.size * 0.7;
     const barZ = worldZ + this.layout.size * 0.55;
 
     bar.bg.position.x = worldX;
+    bar.bg.position.y = HP_BAR_Y + elevY;
     bar.bg.position.z = barZ;
 
     bar.fill.position.x = worldX - barWidth * (1 - bar.pct) / 2;
+    bar.fill.position.y = HP_BAR_Y + 0.01 + elevY;
     bar.fill.position.z = barZ;
   }
 

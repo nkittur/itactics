@@ -6,17 +6,18 @@ import { HexLayout, pixelToHex } from "@hex/HexLayout";
  * Unified touch and pointer input manager.
  *
  * - **Tap** (quick press, minimal movement): Picks the hex under the pointer.
+ * - **Long-press** (hold ≥400ms without moving): Fires onHexLongPress.
  * - **Pan** (single-finger drag or mouse drag): Pans the camera.
  * - **Pinch** (two-finger gesture): Zooms the camera.
  * - **Mouse wheel**: Zooms the camera.
- *
- * Uses pointer events for mouse/stylus (since Babylon.js suppresses mouse
- * events via preventDefault on its own pointer handlers) and raw touch
- * events for multi-touch pinch detection.
  */
 export class TouchManager {
   /** Called when a hex tile is tapped. Receives axial (q, r) coordinates. */
   onHexTap: ((q: number, r: number) => void) | null = null;
+  /** Called when a hex is long-pressed (hold ≥400ms). */
+  onHexLongPress: ((q: number, r: number) => void) | null = null;
+  /** Called when a long-press ends (finger/mouse released). */
+  onLongPressEnd: (() => void) | null = null;
 
   private canvas: HTMLCanvasElement;
   private scene: Scene;
@@ -28,12 +29,18 @@ export class TouchManager {
   private isDragging = false;
   private initialPinchDistance: number | null = null;
   private lastPinchScale = 1;
-  private touchActive = false; // true while a touch sequence is active
+  private touchActive = false;
 
   // Pointer state tracking (mouse/stylus — not touch)
   private pointerDown = false;
   private pointerStart: { x: number; y: number } | null = null;
   private pointerDragging = false;
+
+  // Long-press state
+  private longPressTimer: ReturnType<typeof setTimeout> | null = null;
+  private longPressActive = false;
+  private readonly LONG_PRESS_MS = 400;
+  private readonly LONG_PRESS_MOVE_THRESHOLD = 10;
 
   private readonly wheelZoomSpeed = 0.002;
 
@@ -78,7 +85,42 @@ export class TouchManager {
   }
 
   // ---------------------------------------------------------------------------
-  // Touch events (handles tap, single-finger pan, and pinch-zoom)
+  // Long-press helpers
+  // ---------------------------------------------------------------------------
+
+  private startLongPressTimer(screenX: number, screenY: number): void {
+    this.cancelLongPressTimer();
+    this.longPressTimer = setTimeout(() => {
+      this.longPressTimer = null;
+      this.longPressActive = true;
+      this.fireLongPress(screenX, screenY);
+    }, this.LONG_PRESS_MS);
+  }
+
+  private cancelLongPressTimer(): void {
+    if (this.longPressTimer !== null) {
+      clearTimeout(this.longPressTimer);
+      this.longPressTimer = null;
+    }
+  }
+
+  private fireLongPress(screenX: number, screenY: number): void {
+    if (!this.onHexLongPress) return;
+    const { x: worldX, z: worldZ } = this.camera.screenToWorld(screenX, screenY);
+    const hex = pixelToHex(this.hexLayout, worldX, worldZ);
+    this.onHexLongPress(hex.q, hex.r);
+  }
+
+  private endLongPress(): void {
+    this.cancelLongPressTimer();
+    if (this.longPressActive) {
+      this.longPressActive = false;
+      this.onLongPressEnd?.();
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Touch events (handles tap, long-press, single-finger pan, and pinch-zoom)
   // ---------------------------------------------------------------------------
 
   private setupTouchEvents(): void {
@@ -89,21 +131,20 @@ export class TouchManager {
   }
 
   private onTouchStart(e: TouchEvent): void {
-    // Do NOT call preventDefault here — it would suppress pointer events,
-    // blocking Babylon.js GUI button taps. CSS touch-action:none handles
-    // preventing browser gestures instead.
     this.touchActive = true;
 
     if (e.touches.length === 1) {
       const touch = e.touches[0]!;
       this.touchStart = { x: touch.clientX, y: touch.clientY, time: Date.now() };
       this.isDragging = false;
+      this.startLongPressTimer(touch.clientX, touch.clientY);
     } else if (e.touches.length === 2) {
       const dx = e.touches[0]!.clientX - e.touches[1]!.clientX;
       const dy = e.touches[0]!.clientY - e.touches[1]!.clientY;
       this.initialPinchDistance = Math.hypot(dx, dy);
       this.lastPinchScale = 1;
       this.touchStart = null;
+      this.cancelLongPressTimer();
     }
   }
 
@@ -116,7 +157,11 @@ export class TouchManager {
       const dy = touch.clientY - this.touchStart.y;
       const distance = Math.hypot(dx, dy);
 
-      if (distance > 10 || this.isDragging) {
+      if (distance > this.LONG_PRESS_MOVE_THRESHOLD || this.isDragging) {
+        this.cancelLongPressTimer();
+        if (this.longPressActive) {
+          this.endLongPress();
+        }
         this.isDragging = true;
         this.panByScreenDelta(dx, dy);
         this.touchStart.x = touch.clientX;
@@ -134,7 +179,11 @@ export class TouchManager {
   }
 
   private onTouchEnd(e: TouchEvent): void {
-    if (this.touchStart && e.changedTouches.length === 1 && !this.isDragging) {
+    // End any active long-press
+    if (this.longPressActive) {
+      this.endLongPress();
+    } else if (this.touchStart && e.changedTouches.length === 1 && !this.isDragging) {
+      this.cancelLongPressTimer();
       const touch = e.changedTouches[0]!;
       const elapsed = Date.now() - this.touchStart.time;
       const moved = Math.hypot(
@@ -143,12 +192,12 @@ export class TouchManager {
       );
 
       if (elapsed < 300 && moved < 15) {
-        console.log("[Touch] tap at", touch.clientX, touch.clientY);
         this.handleTap(touch.clientX, touch.clientY);
       }
     }
 
     if (e.touches.length === 0) {
+      this.cancelLongPressTimer();
       this.touchStart = null;
       this.isDragging = false;
       this.initialPinchDistance = null;
@@ -158,6 +207,7 @@ export class TouchManager {
   }
 
   private onTouchCancel(_e: TouchEvent): void {
+    this.endLongPress();
     this.touchStart = null;
     this.isDragging = false;
     this.initialPinchDistance = null;
@@ -177,13 +227,12 @@ export class TouchManager {
   }
 
   private onPointerDown(e: PointerEvent): void {
-    // Skip touch pointers — handled by touch events above
     if (e.pointerType === "touch") return;
 
-    console.log("[Pointer] down", e.pointerType, e.clientX, e.clientY);
     this.pointerDown = true;
     this.pointerDragging = false;
     this.pointerStart = { x: e.clientX, y: e.clientY };
+    this.startLongPressTimer(e.clientX, e.clientY);
   }
 
   private onPointerMove(e: PointerEvent): void {
@@ -194,6 +243,10 @@ export class TouchManager {
     const dy = e.clientY - this.pointerStart.y;
 
     if (Math.hypot(dx, dy) > 5 || this.pointerDragging) {
+      this.cancelLongPressTimer();
+      if (this.longPressActive) {
+        this.endLongPress();
+      }
       this.pointerDragging = true;
       this.panByScreenDelta(dx, dy);
       this.pointerStart.x = e.clientX;
@@ -204,13 +257,14 @@ export class TouchManager {
   private onPointerUp(e: PointerEvent): void {
     if (e.pointerType === "touch") return;
 
-    console.log("[Pointer] up", e.pointerType, "dragging=", this.pointerDragging, "down=", this.pointerDown);
-
-    if (this.pointerDown && !this.pointerDragging) {
-      console.log("[Pointer] click→tap at", e.clientX, e.clientY);
+    if (this.longPressActive) {
+      this.endLongPress();
+    } else if (this.pointerDown && !this.pointerDragging) {
+      this.cancelLongPressTimer();
       this.handleTap(e.clientX, e.clientY);
     }
 
+    this.cancelLongPressTimer();
     this.pointerDown = false;
     this.pointerDragging = false;
     this.pointerStart = null;
@@ -226,41 +280,15 @@ export class TouchManager {
   // Shared helpers
   // ---------------------------------------------------------------------------
 
-  /** Convert a screen-space drag delta to a world-space camera pan. */
   private panByScreenDelta(dx: number, dy: number): void {
-    const cam = this.camera.camera;
-    const worldPerPixelX = (cam.orthoRight! - cam.orthoLeft!) / this.canvas.clientWidth;
-    const worldPerPixelZ = (cam.orthoTop! - cam.orthoBottom!) / this.canvas.clientHeight;
-    const worldDx = -dx * worldPerPixelX;
-    const worldDz = dy * worldPerPixelZ;
-    this.camera.pan(worldDx, worldDz);
+    this.camera.panByScreenDelta(dx, dy, this.canvas.clientWidth, this.canvas.clientHeight);
   }
 
-  /**
-   * Convert a screen tap/click into a hex coordinate using direct math
-   * for the orthographic camera.
-   */
   private handleTap(screenX: number, screenY: number): void {
-    if (!this.onHexTap) {
-      console.log("[handleTap] no onHexTap callback!");
-      return;
-    }
+    if (!this.onHexTap) return;
 
-    const cam = this.camera.camera;
-    const cw = this.canvas.clientWidth;
-    const ch = this.canvas.clientHeight;
-
-    if (cw === 0 || ch === 0) return;
-
-    const nx = screenX / cw;
-    const ny = screenY / ch;
-
-    const worldX = cam.position.x + cam.orthoLeft! + nx * (cam.orthoRight! - cam.orthoLeft!);
-    const worldZ = cam.position.z + cam.orthoTop! - ny * (cam.orthoTop! - cam.orthoBottom!);
-
+    const { x: worldX, z: worldZ } = this.camera.screenToWorld(screenX, screenY);
     const hexCoord = pixelToHex(this.hexLayout, worldX, worldZ);
-    console.log("[handleTap] screen=(%f,%f) world=(%f,%f) hex=(%d,%d)",
-      screenX, screenY, worldX, worldZ, hexCoord.q, hexCoord.r);
     this.onHexTap(hexCoord.q, hexCoord.r);
   }
 
@@ -269,6 +297,7 @@ export class TouchManager {
   // ---------------------------------------------------------------------------
 
   dispose(): void {
+    this.cancelLongPressTimer();
     this.canvas.removeEventListener("touchstart", this.boundOnTouchStart);
     this.canvas.removeEventListener("touchmove", this.boundOnTouchMove);
     this.canvas.removeEventListener("touchend", this.boundOnTouchEnd);
@@ -279,5 +308,7 @@ export class TouchManager {
     this.canvas.removeEventListener("wheel", this.boundOnWheel);
 
     this.onHexTap = null;
+    this.onHexLongPress = null;
+    this.onLongPressEnd = null;
   }
 }

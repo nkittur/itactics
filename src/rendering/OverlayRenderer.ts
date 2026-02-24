@@ -5,9 +5,7 @@ import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { HexLayout, hexToPixel } from "@hex/HexLayout";
 import type { HexGrid } from "@hex/HexGrid";
-
-/** Must match LAYER_HEIGHT in TileRenderer. */
-const LAYER_HEIGHT = 0.12;
+import { LAYER_HEIGHT } from "@rendering/TileRenderer";
 
 /**
  * Renders semi-transparent hex overlays for movement range and attack range.

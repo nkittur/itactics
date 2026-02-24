@@ -5,13 +5,19 @@ import { Camera } from "@babylonjs/core/Cameras/camera";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 
 /**
- * Orthographic camera controller for top-down hex grid viewing.
+ * Orthographic camera controller for hex grid viewing.
  *
- * Uses a fixed rotation (pitch PI/2 = look straight down) instead of
- * setTarget to avoid gimbal lock drift. With this rotation:
+ * Tilted ~15 degrees from vertical to show 3D hex column sides.
+ * Uses a fixed rotation (no setTarget) to avoid gimbal lock drift.
  *   screen right = world +X
- *   screen up    = world +Z
+ *   screen up    ≈ world +Z (foreshortened by cos(tilt))
  */
+
+/** Camera tilt: 75 degrees from horizontal = 15 degrees from vertical. */
+const TILT = (75 * Math.PI) / 180;
+export const TILT_SIN = Math.sin(TILT);
+const TILT_COS = Math.cos(TILT);
+
 export class CameraController {
   camera: FreeCamera;
   private orthoHalfHeight = 15;
@@ -34,8 +40,8 @@ export class CameraController {
     this.scene = scene;
 
     this.camera = new FreeCamera("camera", new Vector3(0, 10, 0), scene);
-    // Fixed rotation: look straight down. No setTarget() — avoids gimbal lock.
-    this.camera.rotation.x = Math.PI / 2;
+    // Tilted rotation: mostly down with slight forward lean.
+    this.camera.rotation.x = TILT;
     this.camera.rotation.y = 0;
     this.camera.rotation.z = 0;
     this.camera.mode = Camera.ORTHOGRAPHIC_CAMERA;
@@ -56,7 +62,8 @@ export class CameraController {
   }
 
   /**
-   * Pan the camera by a world-space delta on the XZ plane.
+   * Pan the camera by a world-space delta on the ground plane.
+   * dz is in ground-plane units; internally adjusted for tilt.
    * Cancels any in-flight smooth pan.
    */
   pan(dx: number, dz: number): void {
@@ -82,19 +89,23 @@ export class CameraController {
     this.updateOrtho();
   }
 
-  /** Instantly center the camera on a world position. */
-  centerOn(x: number, z: number): void {
+  /**
+   * Center the camera so ground point (gx, gz) appears at screen center.
+   * Accounts for tilt offset.
+   */
+  centerOn(gx: number, gz: number): void {
     this.panAnim = null;
-    this.camera.position.x = x;
-    this.camera.position.z = z;
+    this.camera.position.x = gx;
+    this.camera.position.z = gz + this.camera.position.y * TILT_COS / TILT_SIN;
   }
 
-  /** Smoothly pan the camera to a world position over durationMs. */
-  panTo(targetX: number, targetZ: number, durationMs = 400, onComplete?: () => void): void {
+  /** Smoothly pan the camera to center on ground point (gx, gz). */
+  panTo(gx: number, gz: number, durationMs = 400, onComplete?: () => void): void {
+    const targetZ = gz + this.camera.position.y * TILT_COS / TILT_SIN;
     this.panAnim = {
       startX: this.camera.position.x,
       startZ: this.camera.position.z,
-      targetX,
+      targetX: gx,
       targetZ,
       startTime: performance.now(),
       duration: durationMs,
@@ -106,7 +117,7 @@ export class CameraController {
     if (!this.panAnim) return;
     const { startX, startZ, targetX, targetZ, startTime, duration } = this.panAnim;
     const t = Math.min(1, (performance.now() - startTime) / duration);
-    const ease = 1 - (1 - t) * (1 - t); // ease-out quadratic
+    const ease = 1 - (1 - t) * (1 - t);
 
     this.camera.position.x = startX + (targetX - startX) * ease;
     this.camera.position.z = startZ + (targetZ - startZ) * ease;
@@ -119,20 +130,59 @@ export class CameraController {
   }
 
   /**
-   * Project a world XZ position to screen-space CSS pixels.
+   * Convert a screen-space drag delta into a world-space camera pan.
+   * Accounts for tilted orthographic projection.
+   */
+  panByScreenDelta(dx: number, dy: number, canvasW: number, canvasH: number): void {
+    this.panAnim = null;
+    const cam = this.camera;
+    const worldDx = -dx * (cam.orthoRight! - cam.orthoLeft!) / canvasW;
+    const worldDz = -dy * (cam.orthoTop! - cam.orthoBottom!) / (canvasH * TILT_SIN);
+    cam.position.x += worldDx;
+    cam.position.z += worldDz;
+  }
+
+  /**
+   * Convert screen CSS-pixel coordinates to world ground-plane (Y=0) coordinates.
+   * Accounts for tilted orthographic projection.
+   */
+  screenToWorld(screenX: number, screenY: number): { x: number; z: number } {
+    const canvas = this.engine.getRenderingCanvas()!;
+    const cw = canvas.clientWidth;
+    const ch = canvas.clientHeight;
+    if (cw === 0 || ch === 0) return { x: 0, z: 0 };
+
+    const nx = screenX / cw;
+    const ny = screenY / ch;
+
+    const cam = this.camera;
+    const oL = cam.orthoLeft!;
+    const oR = cam.orthoRight!;
+    const oT = cam.orthoTop!;
+    const oB = cam.orthoBottom!;
+
+    const worldX = cam.position.x + oL + nx * (oR - oL);
+    const orthoV = oB + (1 - ny) * (oT - oB);
+    const worldZ = cam.position.z - (cam.position.y * TILT_COS + orthoV) / TILT_SIN;
+
+    return { x: worldX, z: worldZ };
+  }
+
+  /**
+   * Project a world ground-plane position to screen-space CSS pixels.
    * Useful for positioning HTML overlays above game objects.
    */
-  worldToScreen(worldX: number, worldZ: number): { x: number; y: number } {
+  worldToScreen(worldX: number, worldZ: number, worldY = 0): { x: number; y: number } {
     const canvas = this.engine.getRenderingCanvas()!;
-    const camX = this.camera.position.x;
-    const camZ = this.camera.position.z;
-    const oL = this.camera.orthoLeft!;
-    const oR = this.camera.orthoRight!;
-    const oT = this.camera.orthoTop!;
-    const oB = this.camera.orthoBottom!;
+    const cam = this.camera;
+    const oL = cam.orthoLeft!;
+    const oR = cam.orthoRight!;
+    const oT = cam.orthoTop!;
+    const oB = cam.orthoBottom!;
 
-    const ndcX = (worldX - camX - oL) / (oR - oL);
-    const ndcY = 1 - (worldZ - camZ - oB) / (oT - oB);
+    const ndcX = (worldX - cam.position.x - oL) / (oR - oL);
+    const orthoV = (cam.position.z - worldZ) * TILT_SIN + (worldY - cam.position.y) * TILT_COS;
+    const ndcY = 1 - (orthoV - oB) / (oT - oB);
 
     return {
       x: ndcX * canvas.clientWidth,

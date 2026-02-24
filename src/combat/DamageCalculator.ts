@@ -19,6 +19,19 @@ export interface AttackPreview {
   maxDamage: number;
 }
 
+export interface HitChanceModifier {
+  label: string;
+  value: number;
+}
+
+export interface DetailedAttackPreview extends AttackPreview {
+  modifiers: HitChanceModifier[];
+  weaponName: string;
+  armorIgnorePct: number;
+  armorDamageMult: number;
+  headHitChance: number;
+}
+
 export interface AttackResult {
   hit: boolean;
   hitChance: number;
@@ -259,6 +272,83 @@ export class DamageCalculator {
     );
 
     return { hitChance, minDamage: weapon.minDamage, maxDamage: weapon.maxDamage };
+  }
+
+  /** Preview with full modifier breakdown for the enemy detail panel. */
+  previewMeleeDetailed(
+    world: World,
+    attackerId: EntityId,
+    defenderId: EntityId,
+  ): DetailedAttackPreview {
+    const attackerStats = world.getComponent<StatsComponent>(attackerId, "stats");
+    const defenderStats = world.getComponent<StatsComponent>(defenderId, "stats");
+    const attackerEquip = world.getComponent<EquipmentComponent>(attackerId, "equipment");
+    const defenderEquip = world.getComponent<EquipmentComponent>(defenderId, "equipment");
+
+    if (!attackerStats || !defenderStats) {
+      return {
+        hitChance: 5, minDamage: 0, maxDamage: 0,
+        modifiers: [], weaponName: "Unarmed",
+        armorIgnorePct: 0, armorDamageMult: 0, headHitChance: 25,
+      };
+    }
+
+    const weapon: WeaponDef = attackerEquip?.mainHand
+      ? getWeapon(attackerEquip.mainHand) : UNARMED;
+    const shield: ShieldDef | undefined = defenderEquip?.offHand
+      ? getShield(defenderEquip.offHand) : undefined;
+
+    const attackerPos = world.getComponent<PositionComponent>(attackerId, "position");
+    const defenderPos = world.getComponent<PositionComponent>(defenderId, "position");
+
+    const shieldBonus = shield?.meleeDefBonus ?? 0;
+    const defenderTile = defenderPos ? this.grid.get(defenderPos.q, defenderPos.r) : undefined;
+    const terrainDefBonus = defenderTile?.defenseBonusMelee ?? 0;
+    const attackerElev = attackerPos?.elevation ?? 0;
+    const defenderElev = defenderPos?.elevation ?? 0;
+    const elevationMod = (attackerElev - defenderElev) * 10;
+    const surroundBonus = defenderPos
+      ? this.countSurroundBonus(world, attackerId, defenderId) : 0;
+
+    const attackerMeleeSkillMod = this.statusEffects
+      ? this.statusEffects.getModifier(world, attackerId, "meleeSkill", attackerStats.meleeSkill) : 0;
+    const defenderMeleeDefMod = this.statusEffects
+      ? this.statusEffects.getModifier(world, defenderId, "meleeDefense", defenderStats.meleeDefense) : 0;
+
+    // Build modifier breakdown
+    const modifiers: HitChanceModifier[] = [];
+    modifiers.push({ label: "Melee Skill", value: attackerStats.meleeSkill });
+    if (attackerMeleeSkillMod !== 0)
+      modifiers.push({ label: "Skill Effects", value: attackerMeleeSkillMod });
+    if (weapon.hitChanceBonus !== 0)
+      modifiers.push({ label: weapon.name, value: weapon.hitChanceBonus });
+    modifiers.push({ label: "Defense", value: -defenderStats.meleeDefense });
+    if (defenderMeleeDefMod !== 0)
+      modifiers.push({ label: "Def Effects", value: -defenderMeleeDefMod });
+    if (shieldBonus !== 0)
+      modifiers.push({ label: shield?.name ?? "Shield", value: -shieldBonus });
+    if (terrainDefBonus !== 0)
+      modifiers.push({ label: "Terrain", value: -terrainDefBonus });
+    if (elevationMod !== 0)
+      modifiers.push({ label: "Elevation", value: elevationMod });
+    if (surroundBonus !== 0)
+      modifiers.push({ label: "Surround", value: surroundBonus });
+
+    const rawHit = (attackerStats.meleeSkill + attackerMeleeSkillMod) + weapon.hitChanceBonus
+      - (defenderStats.meleeDefense + defenderMeleeDefMod) - shieldBonus
+      - terrainDefBonus + elevationMod + surroundBonus;
+    const hitChance = clamp(rawHit, 5, 95);
+
+    return {
+      hitChance,
+      minDamage: weapon.minDamage,
+      maxDamage: weapon.maxDamage,
+      modifiers,
+      weaponName: weapon.name,
+      armorIgnorePct: weapon.armorIgnorePct,
+      armorDamageMult: weapon.armorDamageMult,
+      headHitChance: 25,
+    };
   }
 
   /**

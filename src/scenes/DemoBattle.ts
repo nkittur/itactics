@@ -23,13 +23,20 @@ import type { EntityId } from "@entities/Entity";
 import type { HealthComponent } from "@entities/components/Health";
 import type { PositionComponent } from "@entities/components/Position";
 import { hexNeighbors } from "@hex/HexMath";
-import type { AttackResult, AttackPreview } from "@combat/DamageCalculator";
+import type { AttackResult } from "@combat/DamageCalculator";
 import { getZoCDangerHexes } from "@combat/ZoneOfControl";
 import { getArmorDef } from "@data/ArmorData";
 import { getWeapon, UNARMED } from "@data/WeaponData";
+import { getShield } from "@data/ShieldData";
 import { SCENARIOS, getScenario, getDefaultScenarioId, type ScenarioDef } from "@data/ScenarioData";
+import { TILT_SIN } from "@rendering/CameraController";
+import { LAYER_HEIGHT } from "@rendering/TileRenderer";
+import { EnemyDetailPanel, type EnemyDetailData } from "@ui/EnemyDetailPanel";
 import type { FatigueComponent } from "@entities/components/Fatigue";
 import type { EquipmentComponent } from "@entities/components/Equipment";
+import type { ArmorComponent } from "@entities/components/Armor";
+import type { StatsComponent } from "@entities/components/Stats";
+import type { MoraleComponent } from "@entities/components/Morale";
 import type { AIType } from "@entities/components/AIBehavior";
 
 // ── Terrain configs ──
@@ -245,8 +252,8 @@ export class DemoBattle {
   private playerIds: EntityId[] = [];
   private enemyIds: EntityId[] = [];
 
-  // ── Attack preview labels ──
-  private attackPreviews: HTMLDivElement[] = [];
+  // ── Enemy detail panel (long-press) ──
+  private enemyDetailPanel: EnemyDetailPanel;
 
   // ── Animation queue ──
   private animQueue: Array<(done: () => void) => void> = [];
@@ -283,6 +290,7 @@ export class DemoBattle {
     this.tileRenderer.buildGrid(this.grid, this.layout);
 
     this.unitRenderer = new UnitRenderer(this.sceneManager.scene, this.layout);
+    this.unitRenderer.setGrid(this.grid);
     this.overlayRenderer = new OverlayRenderer(this.sceneManager.scene);
     this.overlayRenderer.setGrid(this.grid);
 
@@ -302,6 +310,8 @@ export class DemoBattle {
     this.actionBar = new ActionBar(this.uiManager.root);
     this.turnOrderBar = new TurnOrderBar(this.uiManager.root);
     this.unitInfoPanel = new UnitInfoPanel(this.uiManager.root);
+
+    this.enemyDetailPanel = new EnemyDetailPanel(this.uiManager.root);
 
     // Speed toggle
     this.speedBtn = document.createElement("button");
@@ -334,12 +344,12 @@ export class DemoBattle {
 
     // Center camera on grid, offset for bottom-heavy UI
     // Bottom UI (action bar + info panel) ≈ 220px, top UI (turn order) ≈ 40px
-    // Shift camera down in Z so grid appears higher on screen
+    // Shift camera target down-screen so grid appears centered in usable area
     const center = hexToPixel(this.layout, Math.floor(scenario.gridWidth / 2), Math.floor(scenario.gridHeight / 2));
     const canvasH = canvas.clientHeight || 700;
     const bottomUI = 220;
     const topUI = 40;
-    const uiOffset = ((bottomUI - topUI) / 2 / canvasH) * this.camera.orthoSize * 2;
+    const uiOffset = ((bottomUI - topUI) / 2 / canvasH) * this.camera.orthoSize * 2 / TILT_SIN;
     this.camera.centerOn(center.x, center.y - uiOffset);
 
     // Handle resize
@@ -431,8 +441,17 @@ export class DemoBattle {
   private wireEvents(): void {
     // Touch/Click -> Combat
     this.touchManager.onHexTap = (q: number, r: number) => {
-      if (this.animPlaying) return; // ignore input during animations
+      if (this.animPlaying) return;
       this.combat.handleHexTap(q, r);
+    };
+
+    // Long-press -> Enemy detail panel
+    this.touchManager.onHexLongPress = (q: number, r: number) => {
+      if (this.animPlaying) return;
+      this.showEnemyDetail(q, r);
+    };
+    this.touchManager.onLongPressEnd = () => {
+      this.hideEnemyDetail();
     };
 
     // Action bar -> Combat
@@ -611,7 +630,7 @@ export class DemoBattle {
         this.actionBar.setVisible(false);
         this.unitInfoPanel.hide();
         this.overlayRenderer.clearOverlays();
-        this.clearAttackPreviews();
+        this.hideEnemyDetail();
       } else if (phase === "playerTurn") {
         if (this.combat.selectedUnit) {
           this.unitRenderer.setSelected(this.combat.selectedUnit);
@@ -622,7 +641,7 @@ export class DemoBattle {
         this.actionBar.setVisible(false);
         this.unitInfoPanel.hide();
         this.overlayRenderer.clearOverlays();
-        this.clearAttackPreviews();
+        this.hideEnemyDetail();
       }
     };
 
@@ -636,7 +655,7 @@ export class DemoBattle {
     // Player state changed → update overlays
     this.combat.onPlayerStateChange = (state) => {
       this.overlayRenderer.clearOverlays();
-      this.clearAttackPreviews();
+      this.hideEnemyDetail();
 
       if (state === "awaitingInput") {
         this.showMoveAndAttackOverlays();
@@ -670,8 +689,6 @@ export class DemoBattle {
       this.overlayRenderer.showAttackRange(attackHexes, this.layout);
     }
 
-    // Show attack preview labels on attackable enemies
-    this.showAttackPreviews(pos);
   }
 
   private getAdjacentEnemyHexes(pos: PositionComponent): Set<string> {
@@ -689,46 +706,92 @@ export class DemoBattle {
     return hexes;
   }
 
-  private showAttackPreviews(attackerPos: PositionComponent): void {
-    this.clearAttackPreviews();
-    if (!this.combat.selectedUnit) return;
+  // ── Enemy detail panel (long-press) ──
 
-    const weaponAP = this.combat.selectedWeaponAPCost;
-    const canAfford = this.combat.apRemaining >= weaponAP;
-    if (!canAfford) return;
+  private showEnemyDetail(q: number, r: number): void {
+    const tile = this.grid.get(q, r);
+    if (!tile?.occupant) return;
 
-    const neighbors = hexNeighbors(attackerPos.q, attackerPos.r);
-    for (const n of neighbors) {
-      const tile = this.grid.get(n.q, n.r);
-      if (!tile?.occupant || tile.occupant === this.combat.selectedUnit) continue;
-      const team = this.world.getComponent<TeamComponent>(tile.occupant, "team");
-      if (team?.team !== "enemy") continue;
+    const entityId = tile.occupant;
+    const health = this.world.getComponent<HealthComponent>(entityId, "health");
+    const team = this.world.getComponent<TeamComponent>(entityId, "team");
+    const stats = this.world.getComponent<StatsComponent>(entityId, "stats");
+    const equip = this.world.getComponent<EquipmentComponent>(entityId, "equipment");
+    const armor = this.world.getComponent<ArmorComponent>(entityId, "armor");
+    const fatigue = this.world.getComponent<FatigueComponent>(entityId, "fatigue");
+    const morale = this.world.getComponent<MoraleComponent>(entityId, "morale");
+    if (!health || !team || !stats) return;
 
-      const preview = this.combat.damageCalc.previewMelee(
-        this.world, this.combat.selectedUnit, tile.occupant,
-      );
+    const weapon = equip?.mainHand ? getWeapon(equip.mainHand) : UNARMED;
+    const shield = equip?.offHand ? getShield(equip.offHand) : undefined;
 
-      const worldPos = hexToPixel(this.layout, n.q, n.r);
-      const screenPos = this.camera.worldToScreen(worldPos.x, worldPos.y);
-
-      const label = document.createElement("div");
-      label.className = "attack-preview";
-      label.innerHTML =
-        `<span class="ap-hit">${preview.hitChance}%</span>` +
-        `<span class="ap-dmg">${preview.minDamage}-${preview.maxDamage}</span>`;
-      label.style.left = `${screenPos.x}px`;
-      label.style.top = `${screenPos.y}px`;
-
-      this.uiManager.root.appendChild(label);
-      this.attackPreviews.push(label);
+    // Body/head armor labels
+    let bodyArmorLabel: string | undefined;
+    let headArmorLabel: string | undefined;
+    if (armor?.body) {
+      const def = getArmorDef(armor.body.id);
+      bodyArmorLabel = `Body: ${def?.name ?? armor.body.id} ${armor.body.currentDurability}/${armor.body.maxDurability}`;
     }
+    if (armor?.head) {
+      const def = getArmorDef(armor.head.id);
+      headArmorLabel = `Head: ${def?.name ?? armor.head.id} ${armor.head.currentDurability}/${armor.head.maxDurability}`;
+    }
+
+    // Morale state label
+    let moraleLabel: string | undefined;
+    const moraleState = this.combat.morale.getState(this.world, entityId);
+    if (moraleState) {
+      moraleLabel = moraleState.charAt(0).toUpperCase() + moraleState.slice(1);
+    }
+
+    // Status effects
+    const statusEffects = this.combat.statusEffects.getActiveEffects(this.world, entityId);
+
+    // Attack preview: only if we have a selected player unit adjacent to this enemy
+    let attackPreview = null;
+    if (this.combat.selectedUnit && team.team === "enemy") {
+      const attackerPos = this.world.getComponent<PositionComponent>(this.combat.selectedUnit, "position");
+      const defenderPos = this.world.getComponent<PositionComponent>(entityId, "position");
+      if (attackerPos && defenderPos) {
+        // Check adjacency
+        const neighbors = hexNeighbors(attackerPos.q, attackerPos.r);
+        const isAdjacent = neighbors.some(n => n.q === defenderPos.q && n.r === defenderPos.r);
+        if (isAdjacent) {
+          const weaponAP = this.combat.selectedWeaponAPCost;
+          if (this.combat.apRemaining >= weaponAP) {
+            attackPreview = this.combat.damageCalc.previewMeleeDetailed(
+              this.world, this.combat.selectedUnit, entityId,
+            );
+          }
+        }
+      }
+    }
+
+    const data: EnemyDetailData = {
+      name: team.name,
+      currentHp: health.current,
+      maxHp: health.max,
+      weaponName: weapon.name,
+      weaponDamage: `${weapon.minDamage}-${weapon.maxDamage}`,
+      shieldName: shield?.name,
+      bodyArmor: bodyArmorLabel,
+      headArmor: headArmorLabel,
+      moraleState: moraleLabel,
+      moraleCurrent: morale?.current,
+      fatigue: fatigue ? { current: fatigue.current, max: fatigue.max } : undefined,
+      statusEffects: statusEffects.length > 0 ? statusEffects : undefined,
+      meleeSkill: stats.meleeSkill,
+      meleeDefense: stats.meleeDefense,
+      resolve: stats.resolve,
+      initiative: stats.initiative,
+      attackPreview,
+    };
+
+    this.enemyDetailPanel.show(data);
   }
 
-  private clearAttackPreviews(): void {
-    for (const el of this.attackPreviews) {
-      el.remove();
-    }
-    this.attackPreviews = [];
+  private hideEnemyDetail(): void {
+    this.enemyDetailPanel.hide();
   }
 
   // ── UI helpers ──
@@ -745,7 +808,8 @@ export class DemoBattle {
     if (!pos) return;
 
     const worldPos = hexToPixel(this.layout, pos.q, pos.r);
-    const screenPos = this.camera.worldToScreen(worldPos.x, worldPos.y);
+    const tileElev = (this.grid.get(pos.q, pos.r)?.elevation ?? 0) * LAYER_HEIGHT;
+    const screenPos = this.camera.worldToScreen(worldPos.x, worldPos.y, tileElev);
 
     const popup = document.createElement("div");
     popup.className = "damage-popup";
@@ -763,7 +827,8 @@ export class DemoBattle {
     if (!pos) return;
 
     const worldPos = hexToPixel(this.layout, pos.q, pos.r);
-    const screenPos = this.camera.worldToScreen(worldPos.x, worldPos.y);
+    const tileElev = (this.grid.get(pos.q, pos.r)?.elevation ?? 0) * LAYER_HEIGHT;
+    const screenPos = this.camera.worldToScreen(worldPos.x, worldPos.y, tileElev);
 
     const popup = document.createElement("div");
     popup.className = "damage-popup";
