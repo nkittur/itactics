@@ -586,6 +586,197 @@
     .levelup-confirm-btn:disabled { opacity: 0.4; cursor: default; }
     .levelup-confirm-btn:active:not(:disabled) { filter: brightness(1.3); }
 
+    /* ── Battle End gold display ── */
+    .battle-end-gold {
+      font-size: 14px;
+      font-weight: 600;
+      color: #ffcc44;
+      text-align: center;
+      margin-bottom: 10px;
+    }
+
+    /* ── Store Screen ── */
+    .store-backdrop {
+      position: fixed;
+      top: 0; left: 0; width: 100%; height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(0, 0, 0, 0.7);
+      pointer-events: auto;
+      z-index: 30;
+    }
+    .store-panel {
+      width: 280px;
+      max-height: 85vh;
+      overflow-y: auto;
+      padding: 14px;
+      background: rgba(20, 20, 40, 0.95);
+      border-radius: 10px;
+      border: 1px solid #555577;
+      color: #ddd;
+      font-size: 12px;
+    }
+    .store-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+    .store-title {
+      font-size: 16px;
+      font-weight: 700;
+      color: #fff;
+    }
+    .store-gold {
+      font-size: 14px;
+      font-weight: 600;
+      color: #ffcc44;
+    }
+    .store-section-label {
+      font-size: 13px;
+      font-weight: 700;
+      color: #aabbcc;
+      margin-bottom: 6px;
+      border-bottom: 1px solid #333355;
+      padding-bottom: 4px;
+    }
+    .store-category { margin-bottom: 4px; }
+    .store-category-header {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding: 5px 4px;
+      font-size: 12px;
+      font-weight: 600;
+      color: #99aacc;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .store-category-header:active { color: #ccddeeff; }
+    .store-category-arrow {
+      font-size: 10px;
+      transition: transform 0.15s;
+    }
+    .store-category-arrow.open { transform: rotate(90deg); }
+    .store-item-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 4px;
+      border-bottom: 1px solid rgba(51, 51, 85, 0.5);
+    }
+    .store-item-name {
+      flex: 1;
+      font-size: 11px;
+      color: #ccc;
+    }
+    .store-item-price {
+      font-size: 11px;
+      font-weight: 600;
+      color: #ffcc44;
+      min-width: 36px;
+      text-align: right;
+    }
+    .store-item-price.cant-afford { color: #666; }
+    .store-buy-btn {
+      padding: 4px 10px;
+      border: none;
+      border-radius: 4px;
+      background: #446688;
+      color: white;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+      touch-action: manipulation;
+    }
+    .store-buy-btn:disabled { opacity: 0.3; cursor: default; }
+    .store-buy-btn:active:not(:disabled) { filter: brightness(1.3); }
+    .store-back-btn {
+      padding: 4px 8px;
+      border: 1px solid #555577;
+      border-radius: 4px;
+      background: #2a2a3a;
+      color: #aaa;
+      font-size: 11px;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .store-back-btn:active { filter: brightness(1.3); }
+    .store-detail-name {
+      font-size: 14px;
+      font-weight: 700;
+      color: #fff;
+      text-align: center;
+      margin: 8px 0 4px;
+    }
+    .store-detail-stats {
+      font-size: 11px;
+      color: #aabbcc;
+      text-align: center;
+      line-height: 1.6;
+      margin-bottom: 6px;
+    }
+    .store-detail-price {
+      font-size: 12px;
+      font-weight: 600;
+      color: #ffcc44;
+      text-align: center;
+      margin-bottom: 10px;
+    }
+    .store-assign-label {
+      font-size: 11px;
+      color: #aaa;
+      margin-bottom: 6px;
+    }
+    .store-unit-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 4px;
+      border: 1px solid transparent;
+      border-radius: 4px;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .store-unit-row:active { background: rgba(255, 255, 255, 0.05); }
+    .store-unit-row.disabled { opacity: 0.4; cursor: default; }
+    .store-unit-info { flex: 1; }
+    .store-unit-name {
+      font-size: 11px;
+      color: #ccc;
+    }
+    .store-unit-current {
+      font-size: 10px;
+      color: #888;
+    }
+    .store-unit-equip {
+      font-size: 10px;
+      font-weight: 600;
+      color: #44cc44;
+    }
+    .store-unit-cant {
+      font-size: 10px;
+      color: #cc4444;
+    }
+    .store-continue-btn {
+      display: block;
+      width: 100%;
+      margin-top: 12px;
+      padding: 10px;
+      border: none;
+      border-radius: 8px;
+      background: #446688;
+      color: white;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+      touch-action: manipulation;
+    }
+    .store-continue-btn:active { filter: brightness(1.3); }
+
     /* ── Settings menu ── */
     .settings-btn {
       position: absolute;

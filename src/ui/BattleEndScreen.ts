@@ -17,7 +17,7 @@ export class BattleEndScreen {
     this.container.appendChild(this.panel);
   }
 
-  show(victory: boolean, awards: XPAward[]): void {
+  show(victory: boolean, awards: XPAward[], goldEarned?: number): void {
     this.container.style.display = "flex";
     this.panel.innerHTML = "";
 
@@ -25,6 +25,11 @@ export class BattleEndScreen {
     const title = el("div", "battle-end-title", victory ? "Victory!" : "Defeat");
     title.style.color = victory ? "#44cc44" : "#cc4444";
     this.panel.appendChild(title);
+
+    // Gold earned
+    if (victory && goldEarned != null && goldEarned > 0) {
+      this.panel.appendChild(el("div", "battle-end-gold", `+${goldEarned} Gold`));
+    }
 
     // XP table
     if (awards.length > 0) {

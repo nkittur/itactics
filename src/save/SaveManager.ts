@@ -54,6 +54,9 @@ export interface SaveData {
   version: 1;
   roster: RosterMember[];
   currentScenarioIndex: number;
+  gold: number;
+  /** Shared party inventory of item IDs. */
+  stash: string[];
   battleInProgress?: BattleState;
 }
 
@@ -63,7 +66,13 @@ export async function saveGame(data: SaveData): Promise<void> {
 
 export async function loadGame(): Promise<SaveData | null> {
   const data = await get<SaveData>(SAVE_KEY);
-  if (data && data.version === 1) return data;
+  if (data && data.version === 1) {
+    // Backward compat: default gold/stash if missing from older saves
+    const raw = data as unknown as Record<string, unknown>;
+    if (raw.gold == null) data.gold = 0;
+    if (!Array.isArray(raw.stash)) data.stash = [];
+    return data;
+  }
   return null;
 }
 

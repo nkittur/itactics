@@ -47,6 +47,8 @@ import type { PerksComponent } from "@entities/components/Perks";
 import { calculateBattleXP, type XPAward } from "@combat/XPCalculator";
 import { BattleEndScreen } from "@ui/BattleEndScreen";
 import { LevelUpModal, type LevelUpResult } from "@ui/LevelUpModal";
+import { StoreScreen } from "@ui/StoreScreen";
+import { calculateGoldReward } from "@data/StoreData";
 import { saveGame, loadGame, deleteSave, type SaveData, type BattleState } from "@save/SaveManager";
 import { entitiesToRoster } from "@save/RosterUtils";
 import type { CharacterClassComponent } from "@entities/components/CharacterClass";
@@ -305,9 +307,10 @@ export class DemoBattle {
   private animQueue: Array<(done: () => void) => void> = [];
   private animPlaying = false;
 
-  // ── Battle end / level-up ──
+  // ── Battle end / level-up / store ──
   private battleEndScreen: BattleEndScreen;
   private levelUpModal: LevelUpModal;
+  private storeScreen: StoreScreen;
   private saveData: SaveData | null = null;
   private scenarioId: string = "";
 
@@ -400,6 +403,7 @@ export class DemoBattle {
     this.attackPreviewPanel = new AttackPreviewPanel(this.uiManager.root);
     this.battleEndScreen = new BattleEndScreen(this.uiManager.root);
     this.levelUpModal = new LevelUpModal(this.uiManager.root);
+    this.storeScreen = new StoreScreen(this.uiManager.root);
 
     // Speed toggle
     this.speedBtn = document.createElement("button");
@@ -1341,6 +1345,8 @@ export class DemoBattle {
       version: 1,
       roster,
       currentScenarioIndex: this.scenarioIndex,
+      gold: 0,
+      stash: [],
     };
     // Save initial roster as pre-battle snapshot
     saveGame(this.saveData).catch((err) => console.warn("Initial save failed:", err));
@@ -1363,7 +1369,11 @@ export class DemoBattle {
 
       if (victory) {
         const awards = calculateBattleXP(true, this.combat.killCount, survivors, this.world);
-        this.battleEndScreen.show(true, awards);
+        const goldEarned = calculateGoldReward(this.combat.killCount, this.scenarioIndex);
+        if (this.saveData) {
+          this.saveData.gold = (this.saveData.gold ?? 0) + goldEarned;
+        }
+        this.battleEndScreen.show(true, awards, goldEarned);
         this.battleEndScreen.onContinue = () => {
           this.battleEndScreen.hide();
           this.processLevelUps(awards);
@@ -1401,14 +1411,14 @@ export class DemoBattle {
     const levelUps = awards.filter((a) => a.leveledUp);
 
     if (levelUps.length === 0) {
-      this.finalizeBattleEnd();
+      this.showStore();
       return;
     }
 
     let index = 0;
     const processNext = () => {
       if (index >= levelUps.length) {
-        this.finalizeBattleEnd();
+        this.showStore();
         return;
       }
 
@@ -1480,14 +1490,33 @@ export class DemoBattle {
     }
   }
 
-  /** After all level-ups: update roster, clear battle state, advance to next scenario, save. */
+  /** Show store screen between battles. */
+  private showStore(): void {
+    if (!this.saveData) {
+      this.finalizeBattleEnd();
+      return;
+    }
+
+    // Build updated roster from surviving entities (post-level-up)
+    const survivors = this.playerIds.filter((id) => {
+      const h = this.world.getComponent<HealthComponent>(id, "health");
+      return h && h.current > 0;
+    });
+    const roster = entitiesToRoster(this.world, survivors);
+
+    this.storeScreen.show(this.saveData.gold, roster, this.saveData.stash);
+    this.storeScreen.onContinue = () => {
+      this.saveData!.gold = this.storeScreen.getGold();
+      this.saveData!.roster = this.storeScreen.getRoster();
+      this.saveData!.stash = this.storeScreen.getStash();
+      this.storeScreen.hide();
+      this.finalizeBattleEnd();
+    };
+  }
+
+  /** After store: clear battle state, advance to next scenario, save. */
   private finalizeBattleEnd(): void {
     if (this.saveData) {
-      const survivors = this.playerIds.filter((id) => {
-        const h = this.world.getComponent<HealthComponent>(id, "health");
-        return h && h.current > 0;
-      });
-      this.saveData.roster = entitiesToRoster(this.world, survivors);
       this.saveData.battleInProgress = undefined;
       // Advance to next scenario
       this.saveData.currentScenarioIndex++;
