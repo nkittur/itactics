@@ -35,6 +35,14 @@ interface HealthBarEntry {
   pct: number;
 }
 
+/** Armor bar meshes for a single unit. */
+interface ArmorBarEntry {
+  bg: Mesh;
+  fill: Mesh;
+  fillMat: StandardMaterial;
+  pct: number;
+}
+
 const SELECTION_COLOR = Color3.FromHexString("#ffcc00"); // yellow
 
 /** Tint palettes — emissive color shifts to differentiate same-sprite units. */
@@ -63,6 +71,8 @@ const UNIT_Y = 0.5;
 const RING_Y = 0.35;
 /** Health bar height. Above unit sprite. */
 const HP_BAR_Y = 0.7;
+/** Armor bar height. Just above the health bar. */
+const ARMOR_BAR_Y = HP_BAR_Y + 0.10;
 
 /**
  * Renders units as animated sprite planes on the hex grid.
@@ -82,6 +92,9 @@ export class UnitRenderer {
 
   private healthBars = new Map<string, HealthBarEntry>();
   private hpBgMat: StandardMaterial | null = null;
+
+  private armorBars = new Map<string, ArmorBarEntry>();
+  private armorBgMat: StandardMaterial | null = null;
 
   private spriteAnimator: SpriteAnimator;
   private lastTickTime = 0;
@@ -172,6 +185,7 @@ export class UnitRenderer {
     this.units.delete(entityId);
 
     this.removeHealthBar(entityId);
+    this.removeArmorBar(entityId);
   }
 
   updatePosition(entityId: string, q: number, r: number): void {
@@ -193,6 +207,7 @@ export class UnitRenderer {
     }
 
     this.moveHealthBar(entityId, x, y, elevY);
+    this.moveArmorBar(entityId, x, y, elevY);
   }
 
   setSelected(entityId: string | null): void {
@@ -320,6 +335,7 @@ export class UnitRenderer {
           this.selectionRing.position.z = target.z;
         }
         this.moveHealthBar(entityId, target.x, target.z, target.elevY);
+        this.moveArmorBar(entityId, target.x, target.z, target.elevY);
 
         stepIdx++;
         if (stepIdx >= positions.length) {
@@ -526,6 +542,113 @@ export class UnitRenderer {
     bar.fill.position.z = barZ;
   }
 
+  // ── Armor bars ──
+
+  updateArmorBar(entityId: string, bodyDur: number, bodyMax: number, headDur: number, headMax: number): void {
+    const entry = this.units.get(entityId);
+    if (!entry) return;
+
+    const totalMax = bodyMax + headMax;
+    if (totalMax <= 0) {
+      this.removeArmorBar(entityId);
+      return;
+    }
+
+    const totalCur = bodyDur + headDur;
+    const pct = totalCur / totalMax;
+
+    // Only show when damaged
+    if (pct >= 1.0) {
+      this.removeArmorBar(entityId);
+      return;
+    }
+
+    // Remove bar if armor is destroyed
+    if (totalCur <= 0) {
+      this.removeArmorBar(entityId);
+      return;
+    }
+
+    const { x, y } = hexToPixel(this.layout, entry.q, entry.r);
+    const elevY = this.getElevationY(entry.q, entry.r);
+    const barWidth = this.layout.size * 0.7;
+    const barHeight = this.layout.size * 0.06; // Slightly thinner than HP bar
+    const barZ = y + this.layout.size * 0.55;
+
+    let bar = this.armorBars.get(entityId);
+    if (!bar) {
+      if (!this.armorBgMat) {
+        this.armorBgMat = new StandardMaterial("armorBgMat", this.scene);
+        this.armorBgMat.diffuseColor = Color3.Black();
+        this.armorBgMat.emissiveColor = new Color3(0.1, 0.1, 0.15);
+        this.armorBgMat.specularColor = Color3.Black();
+        this.armorBgMat.backFaceCulling = false;
+      }
+
+      const bg = MeshBuilder.CreatePlane(
+        "armorBg_" + entityId,
+        { width: barWidth, height: barHeight },
+        this.scene
+      );
+      bg.rotation.x = -Math.PI / 2;
+      bg.renderingGroupId = 2;
+      bg.material = this.armorBgMat;
+
+      const fillMat = new StandardMaterial("armorFillMat_" + entityId, this.scene);
+      fillMat.diffuseColor = Color3.Black();
+      fillMat.emissiveColor = new Color3(0.35, 0.50, 0.70); // Blue
+      fillMat.specularColor = Color3.Black();
+      fillMat.backFaceCulling = false;
+
+      const fill = MeshBuilder.CreatePlane(
+        "armorFill_" + entityId,
+        { width: barWidth, height: barHeight },
+        this.scene
+      );
+      fill.rotation.x = -Math.PI / 2;
+      fill.renderingGroupId = 2;
+      fill.material = fillMat;
+
+      bar = { bg, fill, fillMat, pct };
+      this.armorBars.set(entityId, bar);
+    }
+
+    bar.pct = Math.max(0.01, pct);
+
+    bar.bg.position.x = x;
+    bar.bg.position.y = ARMOR_BAR_Y + elevY;
+    bar.bg.position.z = barZ;
+
+    bar.fill.scaling.x = bar.pct;
+    bar.fill.position.x = x - barWidth * (1 - bar.pct) / 2;
+    bar.fill.position.y = ARMOR_BAR_Y + 0.01 + elevY;
+    bar.fill.position.z = barZ;
+  }
+
+  private removeArmorBar(entityId: string): void {
+    const bar = this.armorBars.get(entityId);
+    if (!bar) return;
+    bar.bg.dispose();
+    bar.fill.dispose();
+    bar.fillMat.dispose();
+    this.armorBars.delete(entityId);
+  }
+
+  private moveArmorBar(entityId: string, worldX: number, worldZ: number, elevY = 0): void {
+    const bar = this.armorBars.get(entityId);
+    if (!bar) return;
+    const barWidth = this.layout.size * 0.7;
+    const barZ = worldZ + this.layout.size * 0.55;
+
+    bar.bg.position.x = worldX;
+    bar.bg.position.y = ARMOR_BAR_Y + elevY;
+    bar.bg.position.z = barZ;
+
+    bar.fill.position.x = worldX - barWidth * (1 - bar.pct) / 2;
+    bar.fill.position.y = ARMOR_BAR_Y + 0.01 + elevY;
+    bar.fill.position.z = barZ;
+  }
+
   // ── Cleanup ──
 
   clear(): void {
@@ -545,6 +668,13 @@ export class UnitRenderer {
     }
     this.healthBars.clear();
 
+    for (const [, bar] of this.armorBars) {
+      bar.bg.dispose();
+      bar.fill.dispose();
+      bar.fillMat.dispose();
+    }
+    this.armorBars.clear();
+
     if (this.selectionMaterial) {
       this.selectionMaterial.dispose();
       this.selectionMaterial = null;
@@ -553,6 +683,11 @@ export class UnitRenderer {
     if (this.hpBgMat) {
       this.hpBgMat.dispose();
       this.hpBgMat = null;
+    }
+
+    if (this.armorBgMat) {
+      this.armorBgMat.dispose();
+      this.armorBgMat = null;
     }
   }
 

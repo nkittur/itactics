@@ -1,10 +1,80 @@
 /**
  * iTactics — Entry point
- * Loads save data, then initializes the battle scene.
+ * Routes between management screen and battle based on save state.
  */
 
 import { DemoBattle } from "./scenes/DemoBattle";
-import { loadGame } from "@save/SaveManager";
+import { loadGame, saveGame, type SaveData, type RosterMember } from "@save/SaveManager";
+import { ManagementScreen } from "@ui/ManagementScreen";
+import { generateTalentStars } from "@data/TalentData";
+import { getArmorDef } from "@data/ArmorData";
+
+function simpleRng(): number {
+  return Math.random();
+}
+
+function createStarterUnit(
+  name: string,
+  classId: string,
+  weapon: string,
+  sprite: string,
+  meleeSkill: number,
+  meleeDefense: number,
+  hp: number,
+): RosterMember {
+  const bodyArmor = getArmorDef("linen_tunic");
+  const headArmor = getArmorDef("hood");
+  return {
+    name,
+    classId,
+    level: 1,
+    experience: 0,
+    stats: {
+      hitpoints: hp,
+      fatigue: 100,
+      resolve: 45,
+      initiative: 95,
+      meleeSkill,
+      rangedSkill: 30,
+      meleeDefense,
+      rangedDefense: 3,
+      movementPoints: 8,
+    },
+    maxHp: hp,
+    talentStars: generateTalentStars(simpleRng),
+    perks: { unlocked: [], availablePoints: 0 },
+    equipment: {
+      mainHand: weapon,
+      offHand: null,
+      shieldDurability: null,
+      accessory: null,
+      bag: [],
+    },
+    armor: {
+      body: bodyArmor
+        ? { id: bodyArmor.id, currentDurability: bodyArmor.durability, maxDurability: bodyArmor.durability }
+        : null,
+      head: headArmor
+        ? { id: headArmor.id, currentDurability: headArmor.durability, maxDurability: headArmor.durability }
+        : null,
+    },
+    spriteType: sprite,
+  };
+}
+
+function createNewGame(): SaveData {
+  return {
+    version: 1,
+    roster: [
+      createStarterUnit("Aldric", "fighter", "short_sword", "swordsman", 48, 4, 12),
+      createStarterUnit("Gunnar", "spearman", "spear", "knight-templar", 45, 5, 10),
+      createStarterUnit("Erik", "rogue", "dagger", "soldier", 42, 3, 9),
+    ],
+    currentScenarioIndex: 0,
+    gold: 200,
+    stash: [],
+  };
+}
 
 async function init() {
   const canvas = document.getElementById("gameCanvas") as HTMLCanvasElement;
@@ -12,17 +82,27 @@ async function init() {
     throw new Error("Canvas element #gameCanvas not found");
   }
 
-  // Load save before constructing the scene (determines which scenario to load)
   const saveData = await loadGame().catch(() => null);
-  const scenarioIndex = saveData?.currentScenarioIndex ?? 0;
 
-  const demo = new DemoBattle(canvas, scenarioIndex);
-  await demo.start();
+  if (!saveData) {
+    // New game: create starter roster + show management
+    const starterSave = createNewGame();
+    await saveGame(starterSave);
+    canvas.style.display = "none";
+    new ManagementScreen(starterSave);
+    return;
+  }
 
-  // Cleanup on page unload
-  window.addEventListener("beforeunload", () => {
-    demo.dispose();
-  });
+  if (saveData.pendingContract) {
+    // Battle mode: start DemoBattle with contract
+    const demo = new DemoBattle(canvas, saveData);
+    await demo.start();
+    window.addEventListener("beforeunload", () => demo.dispose());
+  } else {
+    // Management mode
+    canvas.style.display = "none";
+    new ManagementScreen(saveData);
+  }
 }
 
 init();

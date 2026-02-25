@@ -226,6 +226,10 @@
       color: #ff0000;
       font-size: 24px;
     }
+    .damage-popup.armor {
+      color: #8899bb;
+      font-size: 16px;
+    }
     @keyframes dmgFloat {
       0% { opacity: 1; transform: translate(-50%, -100%); }
       100% { opacity: 0; transform: translate(-50%, -250%); }
@@ -866,6 +870,159 @@
       border-color: #88aacc;
       color: #ffffff;
     }
+    /* ── Management Screen ── */
+    .mgmt-screen {
+      position: fixed; inset: 0;
+      background: #1a1a2e;
+      color: #e0e0e0;
+      font-family: 'Segoe UI', sans-serif;
+      display: flex; flex-direction: column;
+      z-index: 1000;
+      overflow: hidden;
+    }
+    .mgmt-header {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 12px 16px;
+      background: #16213e;
+      border-bottom: 2px solid #0f3460;
+    }
+    .mgmt-title { font-size: 20px; font-weight: bold; color: #e94560; }
+    .mgmt-gold { font-size: 18px; color: #ffd700; font-weight: bold; }
+    .mgmt-tabs {
+      display: flex; gap: 0;
+      background: #16213e;
+      border-bottom: 1px solid #0f3460;
+    }
+    .mgmt-tab-btn {
+      flex: 1; padding: 10px 8px;
+      background: transparent; border: none;
+      color: #8899aa; font-size: 14px; font-weight: bold;
+      cursor: pointer; border-bottom: 3px solid transparent;
+    }
+    .mgmt-tab-btn.mgmt-tab-active {
+      color: #e94560; border-bottom-color: #e94560;
+    }
+    .mgmt-content {
+      flex: 1; overflow-y: auto; padding: 12px;
+      -webkit-overflow-scrolling: touch;
+    }
+    .mgmt-footer {
+      padding: 8px 16px;
+      text-align: center;
+      border-top: 1px solid #0f3460;
+    }
+    .mgmt-delete-btn {
+      background: transparent; border: 1px solid #554; color: #886;
+      padding: 6px 16px; border-radius: 4px; font-size: 12px; cursor: pointer;
+    }
+    .mgmt-empty { text-align: center; padding: 40px; color: #667; font-size: 16px; }
+    .mgmt-empty-text { color: #556; font-size: 13px; padding: 4px 0; }
+    .mgmt-section-label {
+      font-size: 14px; font-weight: bold; color: #8899aa;
+      padding: 8px 0 4px; border-bottom: 1px solid #223;
+      margin-bottom: 6px;
+    }
+
+    /* Roster */
+    .mgmt-unit-card {
+      background: #1e2740; border-radius: 6px;
+      margin-bottom: 8px; overflow: hidden;
+      border-left: 3px solid #0f3460;
+    }
+    .mgmt-unit-summary {
+      display: flex; align-items: center; gap: 8px;
+      padding: 10px 12px; cursor: pointer;
+      flex-wrap: wrap;
+    }
+    .mgmt-unit-name { font-weight: bold; color: #ddd; min-width: 80px; }
+    .mgmt-unit-class { color: #8899aa; font-size: 13px; }
+    .mgmt-unit-hp { color: #66bb6a; font-size: 13px; }
+    .mgmt-unit-weapon { color: #aaa; font-size: 13px; margin-left: auto; }
+    .mgmt-unit-detail {
+      padding: 8px 12px 12px;
+      background: #16213e;
+      border-top: 1px solid #0f3460;
+    }
+    .mgmt-unit-stats { font-size: 13px; color: #99aabb; margin-bottom: 8px; line-height: 1.6; }
+    .mgmt-equip-label { font-size: 12px; font-weight: bold; color: #8899aa; margin: 6px 0 4px; }
+    .mgmt-equip-slot {
+      font-size: 13px; color: #bbb; padding: 3px 0;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .mgmt-unequip-btn {
+      background: #443; border: none; color: #aa8; font-size: 11px;
+      padding: 1px 6px; border-radius: 3px; cursor: pointer;
+    }
+    .mgmt-stash-list { margin-left: 8px; }
+    .mgmt-stash-item {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 4px 0; font-size: 13px;
+    }
+    .mgmt-equip-btn {
+      background: #0f3460; border: none; color: #8899bb;
+      padding: 3px 10px; border-radius: 3px; font-size: 12px; cursor: pointer;
+    }
+
+    /* Shop */
+    .mgmt-shop-item {
+      display: flex; align-items: center; gap: 8px;
+      padding: 6px 4px; border-bottom: 1px solid #1a1a2e;
+    }
+    .mgmt-item-name { flex: 1; font-size: 14px; }
+    .mgmt-item-price { color: #ffd700; font-size: 13px; min-width: 50px; text-align: right; }
+    .mgmt-buy-btn {
+      background: #0f3460; border: none; color: #8899bb;
+      padding: 4px 12px; border-radius: 4px; font-size: 13px; cursor: pointer;
+    }
+    .mgmt-buy-btn.disabled { opacity: 0.4; pointer-events: none; }
+    .mgmt-stash-row {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 4px; font-size: 13px;
+    }
+    .mgmt-sell-btn {
+      background: #3a2020; border: none; color: #cc8844;
+      padding: 3px 10px; border-radius: 3px; font-size: 12px; cursor: pointer;
+    }
+
+    /* Recruit */
+    .recruit-card {
+      background: #1e2740; border-radius: 6px;
+      padding: 10px 12px; margin-bottom: 8px;
+      border-left: 3px solid #336699;
+    }
+    .recruit-header {
+      display: flex; align-items: center; gap: 8px; margin-bottom: 4px;
+    }
+    .recruit-name { font-weight: bold; color: #ddd; }
+    .recruit-class { color: #8899aa; font-size: 13px; }
+    .recruit-cost { color: #ffd700; font-size: 13px; margin-left: auto; }
+    .recruit-stats { font-size: 12px; color: #88aacc; margin-bottom: 6px; }
+    .mgmt-hire-btn {
+      background: #0f3460; border: none; color: #8899bb;
+      padding: 5px 16px; border-radius: 4px; font-size: 13px; cursor: pointer;
+    }
+    .mgmt-hire-btn.disabled { opacity: 0.4; pointer-events: none; }
+
+    /* Contracts */
+    .contract-card {
+      background: #1e2740; border-radius: 6px;
+      padding: 12px; margin-bottom: 10px;
+      border-left: 4px solid #999;
+    }
+    .contract-header {
+      display: flex; justify-content: space-between; align-items: center;
+      margin-bottom: 6px;
+    }
+    .contract-name { font-weight: bold; font-size: 15px; color: #ddd; }
+    .contract-difficulty { font-size: 12px; font-weight: bold; }
+    .contract-details { font-size: 13px; color: #99aabb; margin-bottom: 8px; line-height: 1.5; }
+    .mgmt-accept-btn {
+      background: #0f3460; border: none; color: #aabbcc;
+      padding: 8px 20px; border-radius: 4px; font-size: 14px;
+      cursor: pointer; width: 100%;
+    }
+    .mgmt-accept-btn:active { background: #1a4a80; }
+
   </style>
 </head>
 <body>

@@ -1,5 +1,7 @@
 import { get, set, del } from "idb-keyval";
 import type { StatKey } from "@data/TalentData";
+import type { ContractDef } from "@data/ContractData";
+import type { RecruitDef } from "@data/RecruitData";
 
 const SAVE_KEY = "itactics-save";
 
@@ -57,6 +59,12 @@ export interface SaveData {
   gold: number;
   /** Shared party inventory of item IDs. */
   stash: string[];
+  /** Set when player picks a contract — triggers battle on next load. */
+  pendingContract?: ContractDef;
+  /** Cached between sessions. */
+  availableContracts?: ContractDef[];
+  /** Cached between sessions. */
+  availableRecruits?: RecruitDef[];
   battleInProgress?: BattleState;
 }
 

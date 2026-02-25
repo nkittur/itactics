@@ -29,7 +29,10 @@ import { getZoCDangerHexes } from "@combat/ZoneOfControl";
 import { getArmorDef } from "@data/ArmorData";
 import { getWeapon, UNARMED } from "@data/WeaponData";
 import { getShield } from "@data/ShieldData";
-import { getScenarioByIndex, type ScenarioDef } from "@data/ScenarioData";
+import { SCENARIOS, type ScenarioDef } from "@data/ScenarioData";
+import { generateBattle } from "@data/BattleGenerator";
+import { generateContracts } from "@data/ContractData";
+import { generateRecruits, getPartyLevel } from "@data/RecruitData";
 import { TILT_SIN } from "@rendering/CameraController";
 import { LAYER_HEIGHT } from "@rendering/TileRenderer";
 import { EnemyDetailPanel, type EnemyDetailData } from "@ui/EnemyDetailPanel";
@@ -327,9 +330,9 @@ export class DemoBattle {
   private readonly BASE_LUNGE_MS = 280;  // total lunge
   private readonly BASE_PAN_MS = 350;    // camera pan
 
-  private scenarioIndex: number;
+  private incomingSaveData: SaveData | null;
 
-  constructor(canvas: HTMLCanvasElement, scenarioIndex: number = 0) {
+  constructor(canvas: HTMLCanvasElement, saveDataOrIndex: SaveData | number = 0) {
     // Scene setup
     this.sceneManager = new SceneManager(canvas);
     this.camera = new CameraController(
@@ -338,9 +341,24 @@ export class DemoBattle {
     );
     this.layout = createLayout(1.0);
 
-    // Load scenario by index (passed from main.ts based on save data)
-    this.scenarioIndex = scenarioIndex;
-    const scenario = getScenarioByIndex(scenarioIndex);
+    // Resolve scenario from SaveData (contract) or legacy index
+    let scenario: ScenarioDef;
+    if (typeof saveDataOrIndex === "number") {
+      // Legacy path: direct scenario index
+      scenario = SCENARIOS[saveDataOrIndex % SCENARIOS.length]!;
+      this.incomingSaveData = null;
+    } else {
+      this.incomingSaveData = saveDataOrIndex;
+      if (saveDataOrIndex.pendingContract) {
+        scenario = generateBattle(
+          saveDataOrIndex.pendingContract,
+          saveDataOrIndex.roster,
+          () => Math.random(),
+        );
+      } else {
+        scenario = SCENARIOS[0]!;
+      }
+    }
     this.scenarioId = scenario.id;
 
     // Game state
@@ -637,6 +655,7 @@ export class DemoBattle {
             if (health) {
               this.unitRenderer.updateHealthBar(defenderId, health.current, health.max);
             }
+            this.updateArmorBarForUnit(defenderId);
             if (result.targetKilled) {
               // Play death animation, then remove
               this.unitRenderer.playDeath(defenderId, () => {
@@ -679,6 +698,7 @@ export class DemoBattle {
             if (health) {
               this.unitRenderer.updateHealthBar(defenderId, health.current, health.max);
             }
+            this.updateArmorBarForUnit(defenderId);
             if (result.targetKilled) {
               this.unitRenderer.playDeath(defenderId, () => {
                 this.unitRenderer.removeUnit(defenderId);
@@ -1203,6 +1223,27 @@ export class DemoBattle {
 
     this.uiManager.root.appendChild(popup);
     popup.addEventListener("animationend", () => popup.remove());
+
+    // Armor damage popup (blue, offset below HP popup)
+    if (result.hit && result.armorDamage > 0) {
+      const armorPopup = document.createElement("div");
+      armorPopup.className = "damage-popup armor";
+      armorPopup.textContent = `-${result.armorDamage} armor`;
+      armorPopup.style.left = `${screenPos.x}px`;
+      armorPopup.style.top = `${screenPos.y + 20}px`;
+      this.uiManager.root.appendChild(armorPopup);
+      armorPopup.addEventListener("animationend", () => armorPopup.remove());
+    }
+  }
+
+  private updateArmorBarForUnit(entityId: EntityId): void {
+    const armor = this.world.getComponent<ArmorComponent>(entityId, "armor");
+    if (!armor) return;
+    const bodyDur = armor.body?.currentDurability ?? 0;
+    const bodyMax = armor.body?.maxDurability ?? 0;
+    const headDur = armor.head?.currentDurability ?? 0;
+    const headMax = armor.head?.maxDurability ?? 0;
+    this.unitRenderer.updateArmorBar(entityId, bodyDur, bodyMax, headDur, headMax);
   }
 
   private showUnitInfo(entityId: EntityId): void {
@@ -1340,15 +1381,19 @@ export class DemoBattle {
 
   /** Create initial save data from current state. */
   private initSaveData(): void {
-    const roster = entitiesToRoster(this.world, this.playerIds);
-    this.saveData = {
-      version: 1,
-      roster,
-      currentScenarioIndex: this.scenarioIndex,
-      gold: 0,
-      stash: [],
-    };
-    // Save initial roster as pre-battle snapshot
+    if (this.incomingSaveData) {
+      this.saveData = this.incomingSaveData;
+    } else {
+      const roster = entitiesToRoster(this.world, this.playerIds);
+      this.saveData = {
+        version: 1,
+        roster,
+        currentScenarioIndex: 0,
+        gold: 0,
+        stash: [],
+      };
+    }
+    // Save as pre-battle snapshot
     saveGame(this.saveData).catch((err) => console.warn("Initial save failed:", err));
   }
 
@@ -1369,7 +1414,8 @@ export class DemoBattle {
 
       if (victory) {
         const awards = calculateBattleXP(true, this.combat.killCount, survivors, this.world);
-        const goldEarned = calculateGoldReward(this.combat.killCount, this.scenarioIndex);
+        const contractReward = this.saveData?.pendingContract?.reward ?? 0;
+        const goldEarned = contractReward > 0 ? contractReward : calculateGoldReward(this.combat.killCount, 0);
         if (this.saveData) {
           this.saveData.gold = (this.saveData.gold ?? 0) + goldEarned;
         }
@@ -1382,9 +1428,10 @@ export class DemoBattle {
         this.battleEndScreen.show(false, []);
         this.battleEndScreen.onContinue = () => {
           this.battleEndScreen.hide();
-          // Defeat: clear battle state, roster reverts to pre-battle snapshot
+          // Defeat: clear battle + contract, roster reverts to pre-battle snapshot
           if (this.saveData) {
             this.saveData.battleInProgress = undefined;
+            this.saveData.pendingContract = undefined;
             saveGame(this.saveData).catch(() => {});
           }
           // Reload to restart
@@ -1514,16 +1561,19 @@ export class DemoBattle {
     };
   }
 
-  /** After store: clear battle state, advance to next scenario, save. */
+  /** After store/level-ups: clear battle state, generate new contracts/recruits, save, reload to management. */
   private finalizeBattleEnd(): void {
     if (this.saveData) {
       this.saveData.battleInProgress = undefined;
-      // Advance to next scenario
-      this.saveData.currentScenarioIndex++;
+      this.saveData.pendingContract = undefined;
+      // Regenerate contracts and recruits for next management visit
+      const partyLevel = getPartyLevel(this.saveData.roster);
+      this.saveData.availableContracts = generateContracts(partyLevel, this.saveData.roster.length, () => Math.random());
+      this.saveData.availableRecruits = generateRecruits(partyLevel, () => Math.random());
       saveGame(this.saveData).catch(() => {});
     }
 
-    // Reload to start next battle
+    // Reload to management screen
     setTimeout(() => window.location.reload(), 500);
   }
 

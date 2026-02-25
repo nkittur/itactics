@@ -11,15 +11,15 @@ export interface ShieldDef {
 const SHIELDS: ReadonlyMap<string, ShieldDef> = new Map([
   ["buckler", {
     id: "buckler", name: "Buckler",
-    meleeDefBonus: 10, rangedDefBonus: 10, durability: 48, fatiguePenalty: 8, mpPenalty: 0,
+    meleeDefBonus: 10, rangedDefBonus: 10, durability: 12, fatiguePenalty: 8, mpPenalty: 0,
   }],
   ["wooden_shield", {
     id: "wooden_shield", name: "Wooden Shield",
-    meleeDefBonus: 15, rangedDefBonus: 15, durability: 64, fatiguePenalty: 12, mpPenalty: 0,
+    meleeDefBonus: 15, rangedDefBonus: 15, durability: 16, fatiguePenalty: 12, mpPenalty: 0,
   }],
   ["heater_shield", {
     id: "heater_shield", name: "Heater Shield",
-    meleeDefBonus: 20, rangedDefBonus: 15, durability: 80, fatiguePenalty: 16, mpPenalty: 1,
+    meleeDefBonus: 20, rangedDefBonus: 15, durability: 20, fatiguePenalty: 16, mpPenalty: 1,
   }],
 ]);
 

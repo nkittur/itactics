@@ -250,8 +250,8 @@ describe("DamageCalculator (weapon-based)", () => {
 
     expect(results.length).toBeGreaterThan(0);
     for (const r of results) {
-      expect(r.damage).toBeGreaterThanOrEqual(30);
-      expect(r.damage).toBeLessThanOrEqual(45);
+      expect(r.damage).toBeGreaterThanOrEqual(4);
+      expect(r.damage).toBeLessThanOrEqual(6);
       expect(r.weaponId).toBe("arming_sword");
     }
   });
@@ -267,9 +267,9 @@ describe("DamageCalculator (weapon-based)", () => {
     const result = calc.resolveMelee(world, attacker, defender);
 
     if (result.hit) {
-      // UNARMED: 5-10 damage
-      expect(result.damage).toBeGreaterThanOrEqual(5);
-      expect(result.damage).toBeLessThanOrEqual(10);
+      // UNARMED: 1-2 damage
+      expect(result.damage).toBeGreaterThanOrEqual(1);
+      expect(result.damage).toBeLessThanOrEqual(2);
       expect(result.weaponId).toBe("unarmed");
     }
   });
