@@ -1,9 +1,10 @@
 /**
  * iTactics — Entry point
- * Initializes the demo battle scene on the canvas.
+ * Loads save data, then initializes the battle scene.
  */
 
 import { DemoBattle } from "./scenes/DemoBattle";
+import { loadGame } from "@save/SaveManager";
 
 async function init() {
   const canvas = document.getElementById("gameCanvas") as HTMLCanvasElement;
@@ -11,7 +12,11 @@ async function init() {
     throw new Error("Canvas element #gameCanvas not found");
   }
 
-  const demo = new DemoBattle(canvas);
+  // Load save before constructing the scene (determines which scenario to load)
+  const saveData = await loadGame().catch(() => null);
+  const scenarioIndex = saveData?.currentScenarioIndex ?? 0;
+
+  const demo = new DemoBattle(canvas, scenarioIndex);
   await demo.start();
 
   // Cleanup on page unload

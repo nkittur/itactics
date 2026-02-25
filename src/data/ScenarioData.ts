@@ -252,3 +252,11 @@ export function getScenario(id: string): ScenarioDef | undefined {
 export function getDefaultScenarioId(): string {
   return "tutorial";
 }
+
+export function getScenarioByIndex(index: number): ScenarioDef {
+  return SCENARIOS[index % SCENARIOS.length]!;
+}
+
+export function getScenarioCount(): number {
+  return SCENARIOS.length;
+}

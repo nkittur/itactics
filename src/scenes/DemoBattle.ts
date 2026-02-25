@@ -29,7 +29,7 @@ import { getZoCDangerHexes } from "@combat/ZoneOfControl";
 import { getArmorDef } from "@data/ArmorData";
 import { getWeapon, UNARMED } from "@data/WeaponData";
 import { getShield } from "@data/ShieldData";
-import { SCENARIOS, getScenario, getDefaultScenarioId, type ScenarioDef } from "@data/ScenarioData";
+import { getScenarioByIndex, type ScenarioDef } from "@data/ScenarioData";
 import { TILT_SIN } from "@rendering/CameraController";
 import { LAYER_HEIGHT } from "@rendering/TileRenderer";
 import { EnemyDetailPanel, type EnemyDetailData } from "@ui/EnemyDetailPanel";
@@ -47,7 +47,7 @@ import type { PerksComponent } from "@entities/components/Perks";
 import { calculateBattleXP, type XPAward } from "@combat/XPCalculator";
 import { BattleEndScreen } from "@ui/BattleEndScreen";
 import { LevelUpModal, type LevelUpResult } from "@ui/LevelUpModal";
-import { saveGame, loadGame, type SaveData, type BattleState } from "@save/SaveManager";
+import { saveGame, loadGame, deleteSave, type SaveData, type BattleState } from "@save/SaveManager";
 import { entitiesToRoster } from "@save/RosterUtils";
 import type { CharacterClassComponent } from "@entities/components/CharacterClass";
 import type { FatigueComponent } from "@entities/components/Fatigue";
@@ -311,6 +311,11 @@ export class DemoBattle {
   private saveData: SaveData | null = null;
   private scenarioId: string = "";
 
+  // ── AI mode ──
+  private aiMode = false;
+  private aiBtn: HTMLButtonElement = null!;
+  private aiTurnTimer: ReturnType<typeof setTimeout> | null = null;
+
   // ── Speed toggle ──
   private speedMultiplier = 1;
   private speedBtn: HTMLButtonElement;
@@ -319,7 +324,9 @@ export class DemoBattle {
   private readonly BASE_LUNGE_MS = 280;  // total lunge
   private readonly BASE_PAN_MS = 350;    // camera pan
 
-  constructor(canvas: HTMLCanvasElement) {
+  private scenarioIndex: number;
+
+  constructor(canvas: HTMLCanvasElement, scenarioIndex: number = 0) {
     // Scene setup
     this.sceneManager = new SceneManager(canvas);
     this.camera = new CameraController(
@@ -328,10 +335,10 @@ export class DemoBattle {
     );
     this.layout = createLayout(1.0);
 
-    // Load scenario from URL param or default
-    const params = new URLSearchParams(window.location.search);
-    this.scenarioId = params.get("scenario") ?? getDefaultScenarioId();
-    const scenario = getScenario(this.scenarioId) ?? getScenario(getDefaultScenarioId())!;
+    // Load scenario by index (passed from main.ts based on save data)
+    this.scenarioIndex = scenarioIndex;
+    const scenario = getScenarioByIndex(scenarioIndex);
+    this.scenarioId = scenario.id;
 
     // Game state
     this.world = new World();
@@ -406,8 +413,23 @@ export class DemoBattle {
     });
     this.uiManager.root.appendChild(this.speedBtn);
 
-    // Scenario selector
-    this.createScenarioSelector();
+    // AI mode toggle (left of speed toggle)
+    this.aiBtn = document.createElement("button");
+    this.aiBtn.className = "ai-toggle";
+    this.aiBtn.textContent = "AI";
+    this.aiBtn.addEventListener("pointerup", () => {
+      this.aiMode = !this.aiMode;
+      this.aiBtn.classList.toggle("ai-active", this.aiMode);
+      // If toggled on during a player turn, auto-play immediately
+      if (this.aiMode && this.combat.phase === "playerTurn"
+          && this.combat.playerTurnState === "awaitingInput") {
+        this.scheduleAITurn();
+      }
+    });
+    this.uiManager.root.appendChild(this.aiBtn);
+
+    // Settings gear button (top-left)
+    this.createSettingsButton();
 
     // Input
     this.touchManager = new TouchManager(
@@ -459,38 +481,6 @@ export class DemoBattle {
         this.enemyIds.push(id);
       }
     }
-  }
-
-  private createScenarioSelector(): void {
-    const bar = document.createElement("div");
-    bar.className = "scenario-bar";
-    bar.style.cssText = "position:absolute;top:env(safe-area-inset-top,4px);left:50%;transform:translateX(-50%);display:flex;gap:4px;pointer-events:auto;z-index:10;";
-
-    for (const s of SCENARIOS) {
-      const btn = document.createElement("button");
-      btn.className = "action-btn";
-      btn.textContent = s.name;
-      btn.style.cssText = "font-size:10px;padding:4px 8px;background:#4a4a5a;color:#ddd;border:none;border-radius:4px;cursor:pointer;";
-      btn.title = s.description;
-
-      const params = new URLSearchParams(window.location.search);
-      const currentId = params.get("scenario") ?? getDefaultScenarioId();
-      if (s.id === currentId) {
-        btn.style.background = "#6a6a8a";
-        btn.style.fontWeight = "bold";
-      }
-
-      btn.addEventListener("pointerup", (e) => {
-        e.stopPropagation();
-        const url = new URL(window.location.href);
-        url.searchParams.set("scenario", s.id);
-        window.location.href = url.toString();
-      });
-
-      bar.appendChild(btn);
-    }
-
-    this.uiManager.root.appendChild(bar);
   }
 
   // ── Animation queue ──
@@ -815,6 +805,10 @@ export class DemoBattle {
         this.showMoveAndAttackOverlays();
         this.populateActionBarSkills();
         this.actionBar.setSkillActive(null);
+        // AI mode: auto-play the turn
+        if (this.aiMode) {
+          this.scheduleAITurn();
+        }
       } else if (state === "skillTargeting") {
         this.showSkillTargetOverlays();
         this.actionBar.setSkillActive(this.combat.pendingSkill?.id ?? null);
@@ -1346,7 +1340,7 @@ export class DemoBattle {
     this.saveData = {
       version: 1,
       roster,
-      currentScenarioIndex: 0,
+      currentScenarioIndex: this.scenarioIndex,
     };
     // Save initial roster as pre-battle snapshot
     saveGame(this.saveData).catch((err) => console.warn("Initial save failed:", err));
@@ -1355,6 +1349,11 @@ export class DemoBattle {
   // ── Battle end flow ──
 
   private handleBattleEnd(victory: boolean): void {
+    // Disable AI mode
+    this.aiMode = false;
+    this.aiBtn.classList.remove("ai-active");
+    if (this.aiTurnTimer) { clearTimeout(this.aiTurnTimer); this.aiTurnTimer = null; }
+
     // Wait for animations to finish, then show results
     const showResults = () => {
       const survivors = this.playerIds.filter((id) => {
@@ -1481,7 +1480,7 @@ export class DemoBattle {
     }
   }
 
-  /** After all level-ups: update roster, clear battle state, save. */
+  /** After all level-ups: update roster, clear battle state, advance to next scenario, save. */
   private finalizeBattleEnd(): void {
     if (this.saveData) {
       const survivors = this.playerIds.filter((id) => {
@@ -1490,12 +1489,85 @@ export class DemoBattle {
       });
       this.saveData.roster = entitiesToRoster(this.world, survivors);
       this.saveData.battleInProgress = undefined;
+      // Advance to next scenario
+      this.saveData.currentScenarioIndex++;
       saveGame(this.saveData).catch(() => {});
     }
 
-    // Show "Next Battle" or reload option
-    // For now, reload to start a new battle
+    // Reload to start next battle
     setTimeout(() => window.location.reload(), 500);
+  }
+
+  // ── Settings menu ──
+
+  private createSettingsButton(): void {
+    const btn = document.createElement("button");
+    btn.className = "settings-btn";
+    btn.textContent = "\u2699";
+    btn.addEventListener("pointerup", () => this.showSettingsMenu());
+    this.uiManager.root.appendChild(btn);
+  }
+
+  private settingsBackdrop: HTMLDivElement | null = null;
+
+  private showSettingsMenu(): void {
+    if (this.settingsBackdrop) return;
+
+    const backdrop = document.createElement("div");
+    backdrop.className = "settings-backdrop";
+    backdrop.addEventListener("pointerup", (e) => {
+      if (e.target === backdrop) this.hideSettingsMenu();
+    });
+
+    const panel = document.createElement("div");
+    panel.className = "settings-panel";
+    panel.addEventListener("pointerup", (e) => e.stopPropagation());
+
+    const title = document.createElement("div");
+    title.className = "settings-title";
+    title.textContent = "Settings";
+    panel.appendChild(title);
+
+    // Restart Game button
+    const restartBtn = document.createElement("button");
+    restartBtn.className = "settings-option";
+    restartBtn.textContent = "Restart Game";
+    restartBtn.addEventListener("pointerup", () => {
+      deleteSave().then(() => window.location.reload()).catch(() => window.location.reload());
+    });
+    panel.appendChild(restartBtn);
+
+    // Close button
+    const closeBtn = document.createElement("button");
+    closeBtn.className = "settings-option settings-close";
+    closeBtn.textContent = "Close";
+    closeBtn.addEventListener("pointerup", () => this.hideSettingsMenu());
+    panel.appendChild(closeBtn);
+
+    backdrop.appendChild(panel);
+    this.uiManager.root.appendChild(backdrop);
+    this.settingsBackdrop = backdrop;
+  }
+
+  private hideSettingsMenu(): void {
+    if (this.settingsBackdrop) {
+      this.settingsBackdrop.remove();
+      this.settingsBackdrop = null;
+    }
+  }
+
+  // ── AI mode ──
+
+  private scheduleAITurn(): void {
+    if (this.aiTurnTimer) clearTimeout(this.aiTurnTimer);
+    this.aiTurnTimer = setTimeout(() => {
+      this.aiTurnTimer = null;
+      if (this.aiMode && this.combat.phase === "playerTurn"
+          && this.combat.playerTurnState === "awaitingInput"
+          && !this.animPlaying) {
+        this.combat.runPlayerTurnAsAI();
+      }
+    }, 200);
   }
 
   // ── Lifecycle ──

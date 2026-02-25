@@ -849,6 +849,17 @@ export class CombatManager {
     this.executeEnemyAction(entityId, action);
   }
 
+  /**
+   * Run the current player unit's turn using TacticalAI.
+   * Called by DemoBattle when AI mode is active.
+   */
+  runPlayerTurnAsAI(): void {
+    if (!this.selectedUnit || this.phase !== "playerTurn") return;
+    const enemyIds = this.getEnemyUnits();
+    const action = decideTacticalAction(this.world, this.grid, this.selectedUnit, enemyIds);
+    this.executeEnemyAction(this.selectedUnit, action);
+  }
+
   /** Execute a TacticalAI action for an enemy unit. */
   private executeEnemyAction(entityId: EntityId, action: TacticalAction): void {
     switch (action.type) {
