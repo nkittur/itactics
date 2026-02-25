@@ -16,11 +16,11 @@ import { StatusEffectManager, type BleedTickResult } from "./StatusEffectManager
 import { MoraleManager, type MoraleCheckResult } from "./MoraleManager";
 import { SkillExecutor } from "./SkillExecutor";
 import type { ActiveStancesComponent } from "@entities/components/ActiveStances";
-import { getWeapon, UNARMED, type WeaponDef } from "@data/WeaponData";
+import { UNARMED, type WeaponDef } from "@data/WeaponData";
+import { resolveWeapon, resolveShield } from "@data/ItemResolver";
 import { BASIC_ATTACK, getSkillsForWeapon, skillAPCost, skillFatigueCost, skillRange, type SkillDef } from "@data/SkillData";
 import type { CharacterClassComponent } from "@entities/components/CharacterClass";
 import { getClassDef, getClassAPDiscount, getClassArmorMPReduction, canEquipWeapon, canEquipShield } from "@data/ClassData";
-import { getShield } from "@data/ShieldData";
 import { getConsumable } from "@data/ItemData";
 import { decideTacticalAction, type TacticalAction } from "./TacticalAI";
 import { hasLineOfSight } from "@hex/HexLineOfSight";
@@ -1135,7 +1135,7 @@ export class CombatManager {
 
   private getWeaponDef(entityId: EntityId): WeaponDef {
     const equip = this.world.getComponent<EquipmentComponent>(entityId, "equipment");
-    return equip?.mainHand ? getWeapon(equip.mainHand) : UNARMED;
+    return equip?.mainHand ? resolveWeapon(equip.mainHand) : UNARMED;
   }
 
   /** Get effective AP cost for a skill, applying class discount. Min 1 AP. */
@@ -1157,19 +1157,19 @@ export class CombatManager {
 
   private getWeaponAPCost(entityId: EntityId): number {
     const equip = this.world.getComponent<EquipmentComponent>(entityId, "equipment");
-    const weapon = equip?.mainHand ? getWeapon(equip.mainHand) : UNARMED;
+    const weapon = equip?.mainHand ? resolveWeapon(equip.mainHand) : UNARMED;
     return weapon.apCost;
   }
 
   private getWeaponFatigueCost(entityId: EntityId): number {
     const equip = this.world.getComponent<EquipmentComponent>(entityId, "equipment");
-    const weapon = equip?.mainHand ? getWeapon(equip.mainHand) : UNARMED;
+    const weapon = equip?.mainHand ? resolveWeapon(equip.mainHand) : UNARMED;
     return weapon.fatigueCost;
   }
 
   private getWeaponRange(entityId: EntityId): number {
     const equip = this.world.getComponent<EquipmentComponent>(entityId, "equipment");
-    const weapon = equip?.mainHand ? getWeapon(equip.mainHand) : UNARMED;
+    const weapon = equip?.mainHand ? resolveWeapon(equip.mainHand) : UNARMED;
     return weapon.range;
   }
 
@@ -1328,11 +1328,11 @@ export class CombatManager {
       const classDef = getClassDef(cc.classId);
       if (slot === "mainHand") {
         try {
-          const weaponDef = getWeapon(bagItemId);
+          const weaponDef = resolveWeapon(bagItemId);
           if (!canEquipWeapon(classDef, weaponDef)) return false;
         } catch { /* not a weapon — skip */ }
       } else if (slot === "offHand") {
-        const shieldDef = getShield(bagItemId);
+        const shieldDef = resolveShield(bagItemId);
         if (shieldDef && !canEquipShield(classDef, shieldDef)) return false;
       }
     }
@@ -1347,7 +1347,7 @@ export class CombatManager {
 
     // Update shield durability when swapping shields
     if (slot === "offHand") {
-      const newShield = getShield(bagItemId!);
+      const newShield = resolveShield(bagItemId!);
       equip.shieldDurability = newShield ? newShield.durability : null;
     }
 

@@ -6,8 +6,9 @@ import type { HealthComponent } from "@entities/components/Health";
 import type { ArmorComponent } from "@entities/components/Armor";
 import type { EquipmentComponent } from "@entities/components/Equipment";
 import type { PositionComponent } from "@entities/components/Position";
-import { getWeapon, UNARMED, type WeaponDef } from "@data/WeaponData";
-import { getShield, type ShieldDef } from "@data/ShieldData";
+import { UNARMED, type WeaponDef } from "@data/WeaponData";
+import { type ShieldDef } from "@data/ShieldData";
+import { resolveWeapon, resolveShield } from "@data/ItemResolver";
 import { BASIC_ATTACK, type SkillDef, skillRange } from "@data/SkillData";
 import { hexDistance, hexNeighbors } from "@hex/HexMath";
 import { hasLineOfSight } from "@hex/HexLineOfSight";
@@ -96,11 +97,11 @@ export class DamageCalculator {
 
     // Look up weapon and shield from data registries
     const weapon: WeaponDef = attackerEquip?.mainHand
-      ? getWeapon(attackerEquip.mainHand)
+      ? resolveWeapon(attackerEquip.mainHand)
       : UNARMED;
 
     const shield: ShieldDef | undefined = defenderEquip?.offHand
-      ? getShield(defenderEquip.offHand)
+      ? resolveShield(defenderEquip.offHand)
       : undefined;
 
     // ── 1. Hit chance ──
@@ -246,11 +247,11 @@ export class DamageCalculator {
     }
 
     const weapon: WeaponDef = attackerEquip?.mainHand
-      ? getWeapon(attackerEquip.mainHand)
+      ? resolveWeapon(attackerEquip.mainHand)
       : UNARMED;
 
     const shield: ShieldDef | undefined = defenderEquip?.offHand
-      ? getShield(defenderEquip.offHand)
+      ? resolveShield(defenderEquip.offHand)
       : undefined;
 
     // Class passives
@@ -318,9 +319,9 @@ export class DamageCalculator {
     }
 
     const weapon: WeaponDef = attackerEquip?.mainHand
-      ? getWeapon(attackerEquip.mainHand) : UNARMED;
+      ? resolveWeapon(attackerEquip.mainHand) : UNARMED;
     const shield: ShieldDef | undefined = defenderEquip?.offHand
-      ? getShield(defenderEquip.offHand) : undefined;
+      ? resolveShield(defenderEquip.offHand) : undefined;
 
     // Class passives
     const attackerCC = world.getComponent<CharacterClassComponent>(attackerId, "characterClass");
@@ -413,11 +414,11 @@ export class DamageCalculator {
     }
 
     const weapon: WeaponDef = attackerEquip?.mainHand
-      ? getWeapon(attackerEquip.mainHand)
+      ? resolveWeapon(attackerEquip.mainHand)
       : UNARMED;
 
     const shield: ShieldDef | undefined = defenderEquip?.offHand
-      ? getShield(defenderEquip.offHand)
+      ? resolveShield(defenderEquip.offHand)
       : undefined;
 
     // Class passives
@@ -592,9 +593,9 @@ export class DamageCalculator {
     }
 
     const weapon: WeaponDef = attackerEquip?.mainHand
-      ? getWeapon(attackerEquip.mainHand) : UNARMED;
+      ? resolveWeapon(attackerEquip.mainHand) : UNARMED;
     const shield: ShieldDef | undefined = defenderEquip?.offHand
-      ? getShield(defenderEquip.offHand) : undefined;
+      ? resolveShield(defenderEquip.offHand) : undefined;
 
     // Class passives
     const attackerCC = world.getComponent<CharacterClassComponent>(attackerId, "characterClass");

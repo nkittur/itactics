@@ -1,6 +1,5 @@
 import type { HexGrid, HexTile } from "@hex/HexGrid";
-import { getArmorDef } from "@data/ArmorData";
-import { getShield } from "@data/ShieldData";
+import { resolveArmor, resolveShield } from "@data/ItemResolver";
 
 export const DEFAULT_MP = 8;
 
@@ -101,15 +100,15 @@ export function getEffectiveMP(
 ): number {
   let totalPenalty = 0;
   if (bodyArmorId) {
-    const def = getArmorDef(bodyArmorId);
+    const def = resolveArmor(bodyArmorId);
     if (def) totalPenalty += def.mpPenalty;
   }
   if (headArmorId) {
-    const def = getArmorDef(headArmorId);
+    const def = resolveArmor(headArmorId);
     if (def) totalPenalty += def.mpPenalty;
   }
   if (shieldId) {
-    const def = getShield(shieldId);
+    const def = resolveShield(shieldId);
     if (def) totalPenalty += def.mpPenalty;
   }
   const effectivePenalty = Math.max(0, totalPenalty - armorMPReduction);

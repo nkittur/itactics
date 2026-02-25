@@ -11,7 +11,8 @@ import { reachableHexes, findPath } from "@hex/HexPathfinding";
 import { tileMPCost, getEffectiveMP, DEFAULT_MP } from "./MovementPointManager";
 import type { StatsComponent } from "@entities/components/Stats";
 import { getZoCAttacksForMove } from "./ZoneOfControl";
-import { getWeapon, UNARMED } from "@data/WeaponData";
+import { UNARMED } from "@data/WeaponData";
+import { resolveWeapon } from "@data/ItemResolver";
 import { getSkillsForWeapon, skillAPCost, skillRange, BASIC_ATTACK, type SkillDef } from "@data/SkillData";
 import type { ArmorComponent } from "@entities/components/Armor";
 import type { CharacterClassComponent } from "@entities/components/CharacterClass";
@@ -105,7 +106,7 @@ export function decideTacticalAction(
   const weights = WEIGHTS[aiType];
 
   const equip = world.getComponent<EquipmentComponent>(entityId, "equipment");
-  const weapon = equip?.mainHand ? getWeapon(equip.mainHand) : UNARMED;
+  const weapon = equip?.mainHand ? resolveWeapon(equip.mainHand) : UNARMED;
   const weaponId = equip?.mainHand ?? "unarmed";
 
   // Class passives

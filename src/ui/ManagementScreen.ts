@@ -1,24 +1,19 @@
 import type { RosterMember, SaveData } from "@save/SaveManager";
-import { saveGame } from "@save/SaveManager";
-import { getStoreInventory, getItemPrice, type StoreItem, type StoreCategory } from "@data/StoreData";
-import { getWeapon, UNARMED } from "@data/WeaponData";
-import { getShield } from "@data/ShieldData";
-import { getArmorDef } from "@data/ArmorData";
-import { getItemName } from "@data/ItemData";
+import { saveGame, pruneItemRegistry } from "@save/SaveManager";
+import { getItemPrice, type StoreCategory } from "@data/StoreData";
+import { UNARMED } from "@data/WeaponData";
 import { getClassDef, canEquipWeapon, canEquipShield, canEquipArmor, type CharacterClass } from "@data/ClassData";
 import type { ContractDef } from "@data/ContractData";
 import { generateContracts } from "@data/ContractData";
 import type { RecruitDef } from "@data/RecruitData";
 import { generateRecruits, getPartyLevel } from "@data/RecruitData";
+import { resolveWeapon, resolveShield, resolveArmor, resolveItemName, setItemRegistry } from "@data/ItemResolver";
+import { isGeneratedItemId } from "@data/GeneratedItemData";
+import { generateShopInventory, shopRefreshCost, qualityColor } from "@data/ItemGenerator";
 
 type Tab = "roster" | "shop" | "recruit" | "contracts";
 const MAX_BAG = 2;
 
-const CATEGORY_ORDER: StoreCategory[] = ["weapon", "shield", "body_armor", "head_armor", "consumable"];
-const CATEGORY_LABELS: Record<StoreCategory, string> = {
-  weapon: "Weapons", shield: "Shields", body_armor: "Body Armor",
-  head_armor: "Head Armor", consumable: "Consumables",
-};
 
 const DIFFICULTY_COLORS: Record<string, string> = {
   easy: "#44bb44", normal: "#cccc44", hard: "#dd7722", deadly: "#dd3333",
@@ -50,6 +45,10 @@ export class ManagementScreen {
     this.root.className = "mgmt-screen";
     document.body.appendChild(this.root);
 
+    // Initialize item registry
+    if (!this.saveData.itemRegistry) this.saveData.itemRegistry = {};
+    setItemRegistry(this.saveData.itemRegistry);
+
     // Generate contracts/recruits if not cached
     const partyLevel = getPartyLevel(this.saveData.roster);
     if (!this.saveData.availableContracts || this.saveData.availableContracts.length === 0) {
@@ -57,6 +56,16 @@ export class ManagementScreen {
     }
     if (!this.saveData.availableRecruits || this.saveData.availableRecruits.length === 0) {
       this.saveData.availableRecruits = generateRecruits(partyLevel, simpleRng);
+    }
+
+    // Generate shop if not cached
+    if (!this.saveData.shopState) {
+      this.saveData.shopState = {
+        inventory: generateShopInventory(partyLevel, this.saveData.itemRegistry, simpleRng),
+        refreshCount: 0,
+        generatedAtLevel: partyLevel,
+      };
+      void this.save();
     }
 
     this.render();
@@ -133,7 +142,7 @@ export class ManagementScreen {
       summary.appendChild(el("span", "mgmt-unit-class", `${className} Lv${m.level}`));
       summary.appendChild(el("span", "mgmt-unit-hp", `HP: ${m.stats.hitpoints}`));
 
-      const weaponName = m.equipment.mainHand ? getWeapon(m.equipment.mainHand).name : "Unarmed";
+      const weaponName = m.equipment.mainHand ? resolveWeapon(m.equipment.mainHand).name : "Unarmed";
       summary.appendChild(el("span", "mgmt-unit-weapon", weaponName));
 
       summary.addEventListener("pointerup", (e) => {
@@ -166,7 +175,7 @@ export class ManagementScreen {
         this.renderEquipSlot(equip, i, "Head", m.armor.head?.id ?? null, "head_armor");
 
         if (m.equipment.bag.length > 0) {
-          equip.appendChild(el("div", "mgmt-equip-slot", `Bag: ${m.equipment.bag.map(getItemName).join(", ")}`));
+          equip.appendChild(el("div", "mgmt-equip-slot", `Bag: ${m.equipment.bag.map(resolveItemName).join(", ")}`));
         }
 
         detail.appendChild(equip);
@@ -183,7 +192,7 @@ export class ManagementScreen {
             if (!this.canEquipOnUnit(m, itemId, cat)) continue;
 
             const row = el("div", "mgmt-stash-item");
-            row.appendChild(el("span", "", getItemName(itemId)));
+            row.appendChild(el("span", "", resolveItemName(itemId)));
             const eBtn = el("button", "mgmt-equip-btn", "Equip");
             const capturedSi = si;
             eBtn.addEventListener("pointerup", (e) => {
@@ -207,7 +216,7 @@ export class ManagementScreen {
   }
 
   private renderEquipSlot(parent: HTMLElement, rosterIdx: number, label: string, itemId: string | null, _category: StoreCategory): void {
-    const name = itemId ? getItemName(itemId) : "None";
+    const name = itemId ? resolveItemName(itemId) : "None";
     const slot = el("div", "mgmt-equip-slot");
     slot.textContent = `${label}: ${name}`;
 
@@ -264,7 +273,7 @@ export class ManagementScreen {
       case "weapon": {
         if (m.equipment.mainHand) this.saveData.stash.push(m.equipment.mainHand);
         m.equipment.mainHand = itemId;
-        const wep = getWeapon(itemId);
+        const wep = resolveWeapon(itemId);
         if (wep.hands === 2 && m.equipment.offHand) {
           this.saveData.stash.push(m.equipment.offHand);
           m.equipment.offHand = null;
@@ -274,14 +283,14 @@ export class ManagementScreen {
       }
       case "shield": {
         if (m.equipment.offHand) this.saveData.stash.push(m.equipment.offHand);
-        const shield = getShield(itemId);
+        const shield = resolveShield(itemId);
         m.equipment.offHand = itemId;
         m.equipment.shieldDurability = shield?.durability ?? 0;
         break;
       }
       case "body_armor": {
         if (m.armor.body) this.saveData.stash.push(m.armor.body.id);
-        const armorDef = getArmorDef(itemId);
+        const armorDef = resolveArmor(itemId);
         m.armor.body = armorDef
           ? { id: itemId, currentDurability: armorDef.durability, maxDurability: armorDef.durability }
           : null;
@@ -289,7 +298,7 @@ export class ManagementScreen {
       }
       case "head_armor": {
         if (m.armor.head) this.saveData.stash.push(m.armor.head.id);
-        const armorDef = getArmorDef(itemId);
+        const armorDef = resolveArmor(itemId);
         m.armor.head = armorDef
           ? { id: itemId, currentDurability: armorDef.durability, maxDurability: armorDef.durability }
           : null;
@@ -312,21 +321,21 @@ export class ManagementScreen {
     if (!m.classId) return false;
     const classDef = getClassDef(m.classId as CharacterClass);
     switch (category) {
-      case "weapon": return canEquipWeapon(classDef, getWeapon(itemId));
+      case "weapon": return canEquipWeapon(classDef, resolveWeapon(itemId));
       case "shield": {
         if (m.equipment.mainHand) {
-          const wep = getWeapon(m.equipment.mainHand);
+          const wep = resolveWeapon(m.equipment.mainHand);
           if (wep.hands === 2) return false;
         }
-        const shield = getShield(itemId);
+        const shield = resolveShield(itemId);
         return shield ? canEquipShield(classDef, shield) : false;
       }
       case "body_armor": {
-        const armor = getArmorDef(itemId);
+        const armor = resolveArmor(itemId);
         return armor && armor.slot === "body" ? canEquipArmor(classDef, armor) : false;
       }
       case "head_armor": {
-        const armor = getArmorDef(itemId);
+        const armor = resolveArmor(itemId);
         return armor && armor.slot === "head" ? canEquipArmor(classDef, armor) : false;
       }
       case "consumable": return m.equipment.bag.length < MAX_BAG;
@@ -334,11 +343,15 @@ export class ManagementScreen {
   }
 
   private categorizeItem(itemId: string): StoreCategory | null {
-    if (getWeapon(itemId) !== UNARMED || itemId === "unarmed") {
+    if (isGeneratedItemId(itemId)) {
+      const gen = this.saveData.itemRegistry?.[itemId];
+      return gen ? gen.slotType : null;
+    }
+    if (resolveWeapon(itemId) !== UNARMED || itemId === "unarmed") {
       return itemId === "unarmed" ? null : "weapon";
     }
-    if (getShield(itemId)) return "shield";
-    const armor = getArmorDef(itemId);
+    if (resolveShield(itemId)) return "shield";
+    const armor = resolveArmor(itemId);
     if (armor) return armor.slot === "body" ? "body_armor" : "head_armor";
     if (itemId === "health_potion") return "consumable";
     return null;
@@ -346,31 +359,68 @@ export class ManagementScreen {
 
   // ── Shop Tab ──
 
+  private expandedShopItem: string | null = null;
+
   private renderShop(content: HTMLElement): void {
-    const inventory = getStoreInventory();
+    const shopState = this.saveData.shopState;
+    if (!shopState) return;
 
-    for (const cat of CATEGORY_ORDER) {
-      const items = inventory.filter(i => i.category === cat);
-      if (items.length === 0) continue;
+    const registry = this.saveData.itemRegistry ?? {};
+    const partyLevel = getPartyLevel(this.saveData.roster);
 
-      content.appendChild(el("div", "mgmt-section-label", CATEGORY_LABELS[cat]));
+    // Refresh button
+    const refreshCost = shopRefreshCost(partyLevel, shopState.refreshCount);
+    const refreshRow = el("div", "mgmt-shop-refresh");
+    const refreshBtn = el("button", "mgmt-refresh-btn", `Refresh (${refreshCost}g)`);
+    if (this.saveData.gold < refreshCost) {
+      refreshBtn.classList.add("disabled");
+    } else {
+      refreshBtn.addEventListener("pointerup", (e) => {
+        e.stopPropagation();
+        this.refreshShop();
+      });
+    }
+    refreshRow.appendChild(refreshBtn);
+    content.appendChild(refreshRow);
 
-      for (const item of items) {
-        const row = el("div", "mgmt-shop-item");
-        row.appendChild(el("span", "mgmt-item-name", getItemName(item.itemId)));
-        row.appendChild(el("span", "mgmt-item-price", `${item.price}g`));
+    // Shop items
+    content.appendChild(el("div", "mgmt-section-label", "For Sale"));
+    for (const uid of shopState.inventory) {
+      const gen = registry[uid];
+      if (!gen) continue;
 
-        const buyBtn = el("button", "mgmt-buy-btn", "Buy");
-        if (this.saveData.gold < item.price) {
-          buyBtn.classList.add("disabled");
-        } else {
-          buyBtn.addEventListener("pointerup", (e) => {
-            e.stopPropagation();
-            this.buyItem(item);
-          });
-        }
-        row.appendChild(buyBtn);
-        content.appendChild(row);
+      const row = el("div", "mgmt-shop-item");
+
+      const nameSpan = el("span", "mgmt-item-name", gen.name);
+      nameSpan.style.color = qualityColor(gen.itemLevel);
+      row.appendChild(nameSpan);
+
+      row.appendChild(el("span", "mgmt-item-price", `${gen.buyPrice}g`));
+
+      const buyBtn = el("button", "mgmt-buy-btn", "Buy");
+      if (this.saveData.gold < gen.buyPrice) {
+        buyBtn.classList.add("disabled");
+      } else {
+        buyBtn.addEventListener("pointerup", (e) => {
+          e.stopPropagation();
+          this.buyGeneratedItem(uid);
+        });
+      }
+      row.appendChild(buyBtn);
+
+      // Tap item name to expand detail
+      nameSpan.style.cursor = "pointer";
+      nameSpan.addEventListener("pointerup", (e) => {
+        e.stopPropagation();
+        this.expandedShopItem = this.expandedShopItem === uid ? null : uid;
+        this.render();
+      });
+
+      content.appendChild(row);
+
+      // Detail view
+      if (this.expandedShopItem === uid) {
+        content.appendChild(this.renderItemDetail(gen));
       }
     }
 
@@ -379,7 +429,12 @@ export class ManagementScreen {
       content.appendChild(el("div", "mgmt-section-label", `Stash (${this.saveData.stash.length})`));
       for (const itemId of this.saveData.stash) {
         const row = el("div", "mgmt-stash-row");
-        row.appendChild(el("span", "", getItemName(itemId)));
+        const stashName = el("span", "", resolveItemName(itemId));
+        if (isGeneratedItemId(itemId)) {
+          const gen = registry[itemId];
+          if (gen) stashName.style.color = qualityColor(gen.itemLevel);
+        }
+        row.appendChild(stashName);
         const sellPrice = Math.floor(getItemPrice(itemId) / 2);
         if (sellPrice > 0) {
           const sellBtn = el("button", "mgmt-sell-btn", `Sell ${sellPrice}g`);
@@ -394,10 +449,113 @@ export class ManagementScreen {
     }
   }
 
-  private buyItem(item: StoreItem): void {
-    if (this.saveData.gold < item.price) return;
-    this.saveData.gold -= item.price;
-    this.saveData.stash.push(item.itemId);
+  private renderItemDetail(gen: import("@data/GeneratedItemData").GeneratedItem): HTMLElement {
+    const detail = el("div", "mgmt-item-detail");
+
+    const slotLabel = gen.slotType.replace("_", " ");
+    detail.appendChild(el("div", "mgmt-detail-slot", `Type: ${slotLabel}`));
+
+    // Show stats with comparison to base
+    if (gen.slotType === "weapon") {
+      const base = resolveWeapon(gen.baseId);
+      const resolved = resolveWeapon(gen.uid);
+      this.addStatLine(detail, "Damage", `${resolved.minDamage}-${resolved.maxDamage}`,
+        base.minDamage !== resolved.minDamage || base.maxDamage !== resolved.maxDamage ? "better" : "same",
+        `(${base.minDamage}-${base.maxDamage})`);
+      this.addStatLine(detail, "Hit Bonus", `${resolved.hitChanceBonus}`, resolved.hitChanceBonus > base.hitChanceBonus ? "better" : resolved.hitChanceBonus < base.hitChanceBonus ? "worse" : "same", `(${base.hitChanceBonus})`);
+      this.addStatLine(detail, "AP Cost", `${resolved.apCost}`, resolved.apCost < base.apCost ? "better" : resolved.apCost > base.apCost ? "worse" : "same", `(${base.apCost})`);
+      this.addStatLine(detail, "Fatigue", `${resolved.fatigueCost}`, resolved.fatigueCost < base.fatigueCost ? "better" : resolved.fatigueCost > base.fatigueCost ? "worse" : "same", `(${base.fatigueCost})`);
+      this.addStatLine(detail, "Armor Ignore", `${Math.round(resolved.armorIgnorePct * 100)}%`, resolved.armorIgnorePct > base.armorIgnorePct ? "better" : "same", `(${Math.round(base.armorIgnorePct * 100)}%)`);
+      this.addStatLine(detail, "Armor Dmg", `${Math.round(resolved.armorDamageMult * 100)}%`, resolved.armorDamageMult > base.armorDamageMult ? "better" : "same", `(${Math.round(base.armorDamageMult * 100)}%)`);
+    } else if (gen.slotType === "shield") {
+      const base = resolveShield(gen.baseId);
+      const resolved = resolveShield(gen.uid);
+      if (base && resolved) {
+        this.addStatLine(detail, "Melee Def", `+${resolved.meleeDefBonus}`, resolved.meleeDefBonus > base.meleeDefBonus ? "better" : "same", `(+${base.meleeDefBonus})`);
+        this.addStatLine(detail, "Ranged Def", `+${resolved.rangedDefBonus}`, resolved.rangedDefBonus > base.rangedDefBonus ? "better" : "same", `(+${base.rangedDefBonus})`);
+        this.addStatLine(detail, "Durability", `${resolved.durability}`, resolved.durability > base.durability ? "better" : "same", `(${base.durability})`);
+      }
+    } else if (gen.slotType === "body_armor" || gen.slotType === "head_armor") {
+      const base = resolveArmor(gen.baseId);
+      const resolved = resolveArmor(gen.uid);
+      if (base && resolved) {
+        this.addStatLine(detail, "Durability", `${resolved.durability}`, resolved.durability > base.durability ? "better" : "same", `(${base.durability})`);
+        this.addStatLine(detail, "Fatigue Pen.", `${resolved.fatiguePenalty}`, resolved.fatiguePenalty < base.fatiguePenalty ? "better" : resolved.fatiguePenalty > base.fatiguePenalty ? "worse" : "same", `(${base.fatiguePenalty})`);
+        this.addStatLine(detail, "Init Pen.", `${resolved.initiativePenalty}`, resolved.initiativePenalty < base.initiativePenalty ? "better" : resolved.initiativePenalty > base.initiativePenalty ? "worse" : "same", `(${base.initiativePenalty})`);
+      }
+    }
+
+    // Show modifiers
+    if (gen.modifiers.length > 0) {
+      detail.appendChild(el("div", "mgmt-detail-mods-label", "Modifiers:"));
+      for (const mod of gen.modifiers) {
+        const modEl = el("div", "mgmt-detail-mod", mod.label);
+        modEl.style.color = "#44cc44";
+        detail.appendChild(modEl);
+      }
+    }
+
+    return detail;
+  }
+
+  private addStatLine(parent: HTMLElement, label: string, value: string, comparison: "better" | "worse" | "same", baseValue: string): void {
+    const line = el("div", "mgmt-detail-stat");
+    line.appendChild(el("span", "mgmt-stat-label", `${label}: `));
+
+    const valSpan = el("span", "mgmt-stat-value", value);
+    if (comparison === "better") {
+      valSpan.style.color = "#44cc44";
+      valSpan.textContent = `${value} \u25B2`;
+    } else if (comparison === "worse") {
+      valSpan.style.color = "#dd4444";
+      valSpan.textContent = `${value} \u25BC`;
+    }
+    line.appendChild(valSpan);
+
+    if (comparison !== "same") {
+      const baseSpan = el("span", "mgmt-stat-base", ` ${baseValue}`);
+      baseSpan.style.color = "#888";
+      line.appendChild(baseSpan);
+    }
+
+    parent.appendChild(line);
+  }
+
+  private buyGeneratedItem(uid: string): void {
+    const gen = this.saveData.itemRegistry?.[uid];
+    if (!gen || this.saveData.gold < gen.buyPrice) return;
+
+    this.saveData.gold -= gen.buyPrice;
+    this.saveData.stash.push(uid);
+
+    // Remove from shop inventory
+    const shopState = this.saveData.shopState;
+    if (shopState) {
+      const idx = shopState.inventory.indexOf(uid);
+      if (idx !== -1) shopState.inventory.splice(idx, 1);
+    }
+
+    void this.save();
+    this.render();
+  }
+
+  private refreshShop(): void {
+    const partyLevel = getPartyLevel(this.saveData.roster);
+    const shopState = this.saveData.shopState;
+    if (!shopState) return;
+
+    const cost = shopRefreshCost(partyLevel, shopState.refreshCount);
+    if (this.saveData.gold < cost) return;
+
+    this.saveData.gold -= cost;
+    const registry = this.saveData.itemRegistry ?? {};
+
+    // Remove old shop items from registry (if not in stash/equipment)
+    shopState.inventory = generateShopInventory(partyLevel, registry, simpleRng);
+    shopState.refreshCount++;
+    shopState.generatedAtLevel = partyLevel;
+
+    pruneItemRegistry(this.saveData);
     void this.save();
     this.render();
   }
@@ -408,6 +566,7 @@ export class ManagementScreen {
     const sellPrice = Math.floor(getItemPrice(itemId) / 2);
     this.saveData.gold += sellPrice;
     this.saveData.stash.splice(idx, 1);
+    pruneItemRegistry(this.saveData);
     void this.save();
     this.render();
   }

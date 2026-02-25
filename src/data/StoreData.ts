@@ -1,6 +1,8 @@
 import { getAllWeapons } from "./WeaponData";
 import { getAllShields } from "./ShieldData";
 import { getAllArmors } from "./ArmorData";
+import { isGeneratedItemId } from "./GeneratedItemData";
+import { getItemRegistry } from "./ItemResolver";
 
 export type StoreCategory = "weapon" | "shield" | "body_armor" | "head_armor" | "consumable";
 
@@ -51,6 +53,10 @@ export function calculateGoldReward(killCount: number, scenarioIndex: number): n
 
 /** Get the price of an item, or 0 if unknown. */
 export function getItemPrice(itemId: string): number {
+  if (isGeneratedItemId(itemId)) {
+    const gen = getItemRegistry()[itemId];
+    if (gen) return gen.buyPrice;
+  }
   return PRICES[itemId] ?? 0;
 }
 

@@ -8,6 +8,7 @@ import { loadGame, saveGame, type SaveData, type RosterMember } from "@save/Save
 import { ManagementScreen } from "@ui/ManagementScreen";
 import { generateTalentStars } from "@data/TalentData";
 import { getArmorDef } from "@data/ArmorData";
+import { setItemRegistry } from "@data/ItemResolver";
 
 function simpleRng(): number {
   return Math.random();
@@ -83,6 +84,10 @@ async function init() {
   }
 
   const saveData = await loadGame().catch(() => null);
+
+  if (saveData) {
+    setItemRegistry(saveData.itemRegistry ?? {});
+  }
 
   if (!saveData) {
     // New game: create starter roster + show management

@@ -26,9 +26,8 @@ import { hexDistance, hexNeighbors } from "@hex/HexMath";
 import { hasLineOfSight } from "@hex/HexLineOfSight";
 import type { AttackResult } from "@combat/DamageCalculator";
 import { getZoCDangerHexes } from "@combat/ZoneOfControl";
-import { getArmorDef } from "@data/ArmorData";
-import { getWeapon, UNARMED } from "@data/WeaponData";
-import { getShield } from "@data/ShieldData";
+import { UNARMED } from "@data/WeaponData";
+import { resolveWeapon, resolveShield, resolveArmor, resolveItemName, setItemRegistry } from "@data/ItemResolver";
 import { SCENARIOS, type ScenarioDef } from "@data/ScenarioData";
 import { generateBattle } from "@data/BattleGenerator";
 import { generateContracts } from "@data/ContractData";
@@ -40,7 +39,7 @@ import { AttackPreviewPanel } from "@ui/AttackPreviewPanel";
 import { UndoButton } from "@ui/UndoButton";
 import { skillAPCost, skillRange } from "@data/SkillData";
 import { getClassDef, type CharacterClass } from "@data/ClassData";
-import { getItemName, getItemCategory } from "@data/ItemData";
+import { getItemCategory } from "@data/ItemData";
 import { generateTalentStars, type StatKey } from "@data/TalentData";
 import { canLevelUp, xpForNextLevel } from "@data/LevelData";
 import { createTalentStars } from "@entities/components/TalentStars";
@@ -184,8 +183,8 @@ function spawnUnit(
   });
 
   // Build armor from data registry
-  const bodyDef = equip?.bodyArmor ? getArmorDef(equip.bodyArmor) : undefined;
-  const headDef = equip?.headArmor ? getArmorDef(equip.headArmor) : undefined;
+  const bodyDef = equip?.bodyArmor ? resolveArmor(equip.bodyArmor) : undefined;
+  const headDef = equip?.headArmor ? resolveArmor(equip.headArmor) : undefined;
   world.addComponent(id, {
     type: "armor",
     head: headDef
@@ -197,7 +196,7 @@ function spawnUnit(
   });
 
   const shieldId = equip?.shield ?? null;
-  const shieldDef = shieldId ? getShield(shieldId) : undefined;
+  const shieldDef = shieldId ? resolveShield(shieldId) : undefined;
   world.addComponent(id, {
     type: "equipment",
     mainHand: equip?.weapon ?? null,
@@ -347,6 +346,10 @@ export class DemoBattle {
       this.incomingSaveData = null;
     } else {
       this.incomingSaveData = saveDataOrIndex;
+      // Initialize item registry for generated items
+      if (saveDataOrIndex.itemRegistry) {
+        setItemRegistry(saveDataOrIndex.itemRegistry);
+      }
       if (saveDataOrIndex.pendingContract) {
         scenario = generateBattle(
           saveDataOrIndex.pendingContract,
@@ -873,7 +876,7 @@ export class DemoBattle {
     const skill = this.combat.getActiveSkill();
     const weapon = this.combat.selectedUnit
       ? (this.world.getComponent<EquipmentComponent>(this.combat.selectedUnit, "equipment")?.mainHand
-        ? getWeapon(this.world.getComponent<EquipmentComponent>(this.combat.selectedUnit, "equipment")!.mainHand!)
+        ? resolveWeapon(this.world.getComponent<EquipmentComponent>(this.combat.selectedUnit, "equipment")!.mainHand!)
         : UNARMED)
       : UNARMED;
     const range = skillRange(skill, weapon);
@@ -931,18 +934,18 @@ export class DemoBattle {
     const morale = this.world.getComponent<MoraleComponent>(entityId, "morale");
     if (!health || !team || !stats) return;
 
-    const weapon = equip?.mainHand ? getWeapon(equip.mainHand) : UNARMED;
-    const shield = equip?.offHand ? getShield(equip.offHand) : undefined;
+    const weapon = equip?.mainHand ? resolveWeapon(equip.mainHand) : UNARMED;
+    const shield = equip?.offHand ? resolveShield(equip.offHand) : undefined;
 
     // Body/head armor labels
     let bodyArmorLabel: string | undefined;
     let headArmorLabel: string | undefined;
     if (armor?.body) {
-      const def = getArmorDef(armor.body.id);
+      const def = resolveArmor(armor.body.id);
       bodyArmorLabel = `Body: ${def?.name ?? armor.body.id} ${armor.body.currentDurability}/${armor.body.maxDurability}`;
     }
     if (armor?.head) {
-      const def = getArmorDef(armor.head.id);
+      const def = resolveArmor(armor.head.id);
       headArmorLabel = `Head: ${def?.name ?? armor.head.id} ${armor.head.currentDurability}/${armor.head.maxDurability}`;
     }
 
@@ -1003,7 +1006,7 @@ export class DemoBattle {
       isActivePlayerUnit: isPlayer && entityId === this.combat.selectedUnit,
       entityId: isPlayer ? entityId : undefined,
       currentAP: isPlayer ? this.combat.apRemaining : undefined,
-      bagItems: isPlayer && equip ? equip.bag.map(id => ({ id, name: getItemName(id), category: getItemCategory(id) })) : undefined,
+      bagItems: isPlayer && equip ? equip.bag.map(id => ({ id, name: resolveItemName(id), category: getItemCategory(id) })) : undefined,
     };
 
     this.detailEntityId = entityId;
@@ -1033,17 +1036,17 @@ export class DemoBattle {
     const morale = this.world.getComponent<MoraleComponent>(entityId, "morale");
     if (!health || !team || !stats) return;
 
-    const weapon = equip?.mainHand ? getWeapon(equip.mainHand) : UNARMED;
-    const shield = equip?.offHand ? getShield(equip.offHand) : undefined;
+    const weapon = equip?.mainHand ? resolveWeapon(equip.mainHand) : UNARMED;
+    const shield = equip?.offHand ? resolveShield(equip.offHand) : undefined;
 
     let bodyArmorLabel: string | undefined;
     let headArmorLabel: string | undefined;
     if (armor?.body) {
-      const def = getArmorDef(armor.body.id);
+      const def = resolveArmor(armor.body.id);
       bodyArmorLabel = `Body: ${def?.name ?? armor.body.id} ${armor.body.currentDurability}/${armor.body.maxDurability}`;
     }
     if (armor?.head) {
-      const def = getArmorDef(armor.head.id);
+      const def = resolveArmor(armor.head.id);
       headArmorLabel = `Head: ${def?.name ?? armor.head.id} ${armor.head.currentDurability}/${armor.head.maxDurability}`;
     }
 
@@ -1100,7 +1103,7 @@ export class DemoBattle {
       isActivePlayerUnit: isPlayer && entityId === this.combat.selectedUnit,
       entityId: isPlayer ? entityId : undefined,
       currentAP: isPlayer ? this.combat.apRemaining : undefined,
-      bagItems: isPlayer && equip ? equip.bag.map(id => ({ id, name: getItemName(id), category: getItemCategory(id) })) : undefined,
+      bagItems: isPlayer && equip ? equip.bag.map(id => ({ id, name: resolveItemName(id), category: getItemCategory(id) })) : undefined,
     };
 
     this.enemyDetailPanel.refresh(data);
@@ -1251,7 +1254,7 @@ export class DemoBattle {
     const equip = this.world.getComponent<EquipmentComponent>(entityId, "equipment");
     if (!health || !team) return;
 
-    const weapon = equip?.mainHand ? getWeapon(equip.mainHand) : UNARMED;
+    const weapon = equip?.mainHand ? resolveWeapon(equip.mainHand) : UNARMED;
     const isCurrentPlayer = this.combat.selectedUnit === entityId && this.combat.phase === "playerTurn";
 
     const moraleState = this.combat.morale.getState(this.world, entityId);
@@ -1565,6 +1568,8 @@ export class DemoBattle {
     if (this.saveData) {
       this.saveData.battleInProgress = undefined;
       this.saveData.pendingContract = undefined;
+      // Clear shop so fresh items generate on return to management
+      this.saveData.shopState = undefined;
       // Regenerate contracts and recruits for next management visit
       const partyLevel = getPartyLevel(this.saveData.roster);
       this.saveData.availableContracts = generateContracts(partyLevel, this.saveData.roster.length, () => Math.random());

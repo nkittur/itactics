@@ -2,6 +2,7 @@ import { get, set, del } from "idb-keyval";
 import type { StatKey } from "@data/TalentData";
 import type { ContractDef } from "@data/ContractData";
 import type { RecruitDef } from "@data/RecruitData";
+import type { GeneratedItem } from "@data/GeneratedItemData";
 
 const SAVE_KEY = "itactics-save";
 
@@ -52,6 +53,12 @@ export interface BattleState {
   rngState: number;
 }
 
+export interface ShopState {
+  inventory: string[];
+  refreshCount: number;
+  generatedAtLevel: number;
+}
+
 export interface SaveData {
   version: 1;
   roster: RosterMember[];
@@ -66,6 +73,10 @@ export interface SaveData {
   /** Cached between sessions. */
   availableRecruits?: RecruitDef[];
   battleInProgress?: BattleState;
+  /** Registry of procedurally generated items, keyed by UID. */
+  itemRegistry?: Record<string, GeneratedItem>;
+  /** Current shop state. */
+  shopState?: ShopState;
 }
 
 export async function saveGame(data: SaveData): Promise<void> {
@@ -79,6 +90,7 @@ export async function loadGame(): Promise<SaveData | null> {
     const raw = data as unknown as Record<string, unknown>;
     if (raw.gold == null) data.gold = 0;
     if (!Array.isArray(raw.stash)) data.stash = [];
+    if (!data.itemRegistry) data.itemRegistry = {};
     return data;
   }
   return null;
@@ -86,4 +98,35 @@ export async function loadGame(): Promise<SaveData | null> {
 
 export async function deleteSave(): Promise<void> {
   await del(SAVE_KEY);
+}
+
+/** Remove generated items from registry that are not referenced by stash, equipment, or shop. */
+export function pruneItemRegistry(save: SaveData): void {
+  const registry = save.itemRegistry;
+  if (!registry) return;
+
+  const referenced = new Set<string>();
+
+  // Stash
+  for (const id of save.stash) referenced.add(id);
+
+  // Shop
+  if (save.shopState) {
+    for (const id of save.shopState.inventory) referenced.add(id);
+  }
+
+  // Roster equipment
+  for (const m of save.roster) {
+    if (m.equipment.mainHand) referenced.add(m.equipment.mainHand);
+    if (m.equipment.offHand) referenced.add(m.equipment.offHand);
+    for (const id of m.equipment.bag) referenced.add(id);
+    if (m.armor.body) referenced.add(m.armor.body.id);
+    if (m.armor.head) referenced.add(m.armor.head.id);
+  }
+
+  for (const uid of Object.keys(registry)) {
+    if (!referenced.has(uid)) {
+      delete registry[uid];
+    }
+  }
 }
