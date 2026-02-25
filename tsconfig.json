@@ -23,7 +23,8 @@
       "@ui/*": ["src/ui/*"],
       "@rendering/*": ["src/rendering/*"],
       "@input/*": ["src/input/*"],
-      "@utils/*": ["src/utils/*"]
+      "@utils/*": ["src/utils/*"],
+      "@save/*": ["src/save/*"]
     }
   },
   "include": ["src/**/*.ts", "tests/**/*.ts"]

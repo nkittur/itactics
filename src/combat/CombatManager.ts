@@ -73,6 +73,10 @@ export class CombatManager {
   /** Continuation to run after animations complete. */
   private pendingContinuation: (() => void) | null = null;
 
+  /** Number of enemy kills this battle (for XP calculation). */
+  private _killCount = 0;
+  get killCount(): number { return this._killCount; }
+
   // ── Callbacks for the rendering/UI layer ──
 
   onPhaseChange?: (phase: CombatPhase) => void;
@@ -1207,6 +1211,10 @@ export class CombatManager {
   }
 
   private handleDeath(entityId: EntityId): void {
+    if (this.isEnemyEntity(entityId)) {
+      this._killCount++;
+    }
+
     const pos = this.world.getComponent<PositionComponent>(entityId, "position");
     if (pos) {
       const tile = this.grid.get(pos.q, pos.r);

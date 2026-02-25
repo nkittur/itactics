@@ -161,4 +161,20 @@ export class TurnOrder {
   get currentRound(): number {
     return this.round;
   }
+
+  /** Serialize full turn order state for save/load. */
+  serialize(): object {
+    return {
+      entries: this.entries.map((e) => ({ ...e })),
+      currentIndex: this.currentIndex,
+      round: this.round,
+    };
+  }
+
+  /** Restore turn order from serialized state. */
+  deserialize(data: { entries: TurnEntry[]; currentIndex: number; round: number }): void {
+    this.entries = data.entries.map((e) => ({ ...e }));
+    this.currentIndex = data.currentIndex;
+    this.round = data.round;
+  }
 }

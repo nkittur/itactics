@@ -14,6 +14,7 @@ export default defineConfig({
       "@rendering": resolve(__dirname, "src/rendering"),
       "@input": resolve(__dirname, "src/input"),
       "@utils": resolve(__dirname, "src/utils"),
+      "@save": resolve(__dirname, "src/save"),
     },
   },
   build: {

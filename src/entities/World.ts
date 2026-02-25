@@ -65,6 +65,25 @@ export class World {
         if (comp) data[id][type] = comp;
       }
     }
-    return data;
+    return { entities: data, nextId: this.nextId };
+  }
+
+  /** Restore world state from a serialized snapshot. Clears existing state. */
+  deserialize(snapshot: { entities: Record<string, Record<string, Component>>; nextId: number }): void {
+    this.entities.clear();
+    this.components.clear();
+    this.nextId = snapshot.nextId;
+
+    for (const [entityId, comps] of Object.entries(snapshot.entities)) {
+      this.entities.add(entityId as EntityId);
+      for (const [type, comp] of Object.entries(comps)) {
+        let store = this.components.get(type);
+        if (!store) {
+          store = new Map();
+          this.components.set(type, store);
+        }
+        store.set(entityId as EntityId, comp as Component);
+      }
+    }
   }
 }

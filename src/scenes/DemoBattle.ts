@@ -38,6 +38,17 @@ import { UndoButton } from "@ui/UndoButton";
 import { skillAPCost, skillRange } from "@data/SkillData";
 import { getClassDef, type CharacterClass } from "@data/ClassData";
 import { getItemName, getItemCategory } from "@data/ItemData";
+import { generateTalentStars, type StatKey } from "@data/TalentData";
+import { canLevelUp, xpForNextLevel } from "@data/LevelData";
+import { createTalentStars } from "@entities/components/TalentStars";
+import type { TalentStarsComponent } from "@entities/components/TalentStars";
+import { createPerks } from "@entities/components/Perks";
+import type { PerksComponent } from "@entities/components/Perks";
+import { calculateBattleXP, type XPAward } from "@combat/XPCalculator";
+import { BattleEndScreen } from "@ui/BattleEndScreen";
+import { LevelUpModal, type LevelUpResult } from "@ui/LevelUpModal";
+import { saveGame, loadGame, type SaveData, type BattleState } from "@save/SaveManager";
+import { entitiesToRoster } from "@save/RosterUtils";
 import type { CharacterClassComponent } from "@entities/components/CharacterClass";
 import type { FatigueComponent } from "@entities/components/Fatigue";
 import type { EquipmentComponent } from "@entities/components/Equipment";
@@ -237,6 +248,11 @@ function spawnUnit(
     } as CharacterClassComponent);
   }
 
+  if (team === "player") {
+    world.addComponent(id, createTalentStars(generateTalentStars(Math.random)));
+    world.addComponent(id, createPerks());
+  }
+
   if (team === "enemy") {
     world.addComponent(id, {
       type: "aiBehavior",
@@ -289,6 +305,12 @@ export class DemoBattle {
   private animQueue: Array<(done: () => void) => void> = [];
   private animPlaying = false;
 
+  // ── Battle end / level-up ──
+  private battleEndScreen: BattleEndScreen;
+  private levelUpModal: LevelUpModal;
+  private saveData: SaveData | null = null;
+  private scenarioId: string = "";
+
   // ── Speed toggle ──
   private speedMultiplier = 1;
   private speedBtn: HTMLButtonElement;
@@ -308,8 +330,8 @@ export class DemoBattle {
 
     // Load scenario from URL param or default
     const params = new URLSearchParams(window.location.search);
-    const scenarioId = params.get("scenario") ?? getDefaultScenarioId();
-    const scenario = getScenario(scenarioId) ?? getScenario(getDefaultScenarioId())!;
+    this.scenarioId = params.get("scenario") ?? getDefaultScenarioId();
+    const scenario = getScenario(this.scenarioId) ?? getScenario(getDefaultScenarioId())!;
 
     // Game state
     this.world = new World();
@@ -369,6 +391,8 @@ export class DemoBattle {
       }
     };
     this.attackPreviewPanel = new AttackPreviewPanel(this.uiManager.root);
+    this.battleEndScreen = new BattleEndScreen(this.uiManager.root);
+    this.levelUpModal = new LevelUpModal(this.uiManager.root);
 
     // Speed toggle
     this.speedBtn = document.createElement("button");
@@ -481,6 +505,10 @@ export class DemoBattle {
       this.animPlaying = false;
       // All animations done — continue the game flow
       this.combat.continueAfterAnimation();
+      // Auto-save after each completed action
+      if (this.combat.phase !== "battleEnd") {
+        this.autoSave();
+      }
       return;
     }
     this.animPlaying = true;
@@ -731,6 +759,10 @@ export class DemoBattle {
       } else {
         // No animations queued (e.g. enemy waited) — continue immediately
         this.combat.continueAfterAnimation();
+        // Auto-save after each completed action
+        if (this.combat.phase !== "battleEnd") {
+          this.autoSave();
+        }
       }
     };
 
@@ -759,6 +791,11 @@ export class DemoBattle {
         this.hideEnemyDetail();
         this.cancelAttackPreview();
       }
+    };
+
+    // Battle end → show XP / level-up flow
+    this.combat.onBattleEnd = (victory: boolean) => {
+      this.handleBattleEnd(victory);
     };
 
     // Turn advanced → select unit, pan camera
@@ -1283,12 +1320,205 @@ export class DemoBattle {
     }
   }
 
+  // ── Save / Load ──
+
+  /** Fire-and-forget auto-save after each player action. */
+  private autoSave(): void {
+    if (!this.saveData) return;
+
+    const battleState: BattleState = {
+      scenarioId: this.scenarioId,
+      worldSnapshot: this.world.serialize(),
+      turnOrderState: this.combat.turnOrder.serialize() as unknown as string[],
+      playerIds: [...this.playerIds],
+      enemyIds: [...this.enemyIds],
+      killCount: this.combat.killCount,
+      rngState: 0,
+    };
+
+    this.saveData.battleInProgress = battleState;
+    saveGame(this.saveData).catch((err) => console.warn("Auto-save failed:", err));
+  }
+
+  /** Create initial save data from current state. */
+  private initSaveData(): void {
+    const roster = entitiesToRoster(this.world, this.playerIds);
+    this.saveData = {
+      version: 1,
+      roster,
+      currentScenarioIndex: 0,
+    };
+    // Save initial roster as pre-battle snapshot
+    saveGame(this.saveData).catch((err) => console.warn("Initial save failed:", err));
+  }
+
+  // ── Battle end flow ──
+
+  private handleBattleEnd(victory: boolean): void {
+    // Wait for animations to finish, then show results
+    const showResults = () => {
+      const survivors = this.playerIds.filter((id) => {
+        const h = this.world.getComponent<HealthComponent>(id, "health");
+        return h && h.current > 0;
+      });
+
+      if (victory) {
+        const awards = calculateBattleXP(true, this.combat.killCount, survivors, this.world);
+        this.battleEndScreen.show(true, awards);
+        this.battleEndScreen.onContinue = () => {
+          this.battleEndScreen.hide();
+          this.processLevelUps(awards);
+        };
+      } else {
+        this.battleEndScreen.show(false, []);
+        this.battleEndScreen.onContinue = () => {
+          this.battleEndScreen.hide();
+          // Defeat: clear battle state, roster reverts to pre-battle snapshot
+          if (this.saveData) {
+            this.saveData.battleInProgress = undefined;
+            saveGame(this.saveData).catch(() => {});
+          }
+          // Reload to restart
+          window.location.reload();
+        };
+      }
+    };
+
+    // If animations are still playing, wait for them
+    if (this.animPlaying || this.animQueue.length > 0) {
+      const checkDone = setInterval(() => {
+        if (!this.animPlaying && this.animQueue.length === 0) {
+          clearInterval(checkDone);
+          showResults();
+        }
+      }, 100);
+    } else {
+      showResults();
+    }
+  }
+
+  /** Process level-ups sequentially for all units that leveled up. */
+  private processLevelUps(awards: XPAward[]): void {
+    const levelUps = awards.filter((a) => a.leveledUp);
+
+    if (levelUps.length === 0) {
+      this.finalizeBattleEnd();
+      return;
+    }
+
+    let index = 0;
+    const processNext = () => {
+      if (index >= levelUps.length) {
+        this.finalizeBattleEnd();
+        return;
+      }
+
+      const award = levelUps[index]!;
+      const stats = this.world.getComponent<StatsComponent>(award.entityId, "stats");
+      const talents = this.world.getComponent<TalentStarsComponent>(award.entityId, "talentStars");
+      if (!stats || !talents) {
+        index++;
+        processNext();
+        return;
+      }
+
+      this.levelUpModal.show({
+        entityId: award.entityId,
+        name: award.name,
+        oldLevel: stats.level,
+        newLevel: stats.level + 1,
+        currentStats: {
+          hitpoints: stats.hitpoints,
+          fatigue: stats.fatigue,
+          resolve: stats.resolve,
+          initiative: stats.initiative,
+          meleeSkill: stats.meleeSkill,
+          rangedSkill: stats.rangedSkill,
+          meleeDefense: stats.meleeDefense,
+          rangedDefense: stats.rangedDefense,
+        },
+        talentStars: talents.stars,
+      });
+
+      this.levelUpModal.onComplete = (result: LevelUpResult) => {
+        // Apply stat increases
+        this.applyLevelUp(result);
+        index++;
+        processNext();
+      };
+    };
+
+    processNext();
+  }
+
+  /** Apply a level-up result to the unit's stats. */
+  private applyLevelUp(result: LevelUpResult): void {
+    const stats = this.world.getComponent<StatsComponent>(result.entityId, "stats");
+    if (!stats) return;
+
+    stats.level++;
+
+    for (const [key, increase] of Object.entries(result.increases)) {
+      const k = key as StatKey;
+      if (k in stats && increase != null) {
+        (stats as unknown as Record<string, number>)[k]! += increase;
+      }
+    }
+
+    // Update max HP if hitpoints increased
+    if (result.increases.hitpoints) {
+      const health = this.world.getComponent<HealthComponent>(result.entityId, "health");
+      if (health) {
+        health.max += result.increases.hitpoints;
+        health.current += result.increases.hitpoints;
+      }
+    }
+
+    // Award perk point
+    const perks = this.world.getComponent<PerksComponent>(result.entityId, "perks");
+    if (perks) {
+      perks.availablePoints += result.perkPointsAwarded;
+    }
+  }
+
+  /** After all level-ups: update roster, clear battle state, save. */
+  private finalizeBattleEnd(): void {
+    if (this.saveData) {
+      const survivors = this.playerIds.filter((id) => {
+        const h = this.world.getComponent<HealthComponent>(id, "health");
+        return h && h.current > 0;
+      });
+      this.saveData.roster = entitiesToRoster(this.world, survivors);
+      this.saveData.battleInProgress = undefined;
+      saveGame(this.saveData).catch(() => {});
+    }
+
+    // Show "Next Battle" or reload option
+    // For now, reload to start a new battle
+    setTimeout(() => window.location.reload(), 500);
+  }
+
   // ── Lifecycle ──
 
-  start(): void {
+  async start(): Promise<void> {
+    // Try to load save data
+    try {
+      this.saveData = await loadGame();
+    } catch {
+      this.saveData = null;
+    }
+
+    if (!this.saveData) {
+      // First play: create initial save from current state
+      this.initSaveData();
+    }
+
     this.combat.start();
     this.refreshUI();
     this.sceneManager.startRenderLoop();
+
+    // Auto-save after first turn setup
+    this.autoSave();
   }
 
   dispose(): void {
