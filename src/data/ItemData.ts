@@ -30,6 +30,15 @@ export function getConsumable(id: string): ConsumableItemDef | undefined {
   return CONSUMABLES[id];
 }
 
+/** Returns the category of an item: "consumable", "weapon", "shield", or "unknown". */
+export function getItemCategory(id: string): "consumable" | "weapon" | "shield" | "unknown" {
+  if (CONSUMABLES[id]) return "consumable";
+  const weapon = getWeapon(id);
+  if (weapon !== UNARMED) return "weapon";
+  if (getShield(id)) return "shield";
+  return "unknown";
+}
+
 /** Returns a display name for any item ID (consumable, weapon, shield, or armor). */
 export function getItemName(id: string): string {
   const consumable = CONSUMABLES[id];

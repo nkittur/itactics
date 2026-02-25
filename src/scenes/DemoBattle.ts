@@ -37,7 +37,7 @@ import { AttackPreviewPanel } from "@ui/AttackPreviewPanel";
 import { UndoButton } from "@ui/UndoButton";
 import { skillAPCost, skillRange } from "@data/SkillData";
 import { getClassDef, type CharacterClass } from "@data/ClassData";
-import { getItemName } from "@data/ItemData";
+import { getItemName, getItemCategory } from "@data/ItemData";
 import type { CharacterClassComponent } from "@entities/components/CharacterClass";
 import type { FatigueComponent } from "@entities/components/Fatigue";
 import type { EquipmentComponent } from "@entities/components/Equipment";
@@ -353,17 +353,19 @@ export class DemoBattle {
     this.enemyDetailPanel.onSwapEquipment = (eid, bagIdx, slot) => {
       if (this.combat.swapEquipment(eid, bagIdx, slot)) {
         this.refreshDetailPanel();
+        this.refreshAfterEquipAction(eid);
       }
     };
     this.enemyDetailPanel.onUnequipToBag = (eid, slot) => {
       if (this.combat.unequipToBag(eid, slot)) {
         this.refreshDetailPanel();
+        this.refreshAfterEquipAction(eid);
       }
     };
     this.enemyDetailPanel.onUseConsumable = (eid, bagIdx) => {
       if (this.combat.useConsumable(eid, bagIdx)) {
         this.refreshDetailPanel();
-        this.showUnitInfo(eid);
+        this.refreshAfterEquipAction(eid);
       }
     };
     this.attackPreviewPanel = new AttackPreviewPanel(this.uiManager.root);
@@ -944,11 +946,11 @@ export class DemoBattle {
       meleeDefense: stats.meleeDefense,
       resolve: stats.resolve,
       initiative: stats.initiative,
-      // Interactive fields for player units
-      isPlayerUnit: isPlayer,
+      // Interactive fields — only for the active player unit
+      isActivePlayerUnit: isPlayer && entityId === this.combat.selectedUnit,
       entityId: isPlayer ? entityId : undefined,
       currentAP: isPlayer ? this.combat.apRemaining : undefined,
-      bagItems: isPlayer && equip ? equip.bag.map(id => ({ id, name: getItemName(id) })) : undefined,
+      bagItems: isPlayer && equip ? equip.bag.map(id => ({ id, name: getItemName(id), category: getItemCategory(id) })) : undefined,
     };
 
     this.detailEntityId = entityId;
@@ -1042,13 +1044,19 @@ export class DemoBattle {
       meleeDefense: stats.meleeDefense,
       resolve: stats.resolve,
       initiative: stats.initiative,
-      isPlayerUnit: isPlayer,
+      isActivePlayerUnit: isPlayer && entityId === this.combat.selectedUnit,
       entityId: isPlayer ? entityId : undefined,
       currentAP: isPlayer ? this.combat.apRemaining : undefined,
-      bagItems: isPlayer && equip ? equip.bag.map(id => ({ id, name: getItemName(id) })) : undefined,
+      bagItems: isPlayer && equip ? equip.bag.map(id => ({ id, name: getItemName(id), category: getItemCategory(id) })) : undefined,
     };
 
     this.enemyDetailPanel.refresh(data);
+  }
+
+  /** After an equipment action, refresh the unit info bar and skill affordability. */
+  private refreshAfterEquipAction(entityId: EntityId): void {
+    this.showUnitInfo(entityId);
+    this.updateSkillAffordability();
   }
 
   // ── Attack preview (tap-to-confirm) ──

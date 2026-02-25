@@ -1,3 +1,9 @@
+export interface BagItemInfo {
+  id: string;
+  name: string;
+  category: "consumable" | "weapon" | "shield" | "unknown";
+}
+
 export interface EnemyDetailData {
   name: string;
   currentHp: number;
@@ -28,17 +34,17 @@ export interface EnemyDetailData {
   resolve: number;
   initiative: number;
 
-  // ── Interactive equipment fields (player units only) ──
-  isPlayerUnit?: boolean;
+  // ── Interactive equipment fields (active player unit only) ──
+  /** True if this is the active player unit whose turn it is. */
+  isActivePlayerUnit?: boolean;
   entityId?: string;
   currentAP?: number;
-  bagItems?: { id: string; name: string }[];
+  bagItems?: BagItemInfo[];
 }
 
 /**
- * Full-screen modal panel that shows detailed enemy info on long-press.
- * Includes stat breakdown, equipment, morale, and status effects.
- * For player units, shows interactive equipment slots and bag.
+ * Full-screen modal panel that shows detailed unit info on long-press.
+ * For the active player unit, shows interactive equipment slots and bag.
  */
 export class EnemyDetailPanel {
   private container: HTMLDivElement;
@@ -117,7 +123,7 @@ export class EnemyDetailPanel {
     this.content.appendChild(statsRow);
 
     // Equipment section
-    const isInteractive = data.isPlayerUnit && data.entityId != null;
+    const isInteractive = !!data.isActivePlayerUnit && data.entityId != null;
     const canAct = isInteractive && (data.currentAP ?? 0) >= 4;
 
     const equipSection = el("div", "edp-section");
@@ -138,7 +144,7 @@ export class EnemyDetailPanel {
 
     this.content.appendChild(equipSection);
 
-    // Bag section (player units only)
+    // Bag section (active player unit only)
     if (isInteractive && data.bagItems) {
       this.content.appendChild(el("div", "edp-divider"));
       const bagHeader = el("div", "edp-bag-header",
@@ -146,7 +152,7 @@ export class EnemyDetailPanel {
       this.content.appendChild(bagHeader);
 
       if (data.bagItems.length === 0) {
-        this.content.appendChild(el("div", "edp-bag-name", "Empty"));
+        this.content.appendChild(el("div", "edp-bag-empty", "Empty"));
       } else {
         for (let i = 0; i < data.bagItems.length; i++) {
           const item = data.bagItems[i]!;
@@ -156,20 +162,44 @@ export class EnemyDetailPanel {
           row.appendChild(nameSpan);
 
           const btnGroup = el("div", "edp-bag-actions");
-
-          // Use button (for consumables)
-          const useBtn = document.createElement("button") as HTMLButtonElement;
-          useBtn.className = "edp-slot-action";
-          useBtn.textContent = "Use";
-          useBtn.disabled = !canAct;
           const bagIdx = i;
-          useBtn.addEventListener("pointerup", (e) => {
-            e.stopPropagation();
-            if (data.entityId != null) this.onUseConsumable?.(data.entityId!, bagIdx);
-          });
-          btnGroup.appendChild(useBtn);
 
-          if (!canAct) {
+          if (item.category === "consumable") {
+            // Use button for consumables
+            const useBtn = document.createElement("button") as HTMLButtonElement;
+            useBtn.className = "edp-slot-action";
+            useBtn.textContent = "Use";
+            useBtn.disabled = !canAct;
+            useBtn.addEventListener("pointerup", (e) => {
+              e.stopPropagation();
+              if (data.entityId != null) this.onUseConsumable?.(data.entityId!, bagIdx);
+            });
+            btnGroup.appendChild(useBtn);
+          } else if (item.category === "weapon") {
+            // Equip as main hand
+            const equipBtn = document.createElement("button") as HTMLButtonElement;
+            equipBtn.className = "edp-slot-action";
+            equipBtn.textContent = "Equip";
+            equipBtn.disabled = !canAct;
+            equipBtn.addEventListener("pointerup", (e) => {
+              e.stopPropagation();
+              if (data.entityId != null) this.onSwapEquipment?.(data.entityId!, bagIdx, "mainHand");
+            });
+            btnGroup.appendChild(equipBtn);
+          } else if (item.category === "shield") {
+            // Equip as off hand
+            const equipBtn = document.createElement("button") as HTMLButtonElement;
+            equipBtn.className = "edp-slot-action";
+            equipBtn.textContent = "Equip";
+            equipBtn.disabled = !canAct;
+            equipBtn.addEventListener("pointerup", (e) => {
+              e.stopPropagation();
+              if (data.entityId != null) this.onSwapEquipment?.(data.entityId!, bagIdx, "offHand");
+            });
+            btnGroup.appendChild(equipBtn);
+          }
+
+          if (!canAct && item.category !== "unknown") {
             btnGroup.appendChild(el("span", "edp-ap-cost", "4 AP"));
           }
 
@@ -218,16 +248,15 @@ export class EnemyDetailPanel {
       // Check if the slot has an item to unequip
       const hasItem = slot === "mainHand" ? !!data.weaponName : !!data.shieldName;
       if (hasItem) {
-        const unequipBtn = document.createElement("button") as HTMLButtonElement;
-        unequipBtn.className = "edp-slot-action";
-        unequipBtn.textContent = "▼";
-        unequipBtn.title = "Unequip to bag";
-        unequipBtn.disabled = !canAct;
-        unequipBtn.addEventListener("pointerup", (e) => {
+        const stowBtn = document.createElement("button") as HTMLButtonElement;
+        stowBtn.className = "edp-slot-action";
+        stowBtn.textContent = "Stow";
+        stowBtn.disabled = !canAct;
+        stowBtn.addEventListener("pointerup", (e) => {
           e.stopPropagation();
           this.onUnequipToBag?.(data.entityId!, slot);
         });
-        row.appendChild(unequipBtn);
+        row.appendChild(stowBtn);
       }
 
       if (!canAct) {
