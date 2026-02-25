@@ -50,7 +50,6 @@ import type { PerksComponent } from "@entities/components/Perks";
 import { calculateBattleXP, type XPAward } from "@combat/XPCalculator";
 import { BattleEndScreen } from "@ui/BattleEndScreen";
 import { LevelUpModal, type LevelUpResult } from "@ui/LevelUpModal";
-import { StoreScreen } from "@ui/StoreScreen";
 import { calculateGoldReward } from "@data/StoreData";
 import { saveGame, loadGame, deleteSave, type SaveData, type BattleState } from "@save/SaveManager";
 import { entitiesToRoster } from "@save/RosterUtils";
@@ -313,7 +312,6 @@ export class DemoBattle {
   // ── Battle end / level-up / store ──
   private battleEndScreen: BattleEndScreen;
   private levelUpModal: LevelUpModal;
-  private storeScreen: StoreScreen;
   private saveData: SaveData | null = null;
   private scenarioId: string = "";
 
@@ -421,7 +419,7 @@ export class DemoBattle {
     this.attackPreviewPanel = new AttackPreviewPanel(this.uiManager.root);
     this.battleEndScreen = new BattleEndScreen(this.uiManager.root);
     this.levelUpModal = new LevelUpModal(this.uiManager.root);
-    this.storeScreen = new StoreScreen(this.uiManager.root);
+
 
     // Speed toggle
     this.speedBtn = document.createElement("button");
@@ -1426,15 +1424,24 @@ export class DemoBattle {
         };
       } else {
         this.battleEndScreen.show(false, []);
+        // Retry: keep pendingContract, reload to replay the same battle
         this.battleEndScreen.onContinue = () => {
           this.battleEndScreen.hide();
-          // Defeat: clear battle + contract, roster reverts to pre-battle snapshot
+          if (this.saveData) {
+            this.saveData.battleInProgress = undefined;
+            // Keep pendingContract so reload starts the same fight
+            saveGame(this.saveData).catch(() => {});
+          }
+          window.location.reload();
+        };
+        // Forfeit: clear contract, go back to management
+        this.battleEndScreen.onForfeit = () => {
+          this.battleEndScreen.hide();
           if (this.saveData) {
             this.saveData.battleInProgress = undefined;
             this.saveData.pendingContract = undefined;
             saveGame(this.saveData).catch(() => {});
           }
-          // Reload to restart
           window.location.reload();
         };
       }
@@ -1458,14 +1465,14 @@ export class DemoBattle {
     const levelUps = awards.filter((a) => a.leveledUp);
 
     if (levelUps.length === 0) {
-      this.showStore();
+      this.postVictoryFinalize();
       return;
     }
 
     let index = 0;
     const processNext = () => {
       if (index >= levelUps.length) {
-        this.showStore();
+        this.postVictoryFinalize();
         return;
       }
 
@@ -1537,8 +1544,8 @@ export class DemoBattle {
     }
   }
 
-  /** Show store screen between battles. */
-  private showStore(): void {
+  /** After level-ups: update roster from survivors and go to management. */
+  private postVictoryFinalize(): void {
     if (!this.saveData) {
       this.finalizeBattleEnd();
       return;
@@ -1549,16 +1556,8 @@ export class DemoBattle {
       const h = this.world.getComponent<HealthComponent>(id, "health");
       return h && h.current > 0;
     });
-    const roster = entitiesToRoster(this.world, survivors);
-
-    this.storeScreen.show(this.saveData.gold, roster, this.saveData.stash);
-    this.storeScreen.onContinue = () => {
-      this.saveData!.gold = this.storeScreen.getGold();
-      this.saveData!.roster = this.storeScreen.getRoster();
-      this.saveData!.stash = this.storeScreen.getStash();
-      this.storeScreen.hide();
-      this.finalizeBattleEnd();
-    };
+    this.saveData.roster = entitiesToRoster(this.world, survivors);
+    this.finalizeBattleEnd();
   }
 
   /** After store/level-ups: clear battle state, generate new contracts/recruits, save, reload to management. */

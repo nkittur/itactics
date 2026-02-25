@@ -5,6 +5,7 @@ export class BattleEndScreen {
   private container: HTMLDivElement;
   private panel: HTMLDivElement;
   onContinue: (() => void) | null = null;
+  onForfeit: (() => void) | null = null;
 
   constructor(root: HTMLDivElement) {
     this.container = document.createElement("div");
@@ -66,15 +67,39 @@ export class BattleEndScreen {
       this.panel.appendChild(table);
     }
 
-    // Button
-    const btn = document.createElement("button") as HTMLButtonElement;
-    btn.className = "battle-end-btn";
-    btn.textContent = victory ? "Continue" : "Retry";
-    btn.addEventListener("pointerup", (e) => {
-      e.stopPropagation();
-      this.onContinue?.();
-    });
-    this.panel.appendChild(btn);
+    // Buttons
+    if (victory) {
+      const btn = document.createElement("button") as HTMLButtonElement;
+      btn.className = "battle-end-btn";
+      btn.textContent = "Continue";
+      btn.addEventListener("pointerup", (e) => {
+        e.stopPropagation();
+        this.onContinue?.();
+      });
+      this.panel.appendChild(btn);
+    } else {
+      const btnRow = el("div", "battle-end-btn-row");
+
+      const retryBtn = document.createElement("button") as HTMLButtonElement;
+      retryBtn.className = "battle-end-btn";
+      retryBtn.textContent = "Retry";
+      retryBtn.addEventListener("pointerup", (e) => {
+        e.stopPropagation();
+        this.onContinue?.();
+      });
+      btnRow.appendChild(retryBtn);
+
+      const forfeitBtn = document.createElement("button") as HTMLButtonElement;
+      forfeitBtn.className = "battle-end-btn battle-end-forfeit";
+      forfeitBtn.textContent = "Forfeit";
+      forfeitBtn.addEventListener("pointerup", (e) => {
+        e.stopPropagation();
+        this.onForfeit?.();
+      });
+      btnRow.appendChild(forfeitBtn);
+
+      this.panel.appendChild(btnRow);
+    }
   }
 
   hide(): void {
