@@ -153,36 +153,38 @@
       bottom: calc(80px + env(safe-area-inset-bottom, 0px));
       left: 50%;
       transform: translateX(-50%);
-      width: 180px;
-      padding: 8px 10px;
+      padding: 4px 10px;
       background: rgba(26, 26, 46, 0.8);
       border-radius: 6px;
       border: 1px solid #aaaaaa;
       pointer-events: auto;
+      white-space: nowrap;
     }
-    .unit-name {
+    .uip-name {
       color: #ffffff;
-      font-size: 13px;
-      margin-bottom: 4px;
+      font-size: 12px;
+      font-weight: 600;
+      margin-bottom: 2px;
     }
-    .hp-bar {
-      width: 100%;
-      height: 12px;
-      background: #333333;
-      border-radius: 3px;
-      border: 1px solid #555555;
-      overflow: hidden;
+    .uip-stats-row {
+      display: flex;
+      gap: 14px;
     }
-    .hp-fill {
-      height: 100%;
-      border-radius: 3px;
-      background: #44bb44;
-      transition: width 0.2s;
-    }
-    .hp-text {
-      color: #cccccc;
+    .uip-col {
+      display: flex;
+      flex-direction: column;
       font-size: 11px;
-      margin-top: 2px;
+      line-height: 1.3;
+    }
+    .uip-col-right { text-align: right; }
+    .uip-hp { font-weight: 600; }
+    .uip-fat { color: #cc8844; font-size: 10px; }
+    .uip-ap { color: #aad4ff; }
+    .uip-mp { color: #88cc88; font-size: 10px; }
+    .uip-status {
+      font-size: 9px;
+      color: #cc8844;
+      margin-top: 1px;
     }
     .speed-toggle {
       position: absolute;
