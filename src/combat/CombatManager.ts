@@ -19,7 +19,9 @@ import type { ActiveStancesComponent } from "@entities/components/ActiveStances"
 import { getWeapon, UNARMED, type WeaponDef } from "@data/WeaponData";
 import { BASIC_ATTACK, getSkillsForWeapon, skillAPCost, skillFatigueCost, skillRange, type SkillDef } from "@data/SkillData";
 import type { CharacterClassComponent } from "@entities/components/CharacterClass";
-import { getClassDef, getClassAPDiscount, getClassArmorMPReduction } from "@data/ClassData";
+import { getClassDef, getClassAPDiscount, getClassArmorMPReduction, canEquipWeapon, canEquipShield } from "@data/ClassData";
+import { getShield } from "@data/ShieldData";
+import { getConsumable } from "@data/ItemData";
 import { decideTacticalAction, type TacticalAction } from "./TacticalAI";
 import { hasLineOfSight } from "@hex/HexLineOfSight";
 import { RNG } from "@utils/RNG";
@@ -1287,5 +1289,88 @@ export class CombatManager {
       }
     }
     return null;
+  }
+
+  // ── Equipment management (in-combat) ──
+
+  private static readonly EQUIP_AP_COST = 4;
+
+  /** Swap a bag item into an equipment slot. Returns true on success. */
+  swapEquipment(entityId: EntityId, bagIndex: number, slot: "mainHand" | "offHand"): boolean {
+    if (!this.apManager.canAfford(CombatManager.EQUIP_AP_COST)) return false;
+    const equip = this.world.getComponent<EquipmentComponent>(entityId, "equipment");
+    if (!equip || bagIndex < 0 || bagIndex >= equip.bag.length) return false;
+
+    const bagItemId = equip.bag[bagIndex]!;
+
+    // Validate class restrictions
+    const cc = this.world.getComponent<CharacterClassComponent>(entityId, "characterClass");
+    if (cc) {
+      const classDef = getClassDef(cc.classId);
+      if (slot === "mainHand") {
+        try {
+          const weaponDef = getWeapon(bagItemId);
+          if (!canEquipWeapon(classDef, weaponDef)) return false;
+        } catch { /* not a weapon — skip */ }
+      } else if (slot === "offHand") {
+        const shieldDef = getShield(bagItemId);
+        if (shieldDef && !canEquipShield(classDef, shieldDef)) return false;
+      }
+    }
+
+    const oldItem = equip[slot];
+    equip[slot] = bagItemId ?? null;
+    if (oldItem) {
+      equip.bag[bagIndex] = oldItem;
+    } else {
+      equip.bag.splice(bagIndex, 1);
+    }
+
+    // Update shield durability when swapping shields
+    if (slot === "offHand") {
+      const newShield = getShield(bagItemId!);
+      equip.shieldDurability = newShield ? newShield.durability : null;
+    }
+
+    this.apManager.spend(CombatManager.EQUIP_AP_COST);
+    return true;
+  }
+
+  /** Unequip an item to bag. Returns true on success. */
+  unequipToBag(entityId: EntityId, slot: "mainHand" | "offHand"): boolean {
+    if (!this.apManager.canAfford(CombatManager.EQUIP_AP_COST)) return false;
+    const equip = this.world.getComponent<EquipmentComponent>(entityId, "equipment");
+    if (!equip || !equip[slot]) return false;
+
+    equip.bag.push(equip[slot]!);
+    equip[slot] = null;
+    if (slot === "offHand") equip.shieldDurability = null;
+
+    this.apManager.spend(CombatManager.EQUIP_AP_COST);
+    return true;
+  }
+
+  /** Use a consumable from bag. Returns true on success. */
+  useConsumable(entityId: EntityId, bagIndex: number): boolean {
+    const equip = this.world.getComponent<EquipmentComponent>(entityId, "equipment");
+    if (!equip || bagIndex < 0 || bagIndex >= equip.bag.length) return false;
+
+    const itemId = equip.bag[bagIndex]!;
+    const consumable = getConsumable(itemId);
+    if (!consumable) return false;
+
+    if (!this.apManager.canAfford(consumable.apCost)) return false;
+
+    // Apply effect
+    if (consumable.effect.type === "heal") {
+      const health = this.world.getComponent<HealthComponent>(entityId, "health");
+      if (health) {
+        health.current = Math.min(health.max, health.current + consumable.effect.amount);
+      }
+    }
+
+    equip.bag.splice(bagIndex, 1);
+    this.apManager.spend(consumable.apCost);
+    return true;
   }
 }

@@ -296,6 +296,41 @@
       color: #ccaa88;
     }
     .edp-equip.edp-armor { color: #8899aa; }
+
+    .edp-equip-slot {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 3px 0;
+      gap: 4px;
+    }
+    .edp-slot-label { font-size: 9px; color: #777; min-width: 28px; }
+    .edp-slot-value { flex: 1; font-size: 11px; color: #ccaa88; }
+    .edp-slot-action {
+      font-size: 9px;
+      padding: 2px 6px;
+      border-radius: 4px;
+      border: 1px solid #666;
+      background: #3a3a5a;
+      color: #ccc;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+      touch-action: manipulation;
+    }
+    .edp-slot-action:disabled { opacity: 0.35; cursor: default; }
+    .edp-slot-action:active:not(:disabled) { filter: brightness(1.3); }
+    .edp-bag-header { font-size: 11px; color: #aaa; margin-bottom: 3px; }
+    .edp-bag-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 2px 0;
+      gap: 4px;
+    }
+    .edp-bag-actions { display: flex; align-items: center; gap: 4px; }
+    .edp-bag-name { font-size: 11px; color: #cccc88; }
+    .edp-ap-cost { font-size: 8px; color: #888; }
+
     .edp-morale { font-size: 11px; margin-right: 8px; }
     .edp-fatigue { font-size: 10px; color: #cc8844; }
     .edp-effects {

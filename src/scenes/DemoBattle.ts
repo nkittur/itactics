@@ -37,6 +37,7 @@ import { AttackPreviewPanel } from "@ui/AttackPreviewPanel";
 import { UndoButton } from "@ui/UndoButton";
 import { skillAPCost, skillRange } from "@data/SkillData";
 import { getClassDef, type CharacterClass } from "@data/ClassData";
+import { getItemName } from "@data/ItemData";
 import type { CharacterClassComponent } from "@entities/components/CharacterClass";
 import type { FatigueComponent } from "@entities/components/Fatigue";
 import type { EquipmentComponent } from "@entities/components/Equipment";
@@ -130,6 +131,7 @@ function spawnUnit(
   aiType?: AIType,
   sprite?: SpriteCharType,
   classId?: CharacterClass,
+  bag?: string[],
 ): EntityId {
   // Ensure no overlap
   const pos = findFreeHex(grid, q, r);
@@ -187,7 +189,7 @@ function spawnUnit(
     offHand: shieldId,
     shieldDurability: shieldDef ? shieldDef.durability : null,
     accessory: null,
-    bag: [],
+    bag: bag ?? [],
   });
 
   world.addComponent(id, {
@@ -276,6 +278,7 @@ export class DemoBattle {
   // ── Enemy detail panel (long-press) ──
   private enemyDetailPanel: EnemyDetailPanel;
   private enemyDetailOpen = false;
+  private detailEntityId: EntityId | null = null;
 
   // ── Attack preview (tap-to-confirm) ──
   private attackPreviewPanel: AttackPreviewPanel;
@@ -347,6 +350,22 @@ export class DemoBattle {
     this.undoButton = new UndoButton(this.uiManager.root);
     this.enemyDetailPanel = new EnemyDetailPanel(this.uiManager.root);
     this.enemyDetailPanel.onDismiss = () => this.hideEnemyDetail();
+    this.enemyDetailPanel.onSwapEquipment = (eid, bagIdx, slot) => {
+      if (this.combat.swapEquipment(eid, bagIdx, slot)) {
+        this.refreshDetailPanel();
+      }
+    };
+    this.enemyDetailPanel.onUnequipToBag = (eid, slot) => {
+      if (this.combat.unequipToBag(eid, slot)) {
+        this.refreshDetailPanel();
+      }
+    };
+    this.enemyDetailPanel.onUseConsumable = (eid, bagIdx) => {
+      if (this.combat.useConsumable(eid, bagIdx)) {
+        this.refreshDetailPanel();
+        this.showUnitInfo(eid);
+      }
+    };
     this.attackPreviewPanel = new AttackPreviewPanel(this.uiManager.root);
 
     // Speed toggle
@@ -406,6 +425,7 @@ export class DemoBattle {
         unit.aiType,
         unit.sprite,
         unit.classId,
+        unit.bag,
       );
       if (unit.team === "player") {
         this.playerIds.push(id);
@@ -904,6 +924,7 @@ export class DemoBattle {
       }
     }
 
+    const isPlayer = team.team === "player";
     const data: EnemyDetailData = {
       name: team.name,
       currentHp: health.current,
@@ -923,8 +944,14 @@ export class DemoBattle {
       meleeDefense: stats.meleeDefense,
       resolve: stats.resolve,
       initiative: stats.initiative,
+      // Interactive fields for player units
+      isPlayerUnit: isPlayer,
+      entityId: isPlayer ? entityId : undefined,
+      currentAP: isPlayer ? this.combat.apRemaining : undefined,
+      bagItems: isPlayer && equip ? equip.bag.map(id => ({ id, name: getItemName(id) })) : undefined,
     };
 
+    this.detailEntityId = entityId;
     this.enemyDetailPanel.show(data);
     this.enemyDetailOpen = true;
   }
@@ -932,6 +959,96 @@ export class DemoBattle {
   private hideEnemyDetail(): void {
     this.enemyDetailPanel.hide();
     this.enemyDetailOpen = false;
+    this.detailEntityId = null;
+  }
+
+  /** Refresh the detail panel in-place (after equipment actions). */
+  private refreshDetailPanel(): void {
+    if (this.detailEntityId == null || !this.enemyDetailOpen) return;
+    const pos = this.world.getComponent<PositionComponent>(this.detailEntityId, "position");
+    if (!pos) return;
+    // Rebuild data and refresh without hiding/showing
+    const entityId = this.detailEntityId;
+    const health = this.world.getComponent<HealthComponent>(entityId, "health");
+    const team = this.world.getComponent<TeamComponent>(entityId, "team");
+    const stats = this.world.getComponent<StatsComponent>(entityId, "stats");
+    const equip = this.world.getComponent<EquipmentComponent>(entityId, "equipment");
+    const armor = this.world.getComponent<ArmorComponent>(entityId, "armor");
+    const fatigue = this.world.getComponent<FatigueComponent>(entityId, "fatigue");
+    const morale = this.world.getComponent<MoraleComponent>(entityId, "morale");
+    if (!health || !team || !stats) return;
+
+    const weapon = equip?.mainHand ? getWeapon(equip.mainHand) : UNARMED;
+    const shield = equip?.offHand ? getShield(equip.offHand) : undefined;
+
+    let bodyArmorLabel: string | undefined;
+    let headArmorLabel: string | undefined;
+    if (armor?.body) {
+      const def = getArmorDef(armor.body.id);
+      bodyArmorLabel = `Body: ${def?.name ?? armor.body.id} ${armor.body.currentDurability}/${armor.body.maxDurability}`;
+    }
+    if (armor?.head) {
+      const def = getArmorDef(armor.head.id);
+      headArmorLabel = `Head: ${def?.name ?? armor.head.id} ${armor.head.currentDurability}/${armor.head.maxDurability}`;
+    }
+
+    let moraleLabel: string | undefined;
+    const moraleState = this.combat.morale.getState(this.world, entityId);
+    if (moraleState) {
+      moraleLabel = moraleState.charAt(0).toUpperCase() + moraleState.slice(1);
+    }
+
+    const statusEffects = this.combat.statusEffects.getActiveEffects(this.world, entityId);
+
+    const cc = this.world.getComponent<CharacterClassComponent>(entityId, "characterClass");
+    const unitClassDef = cc ? getClassDef(cc.classId) : undefined;
+    const classPassives: string[] = [];
+    if (unitClassDef) {
+      for (const p of unitClassDef.passives) {
+        switch (p.type) {
+          case "armor_mp_reduction":
+            classPassives.push(`Armor MP penalty -${p.value}`);
+            break;
+          case "ap_discount":
+            classPassives.push(`${(p.qualifier ?? "").charAt(0).toUpperCase() + (p.qualifier ?? "").slice(1)} AP -${p.value}`);
+            break;
+          case "damage_bonus":
+            classPassives.push(`${p.qualifier ?? ""} damage +${p.value}%`);
+            break;
+          case "hit_bonus":
+            classPassives.push(`${(p.qualifier ?? "").charAt(0).toUpperCase() + (p.qualifier ?? "").slice(1)} hit +${p.value}`);
+            break;
+        }
+      }
+    }
+
+    const isPlayer = team.team === "player";
+    const data: EnemyDetailData = {
+      name: team.name,
+      currentHp: health.current,
+      maxHp: health.max,
+      className: unitClassDef?.name,
+      classPassives: classPassives.length > 0 ? classPassives : undefined,
+      weaponName: weapon.name,
+      weaponDamage: `${weapon.minDamage}-${weapon.maxDamage}`,
+      shieldName: shield?.name,
+      bodyArmor: bodyArmorLabel,
+      headArmor: headArmorLabel,
+      moraleState: moraleLabel,
+      moraleCurrent: morale?.current,
+      fatigue: fatigue ? { current: fatigue.current, max: fatigue.max } : undefined,
+      statusEffects: statusEffects.length > 0 ? statusEffects : undefined,
+      meleeSkill: stats.meleeSkill,
+      meleeDefense: stats.meleeDefense,
+      resolve: stats.resolve,
+      initiative: stats.initiative,
+      isPlayerUnit: isPlayer,
+      entityId: isPlayer ? entityId : undefined,
+      currentAP: isPlayer ? this.combat.apRemaining : undefined,
+      bagItems: isPlayer && equip ? equip.bag.map(id => ({ id, name: getItemName(id) })) : undefined,
+    };
+
+    this.enemyDetailPanel.refresh(data);
   }
 
   // ── Attack preview (tap-to-confirm) ──
