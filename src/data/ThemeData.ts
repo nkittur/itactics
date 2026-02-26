@@ -131,10 +131,10 @@ export const THEMES: Record<string, Theme> = {
         powerRange: [3, 5],
       },
       {
-        // T2: Follow-up Strike — damage + AP refund on hit
+        // T2: Follow-up Strike — damage exploiting displaced target
         role: "payoff",
         effects: ["dmg_weapon"],
-        conditions: { creates: [], exploits: [] },
+        conditions: { creates: [], exploits: ["displaced"] },
         targetingConstraint: "tgt_single_enemy",
         powerRange: [5, 8],
       },
@@ -248,9 +248,9 @@ export const THEMES: Record<string, Theme> = {
     weaponAffinity: ["spear", "polearm"],
     progression: [
       {
-        // T1: Spearwall stance — overwatch on adjacent entry
+        // T1: Spearwall stance — overwatch on adjacent entry + damage on trigger
         role: "setup",
-        effects: ["stance_overwatch"],
+        effects: ["stance_overwatch", "dmg_weapon"],
         conditions: { creates: ["in_stance"], exploits: [] },
         targetingConstraint: "tgt_self",
         powerRange: [3, 5],
@@ -264,10 +264,10 @@ export const THEMES: Record<string, Theme> = {
         powerRange: [5, 8],
       },
       {
-        // T3: Stalwart Presence — stance: buff adjacent allies' defense
+        // T3: Stalwart Presence — stance: buff adjacent allies, debuff nearby enemies
         role: "chain",
         effects: ["stance_overwatch", "buff_stat"],
-        conditions: { creates: ["in_stance"], exploits: [] },
+        conditions: { creates: ["in_stance", "debuffed"], exploits: [] },
         targetingConstraint: "tgt_self",
         powerRange: [8, 12],
       },
@@ -289,10 +289,10 @@ export const THEMES: Record<string, Theme> = {
     weaponAffinity: ["axe", "sword", "cleaver"],
     progression: [
       {
-        // T1: Heavy Strike — high damage, high fatigue
+        // T1: Heavy Strike — high damage, high fatigue → drives enemies to low HP
         role: "setup",
         effects: ["dmg_weapon"],
-        conditions: { creates: [], exploits: [] },
+        conditions: { creates: ["low_hp"], exploits: [] },
         targetingConstraint: "tgt_single_enemy",
         powerRange: [3, 5],
       },
@@ -300,15 +300,15 @@ export const THEMES: Record<string, Theme> = {
         // T2: Blood Rush — passive: on kill, refund AP
         role: "payoff",
         effects: ["res_apRefund"],
-        conditions: { creates: [], exploits: [] },
+        conditions: { creates: [], exploits: ["low_hp"] },
         isPassive: true,
         powerRange: [5, 8],
       },
       {
-        // T3: Triumphant Cleave — AoE damage, on-kill buff
+        // T3: Triumphant Cleave — AoE damage, causes bleeding → drives enemies to low HP
         role: "chain",
         effects: ["dmg_weapon", "buff_stat"],
-        conditions: { creates: [], exploits: [] },
+        conditions: { creates: ["low_hp", "bleeding"], exploits: [] },
         targetingConstraint: "tgt_aoe_adjacent",
         powerRange: [8, 12],
       },

@@ -103,17 +103,34 @@ const NAME_PREFIXES: Record<string, string[]> = {
 };
 
 const NAME_VERBS: Record<string, string[]> = {
-  dmg_weapon: ["Strike", "Slash", "Blow", "Cut", "Assault"],
-  dmg_execute: ["Execution", "Reaping", "Toll", "Harvest", "Finishing Blow"],
-  dmg_multihit: ["Flurry", "Barrage", "Onslaught", "Frenzy"],
-  stance_counter: ["Counter-stance", "Riposte Guard", "Ready Stance"],
-  stance_overwatch: ["Overwatch", "Sentinel Guard", "Watchful Stance"],
-  res_apRefund: ["Rush", "Surge", "Momentum"],
+  dmg_weapon: [
+    "Strike", "Slash", "Blow", "Cut", "Assault",
+    "Cleave", "Chop", "Swing", "Hack", "Rend", "Attack",
+  ],
+  dmg_execute: [
+    "Execution", "Reaping", "Toll", "Harvest", "Finishing Blow",
+    "Culling", "Headsman's Cut", "Coup", "Death Blow",
+  ],
+  dmg_multihit: ["Flurry", "Barrage", "Onslaught", "Frenzy", "Rapid Strikes", "Whirlwind"],
+  stance_counter: ["Counter-stance", "Riposte Guard", "Ready Stance", "Retaliating Guard"],
+  stance_overwatch: ["Overwatch", "Sentinel Guard", "Watchful Stance", "Vigilant Watch"],
+  res_apRefund: ["Rush", "Surge", "Momentum", "Quick Step"],
 };
 
 const NAME_SUFFIXES: Record<string, string[]> = {
   tgt_aoe_adjacent: ["of Havoc", "of Devastation", "of Ruin"],
   tgt_self: ["of Will", "of Resilience", "of Focus"],
+};
+
+// Theme-specific verb overrides for dmg_weapon (replaces generic verbs)
+const THEME_VERBS: Record<string, string[]> = {
+  bleeder: ["Laceration", "Gash", "Rend", "Carve", "Bleed Cut", "Bloodletting"],
+  crusher: ["Crush", "Smash", "Pummel", "Shatter", "Bludgeon", "Demolish"],
+  reaper: ["Reap", "Cleave", "Decimate", "Fell", "Mow Down", "Harvest"],
+  executioner: ["Sever", "Behead", "Finish", "Cull", "Dispatch", "Terminate"],
+  skirmisher: ["Jab", "Lunge", "Thrust", "Feint", "Side-step Cut", "Glancing Blow"],
+  sentinel: ["Ward", "Repel", "Brace", "Hold Ground", "Spear Thrust", "Stand Fast"],
+  opportunist: ["Exploit", "Capitalize", "Press", "Punish", "Take Advantage", "Seize"],
 };
 
 // ── Passive names ──
@@ -176,20 +193,34 @@ function generateAbilityName(
 
   const pick = <T>(arr: T[]): T => arr[Math.floor(rng() * arr.length)]!;
 
-  // Find a prefix from secondary effects
+  // Find main verb — prefer theme-specific verbs for dmg_weapon
+  const primaryEffect = effects[0];
+  let verbs: string[];
+  let usedThemeVerb = false;
+  if (primaryEffect?.type === "dmg_weapon" && THEME_VERBS[themeId]) {
+    // 60% chance to use theme verb, 40% generic
+    if (rng() < 0.6) {
+      verbs = THEME_VERBS[themeId]!;
+      usedThemeVerb = true;
+    } else {
+      verbs = NAME_VERBS[primaryEffect.type] ?? ["Attack"];
+    }
+  } else {
+    verbs = primaryEffect ? (NAME_VERBS[primaryEffect.type] ?? ["Attack"]) : ["Attack"];
+  }
+  const verb = pick(verbs);
+
+  // Find a prefix from secondary effects — skip if using theme verb to avoid double-theming
   let prefix = "";
-  for (const e of effects) {
-    const prefixes = NAME_PREFIXES[e.type];
-    if (prefixes) {
-      prefix = pick(prefixes);
-      break;
+  if (!usedThemeVerb) {
+    for (const e of effects) {
+      const prefixes = NAME_PREFIXES[e.type];
+      if (prefixes) {
+        prefix = pick(prefixes);
+        break;
+      }
     }
   }
-
-  // Find main verb from primary effect
-  const primaryEffect = effects[0];
-  const verbs = primaryEffect ? (NAME_VERBS[primaryEffect.type] ?? ["Attack"]) : ["Attack"];
-  const verb = pick(verbs);
 
   // Optional suffix from targeting
   let suffix = "";
@@ -447,6 +478,12 @@ export function generateAbility(
       exploits: [...slot.conditions.exploits],
     },
   };
+
+  // Execute abilities inherently create low_hp condition
+  const hasExecute = effects.some(e => e.type === "dmg_execute");
+  if (hasExecute && !ability.synergyTags.creates.includes("low_hp")) {
+    ability.synergyTags.creates.push("low_hp");
+  }
 
   ability.description = generateDescription(ability);
   return ability;

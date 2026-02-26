@@ -25,36 +25,78 @@ interface ArchetypeWeight {
 
 // ── Passive naming tables ──
 
+// Condition-specific names for condition_exploiter passives
+const CONDITION_NAME_POOL: Record<string, string[]> = {
+  bleeding: [
+    "Smell Blood", "Bleed Feeder", "Wound Sense", "Crimson Tracker",
+    "Gore Scent", "Blood in the Water", "Open Wound Sense",
+  ],
+  stunned: [
+    "Exploit Daze", "Capitalize", "Coup de Grace Instinct", "Dazed Prey",
+    "Shatter Focus", "Stunned Quarry", "Concussed Mark",
+  ],
+  debuffed: [
+    "Weakness Seeker", "Exploit Opening", "Prey on the Weak",
+    "Vulture's Gaze", "Exposed Nerve", "Read Weakness",
+  ],
+  displaced: [
+    "Off-Balance Exploit", "Scramble Punisher", "Pursuit Instinct",
+    "Predator's Chase", "Follow Through", "Knock-Back Strike",
+  ],
+  low_hp: [
+    "Merciless Eye", "Scavenger's Eye", "Killing Instinct",
+    "Death Sense", "Carrion Sense", "Savage Finish",
+  ],
+  in_stance: [
+    "Disciplined Focus", "Stance Mastery", "Rooted Power",
+    "Fortified Instinct", "Steadfast Precision", "Grounded Strike",
+  ],
+  dazed: [
+    "Daze Exploit", "Disoriented Prey", "Befuddled Target",
+    "Jarring Insight", "Crippled Focus", "Stagger Punisher",
+  ],
+};
+
 const PASSIVE_NAME_POOL: Record<PassiveArchetype, string[]> = {
   condition_exploiter: [
-    "Predator's Instinct", "Smell Blood", "Weakness Seeker",
-    "Scavenger's Eye", "Cruel Precision", "Exploit Opening",
-    "Vulture's Gaze", "Wound Sense", "Pain Reader",
+    "Predator's Instinct", "Weakness Seeker", "Cruel Precision",
+    "Exploit Opening", "Pain Reader", "Prey on the Weak",
+    "Exposed Nerve", "Merciless Eye", "Savage Insight",
   ],
   kill_rewarder: [
     "Blood Rush", "Death's Momentum", "Harvest Energy",
     "Killing Frenzy", "Triumph", "Reaper's Haste",
     "Executioner's High", "Victory Surge", "Soul Reap",
+    "Coup de Grace", "Bloodletting Rush", "Final Blow Surge",
+    "Death Dealer", "Slayer's Vigor", "Fatal Momentum",
   ],
   debuff_amplifier: [
     "Opportunist's Eye", "Keen Observer", "Crippling Focus",
     "Sadist's Delight", "Tormentor", "Relentless Pressure",
     "Methodical Cruelty", "Compounding Misery", "Venom Insight",
+    "Twist the Knife", "Punishing Strikes", "Debilitating Touch",
+    "Systematic Dismantling", "Cruel Efficiency", "Grinding Assault",
   ],
   reactive_defender: [
     "Iron Resolve", "Hardened Fighter", "Battle Scars",
     "Adrenaline Surge", "Defiant Stand", "Toughened Hide",
     "Stubborn Guard", "Rage Shield", "Pain Into Power",
+    "Resilient Core", "Forged in Fire", "Unyielding Spirit",
+    "Steel Nerves", "Battered but Standing", "Scarred Veteran",
   ],
   sustained_fighter: [
     "Hold the Line", "Stalwart Guard", "Immovable",
     "Steady Resolve", "Disciplined Mind", "Unshakeable",
     "Iron Stance", "Warden's Focus", "Patient Warrior",
+    "Enduring Will", "Tireless Vigil", "Marathon Fighter",
+    "Measured Pace", "Slow Burn", "Deep Reserves",
   ],
   stack_builder: [
     "Reach Advantage", "Mounting Pressure", "Gathering Storm",
     "Rising Fury", "Escalation", "Momentum Builder",
     "Ramp Up", "Snowball Effect", "Growing Menace",
+    "Compounding Force", "Accelerating Blows", "Building Tempo",
+    "Crescendo", "Chain Reaction", "Relentless Advance",
   ],
 };
 
@@ -129,7 +171,8 @@ function weightArchetypes(analysis: ActiveAnalysis): ArchetypeWeight[] {
   const weights: ArchetypeWeight[] = [];
 
   // Condition exploiter: strong if actives create conditions
-  let condWeight = analysis.createdConditions.size * 3;
+  let condWeight = analysis.createdConditions.size * 4;
+  if (analysis.createdConditions.size >= 2) condWeight += 3; // bonus for multi-condition themes
   if (analysis.hasBleed) condWeight += 2;
   if (analysis.hasCrowdControl) condWeight += 2;
   weights.push({ archetype: "condition_exploiter", weight: Math.max(1, condWeight) });
@@ -496,18 +539,57 @@ export function generatePassiveSuite(
   const usedArchetypes = new Set<PassiveArchetype>();
   const results: GeneratedAbility[] = [];
 
+  // Find strongly-weighted archetypes (weight >= 5) that can repeat earlier
+  const topWeight = Math.max(...weights.map(w => w.weight));
+  const strongArchetypes = new Set(
+    weights.filter(w => w.weight >= 5 || w.weight >= topWeight * 0.7).map(w => w.archetype),
+  );
+
+  // Track archetype usage counts for cap (max 3 of same archetype)
+  const archetypeCounts = new Map<PassiveArchetype, number>();
+  // Track which conditions condition_exploiters have covered
+  const exploitedConditions = new Set<string>();
+
   for (const level of levels) {
-    // Pick archetype, avoiding repeats
     let archetype: PassiveArchetype;
-    const available = weights.filter(w => !usedArchetypes.has(w.archetype));
+    // Allow strongly-weighted archetypes to repeat, but cap at 3
+    const available = weights.filter(w => {
+      const count = archetypeCounts.get(w.archetype) ?? 0;
+      if (count >= 3) return false; // hard cap
+      if (!usedArchetypes.has(w.archetype)) return true;
+      return strongArchetypes.has(w.archetype) && rng() < 0.3;
+    });
     if (available.length > 0) {
       archetype = pickArchetype(available, rng);
     } else {
-      archetype = pickArchetype(weights, rng);
+      // When all used or capped, bias toward top-weighted uncapped archetypes
+      const biased = weights
+        .filter(w => (archetypeCounts.get(w.archetype) ?? 0) < 3)
+        .map(w => ({
+          archetype: w.archetype,
+          weight: w.weight >= topWeight * 0.5 ? w.weight * 2 : w.weight,
+        }));
+      archetype = biased.length > 0 ? pickArchetype(biased, rng) : pickArchetype(weights, rng);
     }
     usedArchetypes.add(archetype);
+    archetypeCounts.set(archetype, (archetypeCounts.get(archetype) ?? 0) + 1);
 
-    results.push(buildPassive(archetype, analysis, level, rng, register));
+    // For condition_exploiter: prefer unexploited conditions
+    let passiveAnalysis = analysis;
+    if (archetype === "condition_exploiter" && exploitedConditions.size > 0 && analysis.createdConditions.size > 1) {
+      const unexploited = [...analysis.createdConditions].filter(c => !exploitedConditions.has(c));
+      if (unexploited.length > 0) {
+        // Create a modified analysis that only has unexploited conditions
+        passiveAnalysis = { ...analysis, createdConditions: new Set(unexploited) };
+      }
+    }
+
+    const passive = buildPassive(archetype, passiveAnalysis, level, rng, register);
+
+    // Track exploited conditions
+    for (const c of passive.synergyTags.exploits) exploitedConditions.add(c);
+
+    results.push(passive);
   }
 
   return results;
@@ -567,18 +649,24 @@ function buildPassive(
   const tier = tierFromPower(level);
   const uid = generateAbilityUID();
 
-  // Pick name
-  const names = PASSIVE_NAME_POOL[archetype];
-  const name = names[Math.floor(rng() * names.length)]!;
+  // Pick name — condition-aware for condition_exploiter
+  let namePool: string[];
+  if (archetype === "condition_exploiter" && synergyExploits.length > 0) {
+    const condNames = CONDITION_NAME_POOL[synergyExploits[0]!];
+    namePool = condNames && condNames.length > 0 ? condNames : PASSIVE_NAME_POOL[archetype];
+  } else {
+    namePool = PASSIVE_NAME_POOL[archetype];
+  }
+  const name = namePool[Math.floor(rng() * namePool.length)]!;
 
   // Build synergy tags
   const creates: string[] = [];
   const exploits = [...synergyExploits];
 
-  // Condition exploiter exploits what the actives create
+  // Condition exploiter exploits what the actives create (pick randomly, not always first)
   if (archetype === "condition_exploiter" && exploits.length === 0) {
     const created = [...analysis.createdConditions];
-    if (created.length > 0) exploits.push(created[0]!);
+    if (created.length > 0) exploits.push(created[Math.floor(rng() * created.length)]!);
   }
 
   const description = generatePassiveDesc(archetype, trigger, exploits);

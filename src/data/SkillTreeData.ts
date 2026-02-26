@@ -180,9 +180,10 @@ export function generateRandomTopology(rng: () => number): {
     }
   }
 
-  // 5. Mark ~30% of passives as stackable
+  // 5. Mark 20-40% of passives as stackable (varied per tree)
   const passiveNodes = allNodes.filter(n => !n.isActive);
-  const stackableCount = Math.max(1, Math.round(passiveNodes.length * 0.3));
+  const stackPct = 0.2 + rng() * 0.2; // 20-40%
+  const stackableCount = Math.max(1, Math.round(passiveNodes.length * stackPct));
   const shuffledPassives = shuffle(passiveNodes, rng);
   for (let i = 0; i < stackableCount && i < shuffledPassives.length; i++) {
     shuffledPassives[i]!.stackable = true;
@@ -264,6 +265,39 @@ export function generateSkillTree(theme: Theme, rng: () => number): SkillTree {
     passivePowerForTier(n.tier, n.dualParent),
   );
   const passives = generatePassiveSuite(actives, passivePowerLevels, rng, true);
+
+  // Deduplicate names within the tree — use adjective variants before "II" suffix
+  const DEDUP_ADJECTIVES = [
+    "Greater", "Lesser", "Improved", "Swift", "Brutal", "Fierce", "Savage", "Keen",
+  ];
+  const usedNames = new Set<string>();
+  const allAbilities = [...actives, ...passives];
+  for (const ability of allAbilities) {
+    if (usedNames.has(ability.name)) {
+      let deduped = false;
+      // Try adjective prefix first
+      for (let i = 0; i < DEDUP_ADJECTIVES.length; i++) {
+        const idx = Math.floor(rng() * DEDUP_ADJECTIVES.length);
+        const newName = `${DEDUP_ADJECTIVES[idx]} ${ability.name}`;
+        if (!usedNames.has(newName)) {
+          ability.name = newName;
+          deduped = true;
+          break;
+        }
+      }
+      // Fallback to numeric suffix
+      if (!deduped) {
+        for (const suffix of ["II", "III", "IV"]) {
+          const newName = `${ability.name} ${suffix}`;
+          if (!usedNames.has(newName)) {
+            ability.name = newName;
+            break;
+          }
+        }
+      }
+    }
+    usedNames.add(ability.name);
+  }
 
   // Wire abilities onto nodes
   const nodes: SkillTreeNode[] = [];
