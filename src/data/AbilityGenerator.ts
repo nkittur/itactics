@@ -12,6 +12,7 @@ import { generateAbilityUID } from "./AbilityData";
 import { registerAbility } from "./AbilityResolver";
 import type { Theme, ThemeProgressionSlot } from "./ThemeData";
 import { generatePassiveFromActives } from "./PassiveGenerator";
+import { setAbilityGenerator } from "./SkillTreeData";
 
 // ── Power costs per effect type ──
 
@@ -369,7 +370,7 @@ function generatePassiveDescription(ability: GeneratedAbility): string {
 /**
  * Generate a single ability for a given theme progression slot.
  */
-function generateAbility(
+export function generateAbility(
   slot: ThemeProgressionSlot,
   tier: 1 | 2 | 3,
   themeId: string,
@@ -576,3 +577,6 @@ export function generateRecruitSkills(
 
   return abilities;
 }
+
+// Wire generateAbility into SkillTreeData to avoid circular imports
+setAbilityGenerator(generateAbility);

@@ -34,6 +34,7 @@ import { hasLineOfSight } from "@hex/HexLineOfSight";
 import { RNG } from "@utils/RNG";
 import { hexDistance, hexNeighbors } from "@hex/HexMath";
 import { findPath, reachableHexes } from "@hex/HexPathfinding";
+import { createActionTracker, trackAction, trackKill, type BattleActionTracker } from "./CPCalculator";
 
 export type CombatPhase = "deployment" | "playerTurn" | "enemyTurn" | "battleEnd";
 export type PlayerTurnState = "awaitingInput" | "skillTargeting" | "animating";
@@ -85,6 +86,10 @@ export class CombatManager {
   /** Number of enemy kills this battle (for XP calculation). */
   private _killCount = 0;
   get killCount(): number { return this._killCount; }
+
+  /** Per-unit action/kill tracking for CP awards. */
+  private _actionTracker: BattleActionTracker = createActionTracker();
+  get actionTracker(): BattleActionTracker { return this._actionTracker; }
 
   // ── Callbacks for the rendering/UI layer ──
 
@@ -477,7 +482,7 @@ export class CombatManager {
 
       if (result.targetKilled) {
         // Unit died from ZoC — cancel the move
-        this.handleDeath(entityId);
+        this.handleDeath(entityId, attackerId);
         this.moveRange = null;
         this.playerTurnState = "animating";
         this.pendingContinuation = () => {
@@ -600,6 +605,9 @@ export class CombatManager {
     this.apManager.spend(apCost);
     this.addFatigue(attackerId, fatCost);
 
+    // Track action for CP
+    trackAction(this._actionTracker, attackerId);
+
     // Can't undo after attacking
     this.undoInfo = null;
 
@@ -623,7 +631,7 @@ export class CombatManager {
     }
 
     if (result.targetKilled) {
-      this.handleDeath(defenderId);
+      this.handleDeath(defenderId, attackerId);
       this.triggerAllyMoraleChecks(defenderId);
       this.triggerEnemyKillBoost(attackerId);
       this.fireOnKillPassives(attackerId, defenderId);
@@ -658,6 +666,9 @@ export class CombatManager {
     this.addFatigue(attackerId, cs.fatigueCost);
     this.undoInfo = null;
 
+    // Track action for CP
+    trackAction(this._actionTracker, attackerId);
+
     const abilityResult = this.abilityExecutor.execute(this.world, attackerId, defenderId, ability, weapon);
 
     // Notify UI about each attack result
@@ -679,7 +690,7 @@ export class CombatManager {
     // Check kills
     const targetHealth = this.world.getComponent<HealthComponent>(defenderId, "health");
     if (targetHealth && targetHealth.current <= 0) {
-      this.handleDeath(defenderId);
+      this.handleDeath(defenderId, attackerId);
       this.triggerAllyMoraleChecks(defenderId);
       this.triggerEnemyKillBoost(attackerId);
       this.fireOnKillPassives(attackerId, defenderId);
@@ -1103,7 +1114,7 @@ export class CombatManager {
       this.onZoCAttack?.(zocResult, zocAttacker, entityId);
 
       if (zocResult.targetKilled) {
-        this.handleDeath(entityId);
+        this.handleDeath(entityId, zocAttacker);
         this.pendingContinuation = () => {
           if (!this.checkBattleEnd()) {
             const newRound = this.turnOrder.advance();
@@ -1179,7 +1190,7 @@ export class CombatManager {
       this.onStatusApplied?.(targetId, eff);
     }
     if (result.targetKilled) {
-      this.handleDeath(targetId);
+      this.handleDeath(targetId, entityId);
       this.triggerAllyMoraleChecks(targetId);
       this.triggerEnemyKillBoost(entityId);
       this.fireOnKillPassives(entityId, targetId);
@@ -1443,9 +1454,13 @@ export class CombatManager {
     }
   }
 
-  private handleDeath(entityId: EntityId): void {
+  private handleDeath(entityId: EntityId, killerId?: EntityId): void {
     if (this.isEnemyEntity(entityId)) {
       this._killCount++;
+      // Track kill for CP if a player unit made the kill
+      if (killerId && !this.isEnemyEntity(killerId)) {
+        trackKill(this._actionTracker, killerId);
+      }
     }
 
     const pos = this.world.getComponent<PositionComponent>(entityId, "position");

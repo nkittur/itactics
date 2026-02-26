@@ -14,6 +14,7 @@ import { resolveAbility, getAbilityRegistry } from "@data/AbilityResolver";
 import { THEMES } from "@data/ThemeData";
 import { detectUnitSynergies, detectTeamSynergies } from "@data/SynergyDetector";
 import { ALL_STAT_KEYS, statDisplayName, type StatKey } from "@data/TalentData";
+import type { SkillTree, SkillTreeNode } from "@data/SkillTreeData";
 
 type Tab = "roster" | "shop" | "recruit" | "contracts";
 const MAX_BAG = 2;
@@ -32,6 +33,10 @@ interface DetailUnit {
   armor: RosterMember["armor"];
   isRecruit: boolean;
   cost?: number;
+  skillTree?: SkillTree;
+  unlockedNodes: Set<string>;
+  nodeStacks: Record<string, number>;
+  classPoints: number;
 }
 
 const DIFFICULTY_COLORS: Record<string, string> = {
@@ -192,6 +197,10 @@ export class ManagementScreen {
         equipment: m.equipment,
         armor: m.armor,
         isRecruit: false,
+        skillTree: m.skillTree,
+        unlockedNodes: new Set(m.unlockedNodes ?? []),
+        nodeStacks: m.nodeStacks ?? {},
+        classPoints: m.classPoints ?? 0,
       };
     } else {
       const r = (this.saveData.availableRecruits ?? [])[this.detailUnit.index];
@@ -210,6 +219,10 @@ export class ManagementScreen {
         armor: r.armor,
         isRecruit: true,
         cost: r.cost,
+        skillTree: r.skillTree,
+        unlockedNodes: new Set<string>(),
+        nodeStacks: {},
+        classPoints: r.classPoints ?? 0,
       };
     }
   }
@@ -358,50 +371,100 @@ export class ManagementScreen {
   }
 
   private renderSkillsTab(unit: DetailUnit): HTMLElement {
-    const container = el("div");
+    const container = el("div", "skill-tree-container");
 
-    if (unit.abilities.length === 0) {
-      container.appendChild(el("div", "mgmt-empty", "No abilities."));
+    if (!unit.skillTree || unit.skillTree.nodes.length === 0) {
+      // Fallback: show flat ability list for legacy data
+      if (unit.abilities.length === 0) {
+        container.appendChild(el("div", "mgmt-empty", "No abilities."));
+        return container;
+      }
+      for (const ab of unit.abilities) {
+        const ability = resolveAbility(ab.uid);
+        if (!ability) continue;
+        const unlocked = unit.level >= ab.unlockLevel;
+        const card = el("div", `skill-card${unlocked ? "" : " locked"}`);
+        card.style.borderLeftColor = TIER_COLORS[ability.tier] ?? "#ccc";
+        const nameSpan = el("span", "skill-name", ability.name);
+        nameSpan.style.color = unlocked ? (TIER_COLORS[ability.tier] ?? "#ccc") : "#666";
+        card.appendChild(nameSpan);
+        if (unlocked) card.appendChild(el("div", "skill-desc", ability.description));
+        container.appendChild(card);
+      }
       return container;
     }
 
-    for (const ab of unit.abilities) {
-      const ability = resolveAbility(ab.uid);
-      if (!ability) continue;
+    // CP balance header
+    const cpHeader = el("div", "cp-header", `Class Points: ${unit.classPoints}`);
+    container.appendChild(cpHeader);
 
-      const unlocked = unit.level >= ab.unlockLevel;
-      const card = el("div", `skill-card${unlocked ? "" : " locked"}`);
-      card.style.borderLeftColor = TIER_COLORS[ability.tier] ?? "#ccc";
+    // Render tiers 1-4
+    for (const tier of [1, 2, 3, 4] as const) {
+      const tierNodes = unit.skillTree.nodes
+        .filter(n => n.tier === tier)
+        .sort((a, b) => a.col - b.col);
+      if (tierNodes.length === 0) continue;
 
-      const header = el("div", "skill-header");
-      const nameSpan = el("span", "skill-name", ability.name);
-      nameSpan.style.color = unlocked ? (TIER_COLORS[ability.tier] ?? "#ccc") : "#666";
-      header.appendChild(nameSpan);
-
-      if (ability.isPassive) {
-        header.appendChild(el("span", "skill-passive-badge", "Passive"));
-      }
-      if (!unlocked) {
-        header.appendChild(el("span", "skill-unlock-badge", `Unlocks Lv.${ab.unlockLevel}`));
-      }
-      card.appendChild(header);
-
-      if (unlocked) {
-        card.appendChild(el("div", "skill-desc", ability.description));
-        const costParts: string[] = [];
-        costParts.push(`${ability.cost.ap} AP`);
-        costParts.push(`${ability.cost.fatigue} Fatigue`);
-        if (ability.cost.cooldown > 0) costParts.push(`${ability.cost.cooldown}T CD`);
-        if (ability.cost.turnEnding) costParts.push("Turn Ending");
-        card.appendChild(el("div", "skill-cost-info", costParts.join(" | ")));
+      // Connector line above (except tier 1)
+      if (tier > 1) {
+        container.appendChild(el("div", "tree-tier-connector"));
       }
 
-      container.appendChild(card);
+      const tierRow = el("div", "skill-tree-tier");
+      for (const node of tierNodes) {
+        const ability = resolveAbility(node.abilityUid);
+        if (!ability) continue;
+
+        const isUnlocked = unit.unlockedNodes.has(node.nodeId);
+        const prereqsMet = node.prerequisites.every(p => unit.unlockedNodes.has(p));
+        const canAfford = unit.classPoints >= node.cpCost;
+        const isAvailable = !isUnlocked && prereqsMet;
+        const currentStacks = unit.nodeStacks[node.nodeId] ?? (isUnlocked ? 1 : 0);
+        const canStack = node.stackable && isUnlocked && currentStacks < node.maxStacks && canAfford;
+
+        const nodeEl = el("div", "tree-node");
+        if (isUnlocked) nodeEl.classList.add("unlocked");
+        else if (isAvailable) nodeEl.classList.add("available");
+        else nodeEl.classList.add("locked");
+
+        nodeEl.classList.add(node.isActive ? "node-active" : "node-passive");
+        if (node.dualParent) nodeEl.classList.add("dual-parent");
+
+        // Name
+        nodeEl.appendChild(el("div", "tree-node-name", ability.name));
+
+        // Type badge
+        nodeEl.appendChild(el("span", "tree-node-type", node.isActive ? "Active" : "Passive"));
+
+        // Stack indicator for stackable nodes
+        if (node.stackable) {
+          nodeEl.appendChild(el("div", "tree-node-stacks", `${currentStacks}/${node.maxStacks}`));
+        }
+
+        // Cost or status
+        if (isUnlocked && !(node.stackable && currentStacks < node.maxStacks)) {
+          nodeEl.appendChild(el("div", "tree-node-status", "\u2713"));
+        } else {
+          nodeEl.appendChild(el("div", "tree-node-cost", `${node.cpCost}`));
+        }
+
+        // Tap handler
+        nodeEl.addEventListener("pointerup", (e) => {
+          e.stopPropagation();
+          this.showNodeDetail(unit, node, ability, isUnlocked, isAvailable, canAfford, canStack, currentStacks);
+        });
+
+        tierRow.appendChild(nodeEl);
+      }
+
+      container.appendChild(tierRow);
     }
 
-    // Unit synergies
-    const abilityIds = unit.abilities.map(a => a.uid);
-    const synergies = detectUnitSynergies(abilityIds);
+    // Unit synergies (from all unlocked abilities)
+    const unlockedAbilityIds = unit.skillTree.nodes
+      .filter(n => unit.unlockedNodes.has(n.nodeId))
+      .map(n => n.abilityUid);
+    const synergies = detectUnitSynergies(unlockedAbilityIds);
     if (synergies.length > 0) {
       container.appendChild(el("div", "mgmt-equip-label", "Synergies:"));
       for (const syn of synergies) {
@@ -410,6 +473,125 @@ export class ManagementScreen {
     }
 
     return container;
+  }
+
+  private showNodeDetail(
+    unit: DetailUnit,
+    node: SkillTreeNode,
+    ability: ReturnType<typeof resolveAbility>,
+    isUnlocked: boolean,
+    isAvailable: boolean,
+    canAfford: boolean,
+    canStack: boolean,
+    currentStacks: number,
+  ): void {
+    if (!ability) return;
+
+    // Remove any existing popup
+    const existing = this.root.querySelector(".node-detail-backdrop");
+    if (existing) existing.remove();
+
+    const backdrop = el("div", "node-detail-backdrop");
+    const panel = el("div", "node-detail-panel");
+
+    // Title
+    const title = el("div", "node-detail-title", ability.name);
+    title.style.color = node.isActive ? "#6af" : "#8c8";
+    panel.appendChild(title);
+
+    // Type + tier
+    const meta: string[] = [];
+    meta.push(node.isActive ? "Active Skill" : "Passive Skill");
+    meta.push(`Tier ${node.tier}`);
+    if (node.dualParent) meta.push("\u2605 Dual-parent bonus");
+    if (node.stackable) meta.push(`Stackable (${currentStacks}/${node.maxStacks})`);
+    panel.appendChild(el("div", "node-detail-meta", meta.join(" \u2022 ")));
+
+    // Description
+    panel.appendChild(el("div", "node-detail-desc", ability.description));
+
+    // Cost info for active abilities
+    if (node.isActive && !ability.isPassive) {
+      const costParts: string[] = [];
+      costParts.push(`${ability.cost.ap} AP`);
+      costParts.push(`${ability.cost.fatigue} Fatigue`);
+      if (ability.cost.cooldown > 0) costParts.push(`${ability.cost.cooldown}T CD`);
+      if (ability.cost.turnEnding) costParts.push("Turn Ending");
+      panel.appendChild(el("div", "node-detail-cost", costParts.join(" | ")));
+    }
+
+    // Prerequisites
+    if (node.prerequisites.length > 0 && !isUnlocked) {
+      const prereqNames = node.prerequisites.map(pid => {
+        const pn = unit.skillTree!.nodes.find(n => n.nodeId === pid);
+        if (!pn) return pid;
+        const pa = resolveAbility(pn.abilityUid);
+        const met = unit.unlockedNodes.has(pid);
+        return `${met ? "\u2713" : "\u2717"} ${pa?.name ?? pid}`;
+      });
+      panel.appendChild(el("div", "node-detail-prereqs", "Requires: " + prereqNames.join(", ")));
+    }
+
+    // Unlock / Stack button (roster only)
+    if (!unit.isRecruit) {
+      if (isAvailable && canAfford) {
+        const btn = document.createElement("button");
+        btn.className = "node-unlock-btn";
+        btn.textContent = `Unlock (${node.cpCost} CP)`;
+        btn.addEventListener("pointerup", (e) => {
+          e.stopPropagation();
+          this.unlockNode(this.detailUnit!.index, node.nodeId, node.cpCost);
+          backdrop.remove();
+        });
+        panel.appendChild(btn);
+      } else if (canStack) {
+        const btn = document.createElement("button");
+        btn.className = "node-unlock-btn";
+        btn.textContent = `Stack +1 (${node.cpCost} CP) [${currentStacks}→${currentStacks + 1}]`;
+        btn.addEventListener("pointerup", (e) => {
+          e.stopPropagation();
+          this.stackNode(this.detailUnit!.index, node.nodeId, node.cpCost);
+          backdrop.remove();
+        });
+        panel.appendChild(btn);
+      } else if (!isUnlocked && !canAfford && isAvailable) {
+        panel.appendChild(el("div", "node-detail-cant-afford", `Need ${node.cpCost} CP (have ${unit.classPoints})`));
+      }
+    }
+
+    // Close on backdrop tap
+    backdrop.addEventListener("pointerup", (e) => {
+      if (e.target === backdrop) backdrop.remove();
+    });
+
+    backdrop.appendChild(panel);
+    this.root.appendChild(backdrop);
+  }
+
+  private unlockNode(rosterIdx: number, nodeId: string, cost: number): void {
+    const member = this.saveData.roster[rosterIdx];
+    if (!member || (member.classPoints ?? 0) < cost) return;
+
+    member.classPoints = (member.classPoints ?? 0) - cost;
+    if (!member.unlockedNodes) member.unlockedNodes = [];
+    member.unlockedNodes.push(nodeId);
+    if (!member.nodeStacks) member.nodeStacks = {};
+    member.nodeStacks[nodeId] = 1;
+
+    this.save();
+    this.render();
+  }
+
+  private stackNode(rosterIdx: number, nodeId: string, cost: number): void {
+    const member = this.saveData.roster[rosterIdx];
+    if (!member || (member.classPoints ?? 0) < cost) return;
+
+    member.classPoints = (member.classPoints ?? 0) - cost;
+    if (!member.nodeStacks) member.nodeStacks = {};
+    member.nodeStacks[nodeId] = (member.nodeStacks[nodeId] ?? 1) + 1;
+
+    this.save();
+    this.render();
   }
 
   private renderEquipmentTab(unit: DetailUnit): HTMLElement {
@@ -540,10 +722,6 @@ export class ManagementScreen {
     this.saveData.gold -= r.cost;
 
     // Convert RecruitDef to RosterMember
-    const unlockLevels: Record<string, number> = {};
-    for (const sk of r.uniqueSkills) {
-      unlockLevels[sk.uid] = sk.unlockLevel;
-    }
     const member: RosterMember = {
       name: r.name,
       classId: r.classId,
@@ -560,8 +738,11 @@ export class ManagementScreen {
       },
       spriteType: r.sprite,
       skillTheme: r.skillTheme,
-      abilities: r.uniqueSkills.map(sk => sk.uid),
-      abilityUnlockLevels: unlockLevels,
+      abilities: r.skillTree.nodes.map(n => n.abilityUid),
+      skillTree: r.skillTree,
+      unlockedNodes: [],
+      nodeStacks: {},
+      classPoints: r.classPoints ?? 0,
     };
 
     this.saveData.roster.push(member);

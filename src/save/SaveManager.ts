@@ -4,6 +4,9 @@ import type { ContractDef } from "@data/ContractData";
 import type { RecruitDef } from "@data/RecruitData";
 import type { GeneratedItem } from "@data/GeneratedItemData";
 import type { GeneratedAbility } from "@data/AbilityData";
+import type { SkillTree } from "@data/SkillTreeData";
+import { generateSkillTree } from "@data/SkillTreeData";
+import { THEMES } from "@data/ThemeData";
 
 const SAVE_KEY = "itactics-save";
 
@@ -44,8 +47,16 @@ export interface RosterMember {
   abilities?: string[];
   /** Recruit theme ID (e.g., "bleeder", "crusher"). */
   skillTheme?: string;
-  /** Maps ability UID → level at which it unlocks. */
+  /** Maps ability UID → level at which it unlocks. @deprecated Use skillTree. */
   abilityUnlockLevels?: Record<string, number>;
+  /** Procedurally generated skill tree for this unit. */
+  skillTree?: SkillTree;
+  /** Node IDs that have been unlocked by spending CP. */
+  unlockedNodes?: string[];
+  /** Per-node stack counts for stackable nodes: nodeId → current stacks. */
+  nodeStacks?: Record<string, number>;
+  /** Available class points to spend on skill tree. */
+  classPoints?: number;
 }
 
 export interface BattleState {
@@ -101,6 +112,14 @@ export async function loadGame(): Promise<SaveData | null> {
     if (!Array.isArray(raw.stash)) data.stash = [];
     if (!data.itemRegistry) data.itemRegistry = {};
     if (!data.abilityRegistry) data.abilityRegistry = {};
+
+    // Migrate level-based abilities → skill tree
+    for (const member of data.roster) {
+      if (!member.skillTree && member.skillTheme) {
+        migrateToSkillTree(member);
+      }
+    }
+
     return data;
   }
   return null;
@@ -139,4 +158,41 @@ export function pruneItemRegistry(save: SaveData): void {
       delete registry[uid];
     }
   }
+}
+
+/** Migrate a roster member from level-based unlock to skill tree. */
+function migrateToSkillTree(member: RosterMember): void {
+  // Deterministic RNG seeded from name
+  let seed = 0;
+  for (let i = 0; i < member.name.length; i++) {
+    seed = (seed * 31 + member.name.charCodeAt(i)) >>> 0;
+  }
+  const rng = () => {
+    seed = (seed * 1664525 + 1013904223) >>> 0;
+    return seed / 4294967296;
+  };
+
+  const themeId = member.skillTheme ?? "bleeder";
+  const theme = THEMES[themeId] ?? THEMES["bleeder"]!;
+  const skillTree = generateSkillTree(theme, rng);
+
+  member.skillTree = skillTree;
+  member.classPoints = 0;
+  member.unlockedNodes = [];
+  member.nodeStacks = {};
+
+  // Auto-unlock nodes proportional to level
+  const sorted = [...skillTree.nodes].sort((a, b) => a.tier - b.tier);
+  let freeUnlocks = 0;
+  if (member.level >= 8) freeUnlocks = 6;
+  else if (member.level >= 6) freeUnlocks = 4;
+  else if (member.level >= 4) freeUnlocks = 3;
+  else if (member.level >= 2) freeUnlocks = 1;
+
+  for (let i = 0; i < freeUnlocks && i < sorted.length; i++) {
+    member.unlockedNodes.push(sorted[i]!.nodeId);
+  }
+
+  // Populate abilities list from tree for backward compat
+  member.abilities = skillTree.nodes.map(n => n.abilityUid);
 }

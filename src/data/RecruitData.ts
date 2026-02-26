@@ -6,6 +6,8 @@ import type { RosterMember } from "@save/SaveManager";
 import { getArmorDef } from "./ArmorData";
 import { pickTheme } from "./ThemeData";
 import { generateRecruitSkills } from "./AbilityGenerator";
+import { generateSkillTree } from "./SkillTreeData";
+import type { SkillTree } from "./SkillTreeData";
 
 export interface RecruitDef {
   name: string;
@@ -20,8 +22,12 @@ export interface RecruitDef {
   armor: RosterMember["armor"];
   /** Skill theme ID (e.g., "bleeder", "crusher"). */
   skillTheme: string;
-  /** 4 generated ability UIDs with unlock levels. */
+  /** @deprecated Use skillTree. Kept for backward compat. */
   uniqueSkills: { uid: string; unlockLevel: number }[];
+  /** Procedurally generated skill tree. */
+  skillTree: SkillTree;
+  /** Starting CP for this recruit (higher-level recruits come with CP). */
+  classPoints: number;
 }
 
 const NAMES = [
@@ -177,14 +183,18 @@ export function generateRecruits(partyLevel: number, rng: () => number): Recruit
 
     const is2H = weapon === "longsword" || weapon === "pike" || weapon === "short_bow" || weapon === "hunting_bow";
 
-    // Generate skill theme and abilities
+    // Generate skill theme and skill tree
     const theme = pickTheme(classId, rng);
-    const abilities = generateRecruitSkills(theme, rng);
-    const unlockLevels = [5, 10, 15, 20];
-    const uniqueSkills = abilities.map((a, idx) => ({
-      uid: a.uid,
-      unlockLevel: unlockLevels[idx]!,
+    const skillTree = generateSkillTree(theme, rng);
+
+    // Backward-compat: derive uniqueSkills from tree nodes
+    const uniqueSkills = skillTree.nodes.map(n => ({
+      uid: n.abilityUid,
+      unlockLevel: n.tier * 5, // approximate old-style unlock levels
     }));
+
+    // Higher-level recruits come with starting CP: ~1 battle per level
+    const startingCP = (level - 1) * 80;
 
     recruits.push({
       name,
@@ -205,6 +215,8 @@ export function generateRecruits(partyLevel: number, rng: () => number): Recruit
       armor: armorForLevel(level),
       skillTheme: theme.id,
       uniqueSkills,
+      skillTree,
+      classPoints: startingCP,
     });
   }
 

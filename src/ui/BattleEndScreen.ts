@@ -1,4 +1,5 @@
 import type { XPAward } from "@combat/XPCalculator";
+import type { CPAward } from "@combat/CPCalculator";
 import { xpForNextLevel } from "@data/LevelData";
 
 export class BattleEndScreen {
@@ -18,7 +19,7 @@ export class BattleEndScreen {
     this.container.appendChild(this.panel);
   }
 
-  show(victory: boolean, awards: XPAward[], goldEarned?: number): void {
+  show(victory: boolean, awards: XPAward[], goldEarned?: number, cpAwards?: CPAward[]): void {
     this.container.style.display = "flex";
     this.panel.innerHTML = "";
 
@@ -65,6 +66,24 @@ export class BattleEndScreen {
       }
 
       this.panel.appendChild(table);
+    }
+
+    // CP awards
+    if (cpAwards && cpAwards.length > 0) {
+      const cpSection = el("div", "cp-awards-section");
+      cpSection.appendChild(el("div", "cp-section-title", "Class Points Earned"));
+
+      for (const cp of cpAwards) {
+        const row = el("div", "cp-row");
+        row.appendChild(el("span", "cp-name", cp.name));
+        const breakdown = `${cp.actions} acts + ${cp.kills} kills`;
+        row.appendChild(el("span", "cp-breakdown", breakdown));
+        const earned = el("span", "cp-earned", `+${cp.cpEarned} CP`);
+        row.appendChild(earned);
+        cpSection.appendChild(row);
+      }
+
+      this.panel.appendChild(cpSection);
     }
 
     // Buttons

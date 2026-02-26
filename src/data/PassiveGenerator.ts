@@ -182,7 +182,7 @@ function pickArchetype(weights: ArchetypeWeight[], rng: () => number): PassiveAr
 
 // ── Power levels ──
 
-type PowerLevel = "minor" | "standard" | "major";
+export type PowerLevel = "minor" | "standard" | "major";
 
 function tierFromPower(level: PowerLevel): 1 | 2 | 3 {
   switch (level) {

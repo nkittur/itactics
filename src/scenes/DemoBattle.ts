@@ -50,6 +50,7 @@ import type { TalentStarsComponent } from "@entities/components/TalentStars";
 import { createPerks } from "@entities/components/Perks";
 import type { PerksComponent } from "@entities/components/Perks";
 import { calculateBattleXP, type XPAward } from "@combat/XPCalculator";
+import { calculateBattleCP, type CPAward } from "@combat/CPCalculator";
 import { BattleEndScreen } from "@ui/BattleEndScreen";
 import { LevelUpModal, type LevelUpResult } from "@ui/LevelUpModal";
 import { calculateGoldReward } from "@data/StoreData";
@@ -390,11 +391,20 @@ export class DemoBattle {
       for (let i = 0; i < this.playerIds.length && i < this.incomingSaveData.roster.length; i++) {
         const pid = this.playerIds[i]!;
         const member = this.incomingSaveData.roster[i]!;
-        // Filter abilities by unlock level
-        const unlockedAbilities = (member.abilities ?? []).filter(uid => {
-          const unlockLvl = member.abilityUnlockLevels?.[uid] ?? 0;
-          return member.level >= unlockLvl;
-        });
+        // Filter abilities by skill tree unlock state (or fall back to legacy level-based)
+        let unlockedAbilities: string[];
+        if (member.skillTree) {
+          const unlockedNodes = new Set(member.unlockedNodes ?? []);
+          unlockedAbilities = member.skillTree.nodes
+            .filter(n => unlockedNodes.has(n.nodeId))
+            .map(n => n.abilityUid);
+        } else {
+          // Legacy: level-based unlock
+          unlockedAbilities = (member.abilities ?? []).filter(uid => {
+            const unlockLvl = member.abilityUnlockLevels?.[uid] ?? 0;
+            return member.level >= unlockLvl;
+          });
+        }
         this.world.addComponent(pid, createAbilities(unlockedAbilities));
         this.world.addComponent(pid, createAbilityCooldowns());
       }
@@ -1455,7 +1465,26 @@ export class DemoBattle {
         if (this.saveData) {
           this.saveData.gold = (this.saveData.gold ?? 0) + goldEarned;
         }
-        this.battleEndScreen.show(true, awards, goldEarned);
+
+        // Calculate CP awards per unit
+        const survivorInfo = survivors.map(id => {
+          const team = this.world.getComponent<{ type: "team"; team: string; name: string }>(id, "team");
+          return { entityId: id, name: team?.name ?? id };
+        });
+        const cpAwards = calculateBattleCP(true, this.combat.actionTracker, survivorInfo);
+
+        // Apply CP to save data
+        if (this.incomingSaveData) {
+          for (const cp of cpAwards) {
+            const idx = this.playerIds.indexOf(cp.entityId);
+            if (idx >= 0 && this.incomingSaveData.roster[idx]) {
+              this.incomingSaveData.roster[idx]!.classPoints =
+                (this.incomingSaveData.roster[idx]!.classPoints ?? 0) + cp.cpEarned;
+            }
+          }
+        }
+
+        this.battleEndScreen.show(true, awards, goldEarned, cpAwards);
         this.battleEndScreen.onContinue = () => {
           this.battleEndScreen.hide();
           this.processLevelUps(awards);
@@ -1594,7 +1623,27 @@ export class DemoBattle {
       const h = this.world.getComponent<HealthComponent>(id, "health");
       return h && h.current > 0;
     });
-    this.saveData.roster = entitiesToRoster(this.world, survivors);
+    const newRoster = entitiesToRoster(this.world, survivors);
+
+    // Merge non-ECS fields (skill tree, CP, theme) from incoming save data
+    if (this.incomingSaveData) {
+      for (let si = 0; si < survivors.length; si++) {
+        const entityId = survivors[si]!;
+        const rosterIdx = this.playerIds.indexOf(entityId);
+        if (rosterIdx >= 0 && rosterIdx < this.incomingSaveData.roster.length) {
+          const original = this.incomingSaveData.roster[rosterIdx]!;
+          const updated = newRoster[si]!;
+          updated.skillTree = original.skillTree;
+          updated.unlockedNodes = original.unlockedNodes;
+          updated.nodeStacks = original.nodeStacks;
+          updated.classPoints = original.classPoints;
+          updated.skillTheme = original.skillTheme;
+          updated.abilities = original.abilities;
+        }
+      }
+    }
+
+    this.saveData.roster = newRoster;
     this.finalizeBattleEnd();
   }
 

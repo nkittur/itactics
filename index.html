@@ -1190,6 +1190,96 @@
       padding: 1px 6px; border-radius: 8px;
     }
 
+    /* ── Skill Tree ── */
+    .skill-tree-container { padding: 4px 0; }
+    .cp-header {
+      font-size: 15px; font-weight: bold; color: #ffcc44;
+      text-align: center; padding: 8px 0; margin-bottom: 8px;
+      background: rgba(255, 204, 68, 0.08); border-radius: 6px;
+    }
+    .skill-tree-tier {
+      display: flex; justify-content: center; gap: 6px;
+      margin-bottom: 0;
+    }
+    .tree-tier-connector {
+      height: 10px; display: flex; justify-content: center;
+    }
+    .tree-tier-connector::before {
+      content: ''; display: block; width: 2px; height: 100%; background: #334;
+    }
+    .tree-node {
+      background: #1e2740; border-radius: 8px;
+      padding: 6px 4px; text-align: center;
+      border: 2px solid #334; cursor: pointer; pointer-events: auto;
+      min-width: 70px; max-width: 85px; flex: 0 1 85px;
+      display: flex; flex-direction: column;
+      justify-content: center; align-items: center; gap: 2px;
+    }
+    .tree-node.unlocked { border-color: #4a4; background: #1e3020; }
+    .tree-node.available { border-color: #cc8; background: #2a2820; }
+    .tree-node.locked { opacity: 0.4; border-color: #223; }
+    .tree-node.dual-parent { box-shadow: 0 0 4px rgba(255, 215, 0, 0.3); }
+    .tree-node.node-active .tree-node-name { color: #6af; }
+    .tree-node.node-passive .tree-node-name { color: #8c8; }
+    .tree-node-name {
+      font-size: 10px; font-weight: bold; line-height: 1.2;
+      max-width: 75px; overflow: hidden; text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .tree-node-type {
+      font-size: 8px; padding: 1px 4px; border-radius: 6px;
+      background: rgba(255,255,255,0.06); color: #889;
+    }
+    .tree-node-cost { font-size: 10px; color: #cc8; font-weight: bold; }
+    .tree-node-status { font-size: 12px; color: #4a4; }
+    .tree-node-stacks { font-size: 9px; color: #aad; }
+
+    /* Skill Node Detail Popup */
+    .node-detail-backdrop {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.6);
+      display: flex; align-items: center; justify-content: center;
+      z-index: 1002; pointer-events: auto;
+    }
+    .node-detail-panel {
+      background: #1a1e30; border: 1px solid #445;
+      border-radius: 10px; padding: 16px;
+      max-width: 300px; width: 85%; color: #ccc;
+    }
+    .node-detail-title { font-size: 16px; font-weight: bold; margin-bottom: 4px; }
+    .node-detail-meta { font-size: 11px; color: #889; margin-bottom: 8px; }
+    .node-detail-desc {
+      font-size: 13px; color: #99aabb;
+      margin-bottom: 10px; line-height: 1.4;
+    }
+    .node-detail-cost { font-size: 12px; color: #778; margin-bottom: 8px; }
+    .node-detail-prereqs { font-size: 11px; color: #886; margin-bottom: 8px; }
+    .node-detail-cant-afford { font-size: 12px; color: #a86; text-align: center; }
+    .node-unlock-btn {
+      width: 100%; padding: 10px; font-size: 14px; font-weight: bold;
+      background: #3a5a2a; color: #cfc;
+      border: 1px solid #4a4; border-radius: 8px;
+      cursor: pointer; pointer-events: auto; margin-top: 8px;
+    }
+    .node-unlock-btn:active { background: #4a6a3a; }
+
+    /* CP on Battle End Screen */
+    .cp-awards-section {
+      margin-top: 12px; padding-top: 8px;
+      border-top: 1px solid #334;
+    }
+    .cp-section-title {
+      font-size: 13px; font-weight: bold;
+      color: #ffcc44; margin-bottom: 6px;
+    }
+    .cp-row {
+      display: flex; justify-content: space-between;
+      align-items: center; padding: 3px 0; font-size: 12px;
+    }
+    .cp-name { color: #ccc; flex: 1; }
+    .cp-breakdown { color: #889; font-size: 11px; margin-right: 8px; }
+    .cp-earned { color: #ffcc44; font-weight: bold; min-width: 50px; text-align: right; }
+
     /* Equipment Tab */
     .equip-slot-card {
       background: #1e2740; border-radius: 6px;
