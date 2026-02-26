@@ -19,7 +19,10 @@ const EFFECT_POWER: Record<EffectType, number> = {
   dmg_weapon: 4,
   dmg_execute: 7,
   dmg_multihit: 6,
+  dmg_spell: 5,
   dot_bleed: 3,
+  dot_burn: 3,
+  dot_poison: 3,
   disp_push: 3,
   cc_stun: 5,
   cc_root: 4,
@@ -57,8 +60,14 @@ function defaultEffectParams(type: EffectType, tier: 1 | 2 | 3, rng: () => numbe
       };
     case "dmg_multihit":
       return { hits: tier >= 3 ? 3 : 2, multPerHit: vary(50, 0.1) / 100 };
+    case "dmg_spell":
+      return { multiplier: vary(tier === 1 ? 80 : tier === 2 ? 110 : 140, 0.1) / 100 };
     case "dot_bleed":
       return { dmgPerTurn: vary(tier === 1 ? 3 : 5, 0.15), turns: tier >= 3 ? 3 : 2 };
+    case "dot_burn":
+      return { dmgPerTurn: vary(tier === 1 ? 4 : 6, 0.15), turns: tier >= 3 ? 3 : 2 };
+    case "dot_poison":
+      return { dmgPerTurn: vary(tier === 1 ? 2 : 4, 0.15), turns: tier >= 3 ? 4 : 3, statReduce: vary(5, 0.2) };
     case "disp_push":
       return { distance: tier >= 3 ? 2 : 1 };
     case "cc_stun":
@@ -92,6 +101,8 @@ function defaultEffectParams(type: EffectType, tier: 1 | 2 | 3, rng: () => numbe
 
 const NAME_PREFIXES: Record<string, string[]> = {
   dot_bleed: ["Lacerating", "Bleeding", "Rending", "Gashing"],
+  dot_burn: ["Blazing", "Scorching", "Burning", "Searing"],
+  dot_poison: ["Toxic", "Venomous", "Festering", "Noxious"],
   cc_stun: ["Concussive", "Crushing", "Shattering", "Staggering"],
   cc_root: ["Binding", "Pinning", "Locking", "Anchoring"],
   cc_daze: ["Crippling", "Blinding", "Disorienting", "Jarring"],
@@ -100,6 +111,7 @@ const NAME_PREFIXES: Record<string, string[]> = {
   buff_stat: ["Rallying", "Inspiring", "Empowering", "Fortifying"],
   buff_dmgReduce: ["Warding", "Shielding", "Guarding", "Steeling"],
   disp_push: ["Battering", "Shoving", "Thundering", "Driving"],
+  dmg_spell: ["Arcane", "Mystic", "Eldritch", "Ethereal"],
 };
 
 const NAME_VERBS: Record<string, string[]> = {
@@ -112,6 +124,7 @@ const NAME_VERBS: Record<string, string[]> = {
     "Culling", "Headsman's Cut", "Coup", "Death Blow",
   ],
   dmg_multihit: ["Flurry", "Barrage", "Onslaught", "Frenzy", "Rapid Strikes", "Whirlwind"],
+  dmg_spell: ["Bolt", "Blast", "Surge", "Nova", "Torrent", "Pulse"],
   stance_counter: ["Counter-stance", "Riposte Guard", "Ready Stance", "Retaliating Guard"],
   stance_overwatch: ["Overwatch", "Sentinel Guard", "Watchful Stance", "Vigilant Watch"],
   res_apRefund: ["Rush", "Surge", "Momentum", "Quick Step"],
@@ -131,6 +144,11 @@ const THEME_VERBS: Record<string, string[]> = {
   skirmisher: ["Jab", "Lunge", "Thrust", "Feint", "Side-step Cut", "Glancing Blow"],
   sentinel: ["Ward", "Repel", "Brace", "Hold Ground", "Spear Thrust", "Stand Fast"],
   opportunist: ["Exploit", "Capitalize", "Press", "Punish", "Take Advantage", "Seize"],
+  pyromaniac: ["Immolate", "Ignite", "Scorch", "Combust", "Sear", "Incinerate"],
+  venomancer: ["Envenom", "Toxify", "Blight", "Corrode", "Taint", "Infect"],
+  warden: ["Bind", "Anchor", "Lockdown", "Fortify", "Entrench", "Detain"],
+  arcanist: ["Arcane Bolt", "Surge", "Channel", "Blast", "Invoke", "Discharge"],
+  hexcurser: ["Hex", "Curse", "Bane", "Afflict", "Wither", "Doom"],
 };
 
 // ── Passive names ──
@@ -143,6 +161,11 @@ const PASSIVE_NAMES: Record<string, string[]> = {
   executioner: ["Smell Blood", "Death Sense", "Killing Instinct"],
   sentinel: ["Hold the Line", "Stalwart Guard", "Immovable"],
   reaper: ["Blood Rush", "Death's Momentum", "Harvest Energy"],
+  pyromaniac: ["Pyromaniac's Focus", "Flame Mastery", "Burning Resolve"],
+  venomancer: ["Toxic Instinct", "Venom Sense", "Poison Mastery"],
+  warden: ["Warden's Resolve", "Unyielding Anchor", "Root Mastery"],
+  arcanist: ["Arcane Insight", "Spell Attunement", "Mana Focus"],
+  hexcurser: ["Curse Mastery", "Dark Insight", "Hex Focus"],
 };
 
 // ── Power budget + cost derivation ──
@@ -193,11 +216,11 @@ function generateAbilityName(
 
   const pick = <T>(arr: T[]): T => arr[Math.floor(rng() * arr.length)]!;
 
-  // Find main verb — prefer theme-specific verbs for dmg_weapon
+  // Find main verb — prefer theme-specific verbs for dmg_weapon and dmg_spell
   const primaryEffect = effects[0];
   let verbs: string[];
   let usedThemeVerb = false;
-  if (primaryEffect?.type === "dmg_weapon" && THEME_VERBS[themeId]) {
+  if ((primaryEffect?.type === "dmg_weapon" || primaryEffect?.type === "dmg_spell") && THEME_VERBS[themeId]) {
     // 60% chance to use theme verb, 40% generic
     if (rng() < 0.6) {
       verbs = THEME_VERBS[themeId]!;
@@ -263,10 +286,27 @@ function generateDescription(ability: GeneratedAbility): string {
         parts.push(`Strike ${hits} times at ${per}% damage each`);
         break;
       }
+      case "dmg_spell": {
+        const mult = Math.round((effect.params["multiplier"] as number) * 100);
+        parts.push(`Deal ${mult}% spell damage`);
+        break;
+      }
       case "dot_bleed": {
         const dmg = effect.params["dmgPerTurn"] as number;
         const turns = effect.params["turns"] as number;
         parts.push(`Apply Bleed (${dmg} dmg/turn, ${turns} turns)`);
+        break;
+      }
+      case "dot_burn": {
+        const dmg = effect.params["dmgPerTurn"] as number;
+        const turns = effect.params["turns"] as number;
+        parts.push(`Apply Burn (${dmg} dmg/turn, ${turns} turns)`);
+        break;
+      }
+      case "dot_poison": {
+        const dmg = effect.params["dmgPerTurn"] as number;
+        const turns = effect.params["turns"] as number;
+        parts.push(`Apply Poison (${dmg} dmg/turn, ${turns} turns)`);
         break;
       }
       case "disp_push": {
@@ -485,6 +525,18 @@ export function generateAbility(
     ability.synergyTags.creates.push("low_hp");
   }
 
+  // Burn abilities inherently create burning condition
+  const hasBurn = effects.some(e => e.type === "dot_burn");
+  if (hasBurn && !ability.synergyTags.creates.includes("burning")) {
+    ability.synergyTags.creates.push("burning");
+  }
+
+  // Poison abilities inherently create poisoned condition
+  const hasPoison = effects.some(e => e.type === "dot_poison");
+  if (hasPoison && !ability.synergyTags.creates.includes("poisoned")) {
+    ability.synergyTags.creates.push("poisoned");
+  }
+
   ability.description = generateDescription(ability);
   return ability;
 }
@@ -548,6 +600,71 @@ function buildPassiveTriggerEffect(
             amount: Math.round(8 + rng() * 4), // 8-12
           },
           power: 3,
+        },
+      };
+
+    case "pyromaniac":
+      // Flame Mastery: +dmg vs burning targets
+      return {
+        type: "trg_belowHP",
+        params: { hpPercent: 100 },
+        powerAdd: 4,
+        triggeredEffect: {
+          type: "dmg_weapon",
+          params: { bonusPercent: tier === 1 ? 12 : 20 },
+          power: 3,
+        },
+      };
+
+    case "venomancer":
+      // Venom Sense: +dmg vs poisoned targets
+      return {
+        type: "trg_belowHP",
+        params: { hpPercent: 100 },
+        powerAdd: 4,
+        triggeredEffect: {
+          type: "dmg_weapon",
+          params: { bonusPercent: tier === 1 ? 12 : 20 },
+          power: 3,
+        },
+      };
+
+    case "warden":
+      // Warden's Resolve: damage reduction when hit
+      return {
+        type: "trg_onTakeDamage",
+        params: {},
+        powerAdd: 3,
+        triggeredEffect: {
+          type: "buff_dmgReduce",
+          params: { percent: Math.round(15 + rng() * 10) },
+          power: 3,
+        },
+      };
+
+    case "arcanist":
+      // Spell Attunement: +dmg vs vulnerable targets
+      return {
+        type: "trg_belowHP",
+        params: { hpPercent: 100 },
+        powerAdd: 4,
+        triggeredEffect: {
+          type: "dmg_weapon",
+          params: { bonusPercent: tier === 1 ? 15 : 25 },
+          power: 3,
+        },
+      };
+
+    case "hexcurser":
+      // Dark Insight: AP refund when applying debuffs
+      return {
+        type: "trg_onHit",
+        params: {},
+        powerAdd: 3,
+        triggeredEffect: {
+          type: "res_apRefund",
+          params: { amount: Math.round(1 + rng()) },
+          power: 2,
         },
       };
 

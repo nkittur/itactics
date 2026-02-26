@@ -1,8 +1,8 @@
 // ── Effect types (V1: 14 of 30 — enough for all 7 theme progressions) ──
 
 export type EffectType =
-  | "dmg_weapon" | "dmg_execute" | "dmg_multihit"
-  | "dot_bleed"
+  | "dmg_weapon" | "dmg_execute" | "dmg_multihit" | "dmg_spell"
+  | "dot_bleed" | "dot_burn" | "dot_poison"
   | "disp_push"
   | "cc_stun" | "cc_root" | "cc_daze"
   | "debuff_stat" | "debuff_vuln"

@@ -16,7 +16,8 @@ type PassiveArchetype =
   | "debuff_amplifier"      // AP refund or bonus when applying debuffs
   | "reactive_defender"     // buff stat or reduce damage when hit
   | "sustained_fighter"     // turn-start buff for high-fatigue builds
-  | "stack_builder";        // stacking buff on each hit landed
+  | "stack_builder"         // stacking buff on each hit landed
+  | "dot_amplifier";        // bonus damage when target has active DoT
 
 interface ArchetypeWeight {
   archetype: PassiveArchetype;
@@ -54,6 +55,26 @@ const CONDITION_NAME_POOL: Record<string, string[]> = {
   dazed: [
     "Daze Exploit", "Disoriented Prey", "Befuddled Target",
     "Jarring Insight", "Crippled Focus", "Stagger Punisher",
+  ],
+  burning: [
+    "Flame Feeder", "Burn Exploit", "Pyromaniac's Eye",
+    "Fire Sense", "Searing Focus", "Ember Tracker",
+  ],
+  poisoned: [
+    "Venom Exploit", "Toxic Opportunist", "Poison Feeder",
+    "Blight Sense", "Corruption Eye", "Festering Focus",
+  ],
+  vulnerable: [
+    "Weakness Punisher", "Exposed Target", "Vulnerability Exploit",
+    "Shattered Guard", "Open Wound", "Critical Eye",
+  ],
+  rooted: [
+    "Root Exploit", "Anchored Prey", "Immobile Target",
+    "Binding Focus", "Pinned Quarry", "Entrapped Strike",
+  ],
+  cursed: [
+    "Curse Exploit", "Hexed Prey", "Dark Opportunist",
+    "Affliction Sense", "Doom Feeder", "Bane Strike",
   ],
 };
 
@@ -98,6 +119,13 @@ const PASSIVE_NAME_POOL: Record<PassiveArchetype, string[]> = {
     "Compounding Force", "Accelerating Blows", "Building Tempo",
     "Crescendo", "Chain Reaction", "Relentless Advance",
   ],
+  dot_amplifier: [
+    "Festering Wounds", "Lingering Agony", "Spreading Decay",
+    "Worsening Condition", "Toxic Synergy", "Amplified Suffering",
+    "Deep Corruption", "Compounding Pain", "Prolonged Torment",
+    "Erosion Expert", "Slow Death", "Deterioration Master",
+    "Infectious Fury", "Accelerated Rot", "Burning Vendetta",
+  ],
 };
 
 // ── Analysis: extract info from active abilities ──
@@ -111,6 +139,9 @@ interface ActiveAnalysis {
   hasAoE: boolean;
   hasStance: boolean;
   hasBleed: boolean;
+  hasBurn: boolean;
+  hasPoison: boolean;
+  hasSpell: boolean;
   hasDebuff: boolean;
   hasCrowdControl: boolean;
   avgApCost: number;
@@ -128,6 +159,9 @@ function analyzeActiveAbilities(actives: GeneratedAbility[]): ActiveAnalysis {
     hasAoE: false,
     hasStance: false,
     hasBleed: false,
+    hasBurn: false,
+    hasPoison: false,
+    hasSpell: false,
     hasDebuff: false,
     hasCrowdControl: false,
     avgApCost: 0,
@@ -146,7 +180,10 @@ function analyzeActiveAbilities(actives: GeneratedAbility[]): ActiveAnalysis {
       analysis.effectTypes.add(e.type);
       if (e.type === "dmg_execute") analysis.hasExecute = true;
       if (e.type === "dmg_multihit") analysis.hasMultiHit = true;
+      if (e.type === "dmg_spell") analysis.hasSpell = true;
       if (e.type === "dot_bleed") analysis.hasBleed = true;
+      if (e.type === "dot_burn") analysis.hasBurn = true;
+      if (e.type === "dot_poison") analysis.hasPoison = true;
       if (e.type === "debuff_stat" || e.type === "debuff_vuln") analysis.hasDebuff = true;
       if (e.type === "cc_stun" || e.type === "cc_root" || e.type === "cc_daze") analysis.hasCrowdControl = true;
       if (e.type === "stance_counter" || e.type === "stance_overwatch") analysis.hasStance = true;
@@ -210,6 +247,13 @@ function weightArchetypes(analysis: ActiveAnalysis): ArchetypeWeight[] {
   if (analysis.avgApCost <= 4) stackWeight += 2; // cheap = more attacks = more stacks
   weights.push({ archetype: "stack_builder", weight: stackWeight });
 
+  // DoT amplifier: strong for DoT-heavy themes (bleed, burn, poison)
+  let dotWeight = 1;
+  if (analysis.hasBleed) dotWeight += 4;
+  if (analysis.hasBurn) dotWeight += 4;
+  if (analysis.hasPoison) dotWeight += 4;
+  weights.push({ archetype: "dot_amplifier", weight: dotWeight });
+
   return weights;
 }
 
@@ -237,16 +281,51 @@ function tierFromPower(level: PowerLevel): 1 | 2 | 3 {
 
 // ── Build passive trigger + effect for each archetype ──
 
+// Universal bridge conditions — common conditions likely created by party members.
+// condition_exploiter passives have a chance to exploit these for cross-tree synergy.
+// Weighted by how many themes create each condition (more creators = more reliable cross-tree).
+const BRIDGE_CONDITIONS_WEIGHTED = [
+  { condition: "debuffed", weight: 5 },    // created by 8+ themes
+  { condition: "vulnerable", weight: 4 },  // created by 3 themes, universally useful
+  { condition: "bleeding", weight: 3 },    // created by 4 themes
+  { condition: "stunned", weight: 3 },     // created by 4 themes
+  { condition: "displaced", weight: 3 },   // created by 5 themes
+  { condition: "rooted", weight: 3 },      // created by 3 themes
+  { condition: "low_hp", weight: 2 },      // created by 2 themes
+  { condition: "dazed", weight: 2 },       // created by 6+ themes
+  { condition: "burning", weight: 2 },     // created by 1 theme
+  { condition: "poisoned", weight: 2 },    // created by 1 theme
+  { condition: "cursed", weight: 2 },      // created by 1 theme
+];
+const BRIDGE_CONDITION_CHANCE = 0.20; // 20% chance to pick a bridge condition instead of own tree's
+
 function buildConditionExploiter(
   analysis: ActiveAnalysis,
   level: PowerLevel,
   rng: () => number,
 ): { trigger: TriggerPrimitive; effects: EffectPrimitive[]; synergyExploits: string[] } {
-  // Pick a condition that the actives create
+  // Pick a condition — sometimes from bridge pool for cross-tree synergy
   const conditions = [...analysis.createdConditions];
-  let condition = conditions.length > 0
-    ? conditions[Math.floor(rng() * conditions.length)]!
-    : "debuffed";
+  let condition: string;
+  if (rng() < BRIDGE_CONDITION_CHANCE && BRIDGE_CONDITIONS_WEIGHTED.length > 0) {
+    // Pick a bridge condition not already in our own creates (for cross-tree value), weighted
+    const crossConditions = BRIDGE_CONDITIONS_WEIGHTED.filter(c => !analysis.createdConditions.has(c.condition));
+    if (crossConditions.length > 0) {
+      const totalW = crossConditions.reduce((s, c) => s + c.weight, 0);
+      let roll = rng() * totalW;
+      condition = crossConditions[0]!.condition;
+      for (const c of crossConditions) {
+        roll -= c.weight;
+        if (roll <= 0) { condition = c.condition; break; }
+      }
+    } else {
+      condition = conditions.length > 0 ? conditions[Math.floor(rng() * conditions.length)]! : "debuffed";
+    }
+  } else {
+    condition = conditions.length > 0
+      ? conditions[Math.floor(rng() * conditions.length)]!
+      : "debuffed";
+  }
 
   // Determine trigger type based on condition
   let triggerType: TriggerType;
@@ -433,6 +512,28 @@ function buildStackBuilder(
         type: "buff_stat",
         params: { stat, amount },
         power: level === "minor" ? 2 : 3,
+      },
+    },
+    effects: [],
+  };
+}
+
+function buildDotAmplifier(
+  _analysis: ActiveAnalysis,
+  level: PowerLevel,
+  rng: () => number,
+): { trigger: TriggerPrimitive; effects: EffectPrimitive[] } {
+  // On hit: bonus damage if target has any DoT active
+  const bonusPct = level === "minor" ? 10 : level === "standard" ? 18 : 28;
+  return {
+    trigger: {
+      type: "trg_onHit",
+      params: {},
+      powerAdd: level === "minor" ? 2 : level === "standard" ? 4 : 6,
+      triggeredEffect: {
+        type: "dmg_weapon",
+        params: { bonusPercent: bonusPct },
+        power: level === "minor" ? 2 : 4,
       },
     },
     effects: [],
@@ -640,6 +741,12 @@ function buildPassive(
     }
     case "stack_builder": {
       const result = buildStackBuilder(analysis, level, rng);
+      trigger = result.trigger;
+      effects = result.effects;
+      break;
+    }
+    case "dot_amplifier": {
+      const result = buildDotAmplifier(analysis, level, rng);
       trigger = result.trigger;
       effects = result.effects;
       break;

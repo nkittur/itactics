@@ -9,7 +9,8 @@ export type WeaponFamily =
   | "dagger"
   | "bow"
   | "crossbow"
-  | "throwing";
+  | "throwing"
+  | "staff";
 
 export interface WeaponDef {
   readonly id: string;
@@ -81,6 +82,18 @@ const WEAPONS: ReadonlyMap<string, WeaponDef> = new Map([
     id: "pike", name: "Pike", family: "polearm",
     minDamage: 5, maxDamage: 8, armorDamageMult: 0.60, armorIgnorePct: 0.30,
     apCost: 6, fatigueCost: 18, range: 2, hands: 2, hitChanceBonus: 0,
+  }],
+
+  // ── Staves ──
+  ["oak_staff", {
+    id: "oak_staff", name: "Oak Staff", family: "staff",
+    minDamage: 2, maxDamage: 4, armorDamageMult: 0.60, armorIgnorePct: 0.00,
+    apCost: 4, fatigueCost: 8, range: 2, hands: 2, hitChanceBonus: 5,
+  }],
+  ["iron_staff", {
+    id: "iron_staff", name: "Iron Staff", family: "staff",
+    minDamage: 3, maxDamage: 5, armorDamageMult: 0.80, armorIgnorePct: 0.05,
+    apCost: 4, fatigueCost: 10, range: 2, hands: 2, hitChanceBonus: 5,
   }],
 
   // ── Ranged ──

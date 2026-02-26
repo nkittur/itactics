@@ -73,6 +73,27 @@ export const STATUS_EFFECT_DEFS: Record<string, StatusEffectDef> = {
     modifiers: {},
     maxStacks: 1,
   },
+  burn: {
+    id: "burn",
+    name: "Burning",
+    duration: 2,
+    modifiers: {},
+    maxStacks: 3,
+  },
+  poison: {
+    id: "poison",
+    name: "Poisoned",
+    duration: 3,
+    modifiers: {},
+    maxStacks: 3,
+  },
+  cursed: {
+    id: "cursed",
+    name: "Cursed",
+    duration: 2,
+    modifiers: { meleeSkill: -10 },
+    maxStacks: 1,
+  },
 };
 
 export interface BleedTickResult {
