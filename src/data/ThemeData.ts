@@ -330,34 +330,34 @@ export const THEMES: Record<string, Theme> = {
     weaponAffinity: ["mace", "flail", "staff"],
     progression: [
       {
-        // T1: Firebrand Strike — weapon damage + ignite target
+        // T1: Firebrand Strike — weapon damage + ignite target, fire weakens
         role: "setup",
         effects: ["dot_burn", "dmg_weapon"],
-        conditions: { creates: ["burning"], exploits: [] },
+        conditions: { creates: ["burning", "debuffed"], exploits: [] },
         targetingConstraint: "tgt_single_enemy",
         powerRange: [3, 5],
       },
       {
-        // T2: Flame Mastery — passive: +dmg vs burning targets
+        // T2: Flame Mastery — passive: +dmg vs burning/dazed targets
         role: "payoff",
         effects: [],
-        conditions: { creates: [], exploits: ["burning"] },
+        conditions: { creates: [], exploits: ["burning", "dazed"] },
         isPassive: true,
         powerRange: [5, 8],
       },
       {
-        // T3: Searing Vulnerability — burn + expose weakness, extra vs debuffed
+        // T3: Searing Vulnerability — burn + expose weakness + daze, extra vs debuffed
         role: "chain",
-        effects: ["dot_burn", "debuff_vuln"],
-        conditions: { creates: ["burning", "vulnerable"], exploits: ["debuffed"] },
+        effects: ["dot_burn", "debuff_vuln", "cc_daze"],
+        conditions: { creates: ["burning", "vulnerable", "dazed"], exploits: ["debuffed"] },
         targetingConstraint: "tgt_single_enemy",
         powerRange: [8, 12],
       },
       {
-        // T4: Inferno — AoE fire damage + burn, extra vs burning/vulnerable
+        // T4: Inferno — AoE fire damage + burn, extra vs burning/vulnerable/debuffed/dazed
         role: "capstone",
         effects: ["dmg_weapon", "dot_burn"],
-        conditions: { creates: ["burning", "vulnerable"], exploits: ["burning", "vulnerable"] },
+        conditions: { creates: ["burning", "vulnerable"], exploits: ["burning", "vulnerable", "debuffed", "dazed"] },
         targetingConstraint: "tgt_aoe_adjacent",
         powerRange: [12, 18],
       },
@@ -372,33 +372,33 @@ export const THEMES: Record<string, Theme> = {
     weaponAffinity: ["dagger", "crossbow", "throwing"],
     progression: [
       {
-        // T1: Venom Strike — weapon damage + poison
+        // T1: Venom Strike — weapon damage + poison, toxic disorientation, weakens defenses
         role: "setup",
         effects: ["dot_poison", "dmg_weapon"],
-        conditions: { creates: ["poisoned"], exploits: [] },
+        conditions: { creates: ["poisoned", "dazed", "vulnerable"], exploits: [] },
         targetingConstraint: "tgt_single_enemy",
         powerRange: [3, 5],
       },
       {
-        // T2: Binding Toxin — root + debuff, bonus vs poisoned
+        // T2: Binding Toxin — root + debuff, bonus vs poisoned/debuffed
         role: "payoff",
         effects: ["cc_root", "debuff_stat"],
-        conditions: { creates: ["rooted", "debuffed"], exploits: ["poisoned"] },
+        conditions: { creates: ["rooted", "debuffed"], exploits: ["poisoned", "debuffed"] },
         targetingConstraint: "tgt_single_enemy",
         powerRange: [5, 8],
       },
       {
-        // T3: Noxious Cloud — poison + daze, bonus vs debuffed
+        // T3: Noxious Cloud — poison + daze, bonus vs debuffed/poisoned
         role: "chain",
         effects: ["dot_poison", "cc_daze"],
-        conditions: { creates: ["poisoned", "dazed"], exploits: ["debuffed"] },
+        conditions: { creates: ["poisoned", "dazed"], exploits: ["debuffed", "poisoned"] },
         powerRange: [8, 12],
       },
       {
-        // T4: Plague Bearer — heavy poison + vulnerability, bonus vs poisoned/rooted
+        // T4: Plague Bearer — heavy poison + vulnerability, bonus vs poisoned/rooted/dazed/vulnerable
         role: "capstone",
         effects: ["dot_poison", "debuff_vuln"],
-        conditions: { creates: ["poisoned", "vulnerable"], exploits: ["poisoned", "rooted"] },
+        conditions: { creates: ["poisoned", "vulnerable"], exploits: ["poisoned", "rooted", "dazed", "vulnerable"] },
         targetingConstraint: "tgt_aoe_adjacent",
         powerRange: [12, 18],
       },
@@ -412,33 +412,33 @@ export const THEMES: Record<string, Theme> = {
     weaponAffinity: ["spear", "polearm", "mace"],
     progression: [
       {
-        // T1: Binding Strike — weapon damage + root
+        // T1: Binding Strike — weapon damage + root, impact weakens
         role: "setup",
         effects: ["cc_root", "dmg_weapon"],
-        conditions: { creates: ["rooted"], exploits: [] },
+        conditions: { creates: ["rooted", "debuffed"], exploits: [] },
         targetingConstraint: "tgt_single_enemy",
         powerRange: [3, 5],
       },
       {
-        // T2: Warden's Resolve — passive: damage reduction vs rooted attackers
+        // T2: Warden's Resolve — passive: damage reduction vs rooted/debuffed attackers
         role: "payoff",
         effects: ["buff_dmgReduce"],
-        conditions: { creates: [], exploits: ["rooted"] },
+        conditions: { creates: [], exploits: ["rooted", "debuffed"] },
         isPassive: true,
         powerRange: [5, 8],
       },
       {
-        // T3: Scatter and Pin — root + push + buff, bonus vs displaced
+        // T3: Scatter and Pin — root + push + buff, bonus vs displaced, impact stuns
         role: "chain",
         effects: ["cc_root", "disp_push", "buff_stat"],
-        conditions: { creates: ["rooted", "displaced", "debuffed"], exploits: ["displaced"] },
+        conditions: { creates: ["rooted", "displaced", "debuffed", "stunned"], exploits: ["displaced"] },
         powerRange: [8, 12],
       },
       {
-        // T4: Earthshatter — heavy root + damage + damage reduction, bonus vs rooted/stunned
+        // T4: Earthshatter — heavy root + damage + damage reduction, bonus vs rooted/stunned/debuffed/displaced
         role: "capstone",
         effects: ["cc_root", "dmg_weapon", "buff_dmgReduce"],
-        conditions: { creates: ["rooted", "stunned"], exploits: ["rooted", "stunned"] },
+        conditions: { creates: ["rooted", "stunned"], exploits: ["rooted", "stunned", "debuffed", "displaced"] },
         targetingConstraint: "tgt_aoe_adjacent",
         powerRange: [12, 18],
       },
@@ -453,10 +453,10 @@ export const THEMES: Record<string, Theme> = {
     weaponAffinity: ["staff"],
     progression: [
       {
-        // T1: Arcane Bolt — spell damage + expose vulnerability
+        // T1: Arcane Bolt — spell damage + expose vulnerability, arcane disruption
         role: "setup",
         effects: ["dmg_spell", "debuff_vuln"],
-        conditions: { creates: ["vulnerable"], exploits: [] },
+        conditions: { creates: ["vulnerable", "debuffed"], exploits: [] },
         targetingConstraint: "tgt_single_enemy",
         powerRange: [3, 5],
       },
@@ -469,18 +469,18 @@ export const THEMES: Record<string, Theme> = {
         powerRange: [5, 8],
       },
       {
-        // T3: Mind Shatter — spell damage + daze + root, bonus vs debuffed
+        // T3: Mind Shatter — spell damage + daze + root, bonus vs debuffed, impact stuns
         role: "chain",
         effects: ["dmg_spell", "cc_daze"],
-        conditions: { creates: ["vulnerable", "dazed", "rooted"], exploits: ["debuffed"] },
+        conditions: { creates: ["vulnerable", "dazed", "rooted", "stunned"], exploits: ["debuffed"] },
         targetingConstraint: "tgt_single_enemy",
         powerRange: [8, 12],
       },
       {
-        // T4: Arcane Cataclysm — AoE spell damage + vulnerability, bonus vs vulnerable/stunned
+        // T4: Arcane Cataclysm — AoE spell damage + vulnerability, bonus vs vulnerable/dazed
         role: "capstone",
         effects: ["dmg_spell", "debuff_vuln"],
-        conditions: { creates: ["vulnerable", "dazed"], exploits: ["vulnerable", "stunned"] },
+        conditions: { creates: ["vulnerable", "dazed"], exploits: ["vulnerable", "dazed"] },
         targetingConstraint: "tgt_aoe_adjacent",
         powerRange: [12, 18],
       },
@@ -494,10 +494,10 @@ export const THEMES: Record<string, Theme> = {
     weaponAffinity: ["staff", "dagger"],
     progression: [
       {
-        // T1: Hex — debuff + vulnerability, applies curse
+        // T1: Hex — debuff + vulnerability, applies curse, exposes weakness
         role: "setup",
         effects: ["debuff_stat", "debuff_vuln"],
-        conditions: { creates: ["cursed", "debuffed"], exploits: [] },
+        conditions: { creates: ["cursed", "debuffed", "vulnerable"], exploits: [] },
         targetingConstraint: "tgt_single_enemy",
         powerRange: [3, 5],
       },
@@ -510,18 +510,18 @@ export const THEMES: Record<string, Theme> = {
         powerRange: [5, 8],
       },
       {
-        // T3: Bane Bolt — spell damage + daze, bonus vs debuffed/cursed, applies vulnerability
+        // T3: Bane Bolt — spell damage + daze, bonus vs debuffed/cursed/vulnerable
         role: "chain",
         effects: ["dmg_spell", "cc_daze"],
-        conditions: { creates: ["cursed", "vulnerable", "dazed"], exploits: ["debuffed", "cursed"] },
+        conditions: { creates: ["cursed", "vulnerable", "dazed"], exploits: ["debuffed", "cursed", "vulnerable"] },
         targetingConstraint: "tgt_single_enemy",
         powerRange: [8, 12],
       },
       {
-        // T4: Mass Hex — AoE curse + vulnerability + debuff, bonus vs cursed/low_hp
+        // T4: Mass Hex — AoE curse + vulnerability + debuff, bonus vs cursed/debuffed
         role: "capstone",
         effects: ["debuff_vuln", "debuff_stat", "dmg_spell"],
-        conditions: { creates: ["cursed", "vulnerable"], exploits: ["cursed", "low_hp"] },
+        conditions: { creates: ["cursed", "vulnerable"], exploits: ["cursed", "debuffed"] },
         targetingConstraint: "tgt_aoe_adjacent",
         powerRange: [12, 18],
       },

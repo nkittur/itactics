@@ -102,6 +102,7 @@ function analyzeTree(tree: SkillTree, themeId: string): TreeAnalysis {
       if (t.type === "trg_onKill") passiveArchetypes.push("kill_rewarder");
       else if (t.type === "trg_belowHP") passiveArchetypes.push("condition_exploiter");
       else if (t.type === "trg_onHit" && eff?.type === "res_apRefund") passiveArchetypes.push("debuff_amplifier");
+      else if (t.type === "trg_onHit" && eff?.type === "dmg_weapon") passiveArchetypes.push("dot_amplifier");
       else if (t.type === "trg_onHit" && eff?.type === "buff_stat") passiveArchetypes.push("stack_builder");
       else if (t.type === "trg_turnStart") passiveArchetypes.push("sustained_fighter");
       else if (t.type === "trg_onTakeDamage") passiveArchetypes.push("reactive_defender");

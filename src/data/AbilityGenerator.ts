@@ -48,26 +48,31 @@ const TARGETING_MULT: Record<TargetingType, number> = {
 // ── Default effect params per type ──
 
 function defaultEffectParams(type: EffectType, tier: 1 | 2 | 3, rng: () => number): Record<string, number | string> {
-  const vary = (base: number, pct: number) => Math.round(base * (1 + (rng() * 2 - 1) * pct));
+  // Snap to nearest multiple of `step`, with minimum `min`
+  const snap = (base: number, step: number, min: number) => {
+    const raw = base + (rng() * 2 - 1) * step;
+    return Math.max(min, Math.round(raw / step) * step);
+  };
+
   switch (type) {
     case "dmg_weapon":
-      return { multiplier: vary(tier === 1 ? 70 : tier === 2 ? 100 : 120, 0.1) / 100 };
+      return { multiplier: snap(tier === 1 ? 120 : tier === 2 ? 140 : 160, 20, 120) / 100 };
     case "dmg_execute":
       return {
-        multiplier: vary(tier === 1 ? 90 : tier === 2 ? 120 : 140, 0.1) / 100,
+        multiplier: snap(tier === 1 ? 120 : tier === 2 ? 140 : 160, 20, 120) / 100,
         hpThreshold: tier >= 3 ? 30 : 20,
-        bonusMult: vary(tier === 1 ? 30 : tier === 2 ? 50 : 80, 0.1) / 100,
+        bonusMult: snap(tier === 1 ? 40 : tier === 2 ? 60 : 80, 20, 20) / 100,
       };
     case "dmg_multihit":
-      return { hits: tier >= 3 ? 3 : 2, multPerHit: vary(50, 0.1) / 100 };
+      return { hits: tier >= 3 ? 3 : 2, multPerHit: snap(60, 20, 40) / 100 };
     case "dmg_spell":
-      return { multiplier: vary(tier === 1 ? 80 : tier === 2 ? 110 : 140, 0.1) / 100 };
+      return { multiplier: snap(tier === 1 ? 120 : tier === 2 ? 140 : 180, 20, 120) / 100 };
     case "dot_bleed":
-      return { dmgPerTurn: vary(tier === 1 ? 3 : 5, 0.15), turns: tier >= 3 ? 3 : 2 };
+      return { dmgPerTurn: snap(tier === 1 ? 4 : 6, 2, 2), turns: tier >= 3 ? 3 : 2 };
     case "dot_burn":
-      return { dmgPerTurn: vary(tier === 1 ? 4 : 6, 0.15), turns: tier >= 3 ? 3 : 2 };
+      return { dmgPerTurn: snap(tier === 1 ? 4 : 6, 2, 2), turns: tier >= 3 ? 3 : 2 };
     case "dot_poison":
-      return { dmgPerTurn: vary(tier === 1 ? 2 : 4, 0.15), turns: tier >= 3 ? 4 : 3, statReduce: vary(5, 0.2) };
+      return { dmgPerTurn: snap(tier === 1 ? 2 : 4, 2, 2), turns: tier >= 3 ? 4 : 3, statReduce: snap(5, 5, 5) };
     case "disp_push":
       return { distance: tier >= 3 ? 2 : 1 };
     case "cc_stun":
@@ -77,23 +82,23 @@ function defaultEffectParams(type: EffectType, tier: 1 | 2 | 3, rng: () => numbe
     case "cc_daze":
       return { apLoss: tier >= 3 ? 2 : 1, turns: tier >= 3 ? 2 : 1 };
     case "debuff_stat": {
-      const stats = ["meleeDefense", "rangedDefense", "meleeSkill"];
-      return { stat: stats[Math.floor(rng() * stats.length)]!, amount: vary(tier === 1 ? 8 : 10, 0.15), turns: 2 };
+      const stats = ["meleeDefense", "rangedDefense", "meleeSkill", "rangedSkill", "initiative", "resolve"];
+      return { stat: stats[Math.floor(rng() * stats.length)]!, amount: snap(tier === 1 ? 10 : 15, 5, 5), turns: 2 };
     }
     case "debuff_vuln":
-      return { bonusDmg: vary(20, 0.1), turns: 2 };
+      return { bonusDmg: snap(20, 10, 10), turns: 2 };
     case "buff_stat": {
-      const bStats = ["meleeDefense", "rangedDefense", "meleeSkill"];
-      return { stat: bStats[Math.floor(rng() * bStats.length)]!, amount: vary(tier === 1 ? 8 : 12, 0.15), turns: 2 };
+      const bStats = ["meleeDefense", "rangedDefense", "meleeSkill", "rangedSkill", "initiative", "resolve"];
+      return { stat: bStats[Math.floor(rng() * bStats.length)]!, amount: snap(tier === 1 ? 10 : 15, 5, 5), turns: 2 };
     }
     case "buff_dmgReduce":
-      return { percent: vary(25, 0.1), turns: 1 };
+      return { percent: snap(20, 10, 10), turns: 1 };
     case "stance_counter":
       return { maxCounters: tier >= 3 ? 99 : 3 };
     case "stance_overwatch":
       return { maxTriggers: tier >= 3 ? 5 : 3 };
     case "res_apRefund":
-      return { amount: vary(3, 0.15) };
+      return { amount: snap(3, 1, 2) };
   }
 }
 
@@ -556,7 +561,7 @@ function buildPassiveTriggerEffect(
         powerAdd: 3,
         triggeredEffect: {
           type: "res_apRefund",
-          params: { amount: Math.round(2 + rng()) }, // 2-3
+          params: { amount: 3 },
           power: 3,
         },
       };
@@ -569,7 +574,7 @@ function buildPassiveTriggerEffect(
         powerAdd: 4,
         triggeredEffect: {
           type: "dmg_weapon",
-          params: { bonusPercent: tier === 1 ? 10 : 20 },
+          params: { bonusPercent: 20 },
           power: 3,
         },
       };
@@ -582,7 +587,7 @@ function buildPassiveTriggerEffect(
         powerAdd: 3,
         triggeredEffect: {
           type: "res_apRefund",
-          params: { amount: Math.round(1 + rng()) }, // 1-2
+          params: { amount: 2 },
           power: 2,
         },
       };
@@ -597,7 +602,7 @@ function buildPassiveTriggerEffect(
           type: "buff_stat",
           params: {
             stat: "meleeDefense",
-            amount: Math.round(8 + rng() * 4), // 8-12
+            amount: 10,
           },
           power: 3,
         },
@@ -611,7 +616,7 @@ function buildPassiveTriggerEffect(
         powerAdd: 4,
         triggeredEffect: {
           type: "dmg_weapon",
-          params: { bonusPercent: tier === 1 ? 12 : 20 },
+          params: { bonusPercent: 20 },
           power: 3,
         },
       };
@@ -624,7 +629,7 @@ function buildPassiveTriggerEffect(
         powerAdd: 4,
         triggeredEffect: {
           type: "dmg_weapon",
-          params: { bonusPercent: tier === 1 ? 12 : 20 },
+          params: { bonusPercent: 20 },
           power: 3,
         },
       };
@@ -637,7 +642,7 @@ function buildPassiveTriggerEffect(
         powerAdd: 3,
         triggeredEffect: {
           type: "buff_dmgReduce",
-          params: { percent: Math.round(15 + rng() * 10) },
+          params: { percent: 20 },
           power: 3,
         },
       };
@@ -650,7 +655,7 @@ function buildPassiveTriggerEffect(
         powerAdd: 4,
         triggeredEffect: {
           type: "dmg_weapon",
-          params: { bonusPercent: tier === 1 ? 15 : 25 },
+          params: { bonusPercent: 20 },
           power: 3,
         },
       };
@@ -663,7 +668,7 @@ function buildPassiveTriggerEffect(
         powerAdd: 3,
         triggeredEffect: {
           type: "res_apRefund",
-          params: { amount: Math.round(1 + rng()) },
+          params: { amount: 2 },
           power: 2,
         },
       };
@@ -678,7 +683,7 @@ function buildPassiveTriggerEffect(
           type: "buff_stat",
           params: {
             stat: "meleeSkill",
-            amount: Math.round(5 + rng() * 5),
+            amount: 10,
           },
           power: 2,
         },
