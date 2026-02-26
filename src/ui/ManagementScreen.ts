@@ -10,7 +10,7 @@ import { generateRecruits, getPartyLevel } from "@data/RecruitData";
 import { resolveWeapon, resolveShield, resolveArmor, resolveItemName, setItemRegistry } from "@data/ItemResolver";
 import { isGeneratedItemId } from "@data/GeneratedItemData";
 import { generateShopInventory, shopRefreshCost, qualityColor } from "@data/ItemGenerator";
-import { resolveAbility, getAbilityRegistry } from "@data/AbilityResolver";
+import { resolveAbility, getAbilityRegistry, setAbilityRegistry } from "@data/AbilityResolver";
 import { THEMES } from "@data/ThemeData";
 import { detectUnitSynergies, detectTeamSynergies } from "@data/SynergyDetector";
 import { ALL_STAT_KEYS, statDisplayName, type StatKey } from "@data/TalentData";
@@ -71,9 +71,11 @@ export class ManagementScreen {
     this.root.className = "mgmt-screen";
     document.body.appendChild(this.root);
 
-    // Initialize item registry
+    // Initialize item and ability registries
     if (!this.saveData.itemRegistry) this.saveData.itemRegistry = {};
     setItemRegistry(this.saveData.itemRegistry);
+    if (!this.saveData.abilityRegistry) this.saveData.abilityRegistry = {};
+    setAbilityRegistry(this.saveData.abilityRegistry);
 
     // Generate contracts/recruits if not cached
     const partyLevel = getPartyLevel(this.saveData.roster);
@@ -82,8 +84,14 @@ export class ManagementScreen {
     }
     if (!this.saveData.availableRecruits || this.saveData.availableRecruits.length === 0) {
       this.saveData.availableRecruits = generateRecruits(partyLevel, simpleRng);
-      // Sync ability registry to save data after recruit generation
       this.saveData.abilityRegistry = getAbilityRegistry();
+    } else {
+      // Regenerate recruits if cached from before skill tree system
+      const needsRegen = this.saveData.availableRecruits.some(r => !r.skillTree);
+      if (needsRegen) {
+        this.saveData.availableRecruits = generateRecruits(partyLevel, simpleRng);
+        this.saveData.abilityRegistry = getAbilityRegistry();
+      }
     }
 
     // Generate shop if not cached

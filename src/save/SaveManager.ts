@@ -7,6 +7,7 @@ import type { GeneratedAbility } from "@data/AbilityData";
 import type { SkillTree } from "@data/SkillTreeData";
 import { generateSkillTree } from "@data/SkillTreeData";
 import { THEMES } from "@data/ThemeData";
+import { setAbilityRegistry } from "@data/AbilityResolver";
 
 const SAVE_KEY = "itactics-save";
 
@@ -112,6 +113,9 @@ export async function loadGame(): Promise<SaveData | null> {
     if (!Array.isArray(raw.stash)) data.stash = [];
     if (!data.itemRegistry) data.itemRegistry = {};
     if (!data.abilityRegistry) data.abilityRegistry = {};
+
+    // Set ability registry before migration so new abilities are registered into save data
+    setAbilityRegistry(data.abilityRegistry);
 
     // Migrate level-based abilities → skill tree
     for (const member of data.roster) {
