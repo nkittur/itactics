@@ -25,6 +25,8 @@
 14. [Naming and Presentation](#14-naming-and-presentation)
 15. [Example Generated Abilities](#15-example-generated-abilities)
 16. [Implementation Plan](#16-implementation-plan)
+17. [Recruit Skill Generation](#17-recruit-skill-generation)
+18. [Passive Skill Catalog & Generator Design](#18-passive-skill-catalog--generator-design)
 
 ---
 
@@ -1864,3 +1866,268 @@ Every distinct ability documented across all 7 games, clustered by function:
 | **Armor interaction** | Bypass, shred, or specifically target armor | BB (Puncture, Split Shield, Split Man), ItB (A.C.I.D.) |
 | **Conditional power** | Stronger against targets in specific states | BB (Deathblow vs stunned), Noita (trigger chains) |
 | **Environmental interaction** | Effect changes based on terrain | FFT (Geomancy), ItB (push into water = kill) |
+
+---
+
+## 18. Passive Skill Catalog & Generator Design
+
+### 18.1 Passive Skills Research: Catalog by Function
+
+Research from FFT, Fire Emblem, XCOM 2, Battle Brothers, Divinity: Original Sin 2, Tactics Ogre, Disgaea, Into the Breach, and Fell Seal.
+
+#### Category 1: Conditional Damage Modifiers
+
+Passives that boost damage under specific conditions. These are the most synergy-rich category because they reward setting up game states.
+
+| # | Name | Source | Trigger | Effect | iTactics Mapping |
+|---|------|--------|---------|--------|-----------------|
+| 1 | Persecution Complex | FE:3H | HP not full | +5 Atk | `trg_belowHP` + `dmg_weapon` bonus |
+| 2 | Hunter's Boon | FE:3H | Target below 50% HP | +20 Crit | `trg_belowHP` + crit bonus |
+| 3 | Death Blow | FE:3H | Initiating combat | +6 Str | `trg_onAttack` + `buff_stat` |
+| 4 | Shadowstrike | XCOM 2 | Concealed | +25 Aim, +25 Crit | No stealth system — skip |
+| 5 | Executioner | BB | Target already injured | +20% damage | `trg_belowHP` + `dmg_weapon` bonus |
+| 6 | Backstabber | BB | Target surrounded | +10% hit | New: `trg_targetSurrounded` |
+| 7 | Duelist | BB | No off-hand | +25% armor ignore | Static buff, equipment-conditional |
+| 8 | Killing Frenzy | BB | After a kill | +25% damage, 2 turns | `trg_onKill` + `buff_stat` |
+| 9 | Hothead | DOS2 | At full HP | +10% crit, +10% acc | Inverse of Persecution Complex |
+| 10 | Sadist | DOS2 | Target has status effect | +bonus damage | `trg_targetDebuffed` + bonus |
+| 11 | Elemental Ranger | DOS2 | Terrain-dependent | Bonus elemental dmg | No terrain elements — skip |
+| 12 | War Cry | Disgaea | Per adjacent enemy | +15% stats per enemy | `trg_turnStart` + adjacency check |
+| 13 | Into the Fray | Fell Seal | Per adjacent enemy | +12-85% dmg scaling | `trg_onAttack` + adjacency scaling |
+| 14 | Smell Blood | BB / iTactics | Target below 50% HP | +10-20% damage | Already implemented (executioner T2) |
+| 15 | Lone Wolf | FE / BB | No allies nearby | +5 dmg / +15% skills | `trg_turnStart` + isolation check |
+
+**Key synergies with active skill components:**
+- Bleed/DoT actives → `trg_targetDebuffed` passives (Sadist pattern): any active that creates "bleeding" or "debuffed" enables this
+- Execute actives (`dmg_execute`) → `trg_belowHP` passives: stacking damage multipliers on low-HP targets
+- Multi-hit actives (`dmg_multihit`) → per-hit proc passives: each hit can trigger bonus effects
+- Stun actives (`cc_stun`) → `trg_targetDebuffed` passives: stunned counts as debuffed
+
+#### Category 2: Resource Recovery
+
+Passives that recover AP, fatigue, or HP based on combat events. Critical for turn economy.
+
+| # | Name | Source | Trigger | Effect | iTactics Mapping |
+|---|------|--------|---------|--------|-----------------|
+| 1 | Blood Rush | iTactics | On kill | +2-3 AP | Already implemented (reaper T2) |
+| 2 | Opportunist's Eye | iTactics | On debuff applied | +1-2 AP | Already implemented (opportunist T2) |
+| 3 | Berserk | BB | On kill (1/turn) | +4 AP | `trg_onKill` + `res_apRefund` (capped) |
+| 4 | Executioner (DOS2) | DOS2 | On kill (1/turn) | +2 AP | `trg_onKill` + `res_apRefund` |
+| 5 | Lifefont | FFT | On move | Recover HP | `trg_onMove` + heal (new trigger) |
+| 6 | Recover | BB | Wait action | -50% fatigue | `trg_onWait` + fatigue reduction |
+| 7 | Leech Life | Fell Seal | On dealing damage | Heal 33% of damage | `trg_onHit` + `heal_lifesteal` |
+| 8 | What a Rush | DOS2 | Below 50% HP | +1 max AP, +1 AP/turn | `trg_belowHP` + AP boost |
+| 9 | Catnap | FE:3H | On Wait | Recover 10% HP | `trg_onWait` + heal |
+| 10 | Songstress | FE:3H | Ally turn start | Allies in range heal 10% | `trg_turnStart` + `aura_heal` |
+| 11 | Live to Serve | FE:3H | On healing ally | Self-heal same amount | No heal system yet — future |
+| 12 | Adrenaline | BB | Spend fatigue | Act first next turn | Initiative manipulation |
+
+**Key synergies with active skill components:**
+- AoE actives (`tgt_aoe_adjacent`) → kill chain passives: AoE kills trigger AP refund for follow-up attacks
+- Bleed/DoT actives → lifesteal passives: bleed tick damage can heal attacker each turn
+- Debuff actives (`debuff_stat`, `debuff_vuln`) → Opportunist's Eye: every debuff = free AP
+- High-fatigue actives (power 21+) → fatigue reduction passives: offset the cost
+
+#### Category 3: Defensive / Survivability
+
+Passives that reduce damage, prevent death, or increase evasion.
+
+| # | Name | Source | Trigger | Effect | iTactics Mapping |
+|---|------|--------|---------|--------|-----------------|
+| 1 | Hold the Line | iTactics | Turn start | +8-12 melee defense | Already implemented (sentinel T2) |
+| 2 | Nine Lives | BB | Fatal blow (1/fight) | Survive at 1 HP, +15 all def | `trg_onFatalBlow` + survive + buff |
+| 3 | Nimble | BB | Always (light armor) | Dmg reduction scaling | Static buff, equipment-conditional |
+| 4 | Battle Forged | BB | Always (heavy armor) | 5% armor → dmg reduction | Static buff, equipment-conditional |
+| 5 | Comeback Kid | DOS2 | Fatal blow (1/fight) | Resurrect at 20% HP | `trg_onFatalBlow` + survive |
+| 6 | Shirahadori | FFT | On melee attack received | Evade based on Bravery | `trg_onTakeDamage` + evasion check |
+| 7 | Colossus | BB | Always | +25% HP | Static stat modifier |
+| 8 | Underdog | BB | When surrounded | No defense penalty | Static modifier, conditional |
+| 9 | Resilient | BB | On status applied | Duration → 1 turn | `trg_onDebuffReceived` + duration reduction |
+| 10 | Anticipation | BB | Targeted by ranged | +bonus ranged def | `trg_onTakeDamage` + ranged conditional |
+| 11 | Confidence | FE:3H | At full HP | +15 Hit, +15 Avo | `trg_turnStart` + HP conditional |
+| 12 | Walk It Off | DOS2 | Always | All status durations -1 | `trg_turnStart` + debuff tick |
+| 13 | Indomitable | DOS2 | After CC (3T CD) | 1 turn CC immunity | `trg_onDebuffReceived` + immunity |
+| 14 | Dragonheart | FFT | On physical attack | Gain auto-revive | `trg_onTakeDamage` + reraise (new) |
+
+**Key synergies with active skill components:**
+- Stance actives (`stance_counter`, `stance_overwatch`) → Hold the Line: defense buff while holding stance
+- Counter stance → Nine Lives: survive to keep countering
+- `buff_dmgReduce` actives → stacks with defensive passives for extreme tanking
+- Root/immobilize actives on enemies → defensive passives let you survive being a frontliner
+
+#### Category 4: Counter / Reaction
+
+Passives that respond to being attacked. Create "you hit me, I hit back" gameplay.
+
+| # | Name | Source | Trigger | Effect | iTactics Mapping |
+|---|------|--------|---------|--------|-----------------|
+| 1 | Counter | FFT Monk | On melee hit received | Counter-attack | `trg_onTakeDamage` + free attack |
+| 2 | Magick Counter | FFT | On magic hit received | Cast same spell back | Not applicable (no magic) |
+| 3 | First Strike | FFT Samurai | On melee attack incoming | Pre-emptive attack | `trg_onAttackReceived` + attack first |
+| 4 | Bladestorm | XCOM 2 | Enemy enters melee | Free melee attack | `stance_overwatch` (already exists) |
+| 5 | Return Fire | XCOM 2 | Targeted by attack | Auto fire back | `trg_onTakeDamage` + ranged counter |
+| 6 | Guardian | XCOM 2 | Overwatch hit | Chance for extra shot | `trg_onOverwatchHit` + extra trigger |
+| 7 | Reach Advantage | BB | On 2H weapon hit | +5 melee def per stack | `trg_onHit` + `buff_stat` stack |
+| 8 | Riposte | FFT / BB | On melee miss received | Counter-attack | `trg_onDodge` + free attack |
+| 9 | Unstable | DOS2 | On death | Explode for 50% HP dmg | `trg_onDeath` + AoE damage |
+| 10 | Auto-Potion | FFT | On damage taken | Use potion from bag | `trg_onTakeDamage` + consumable |
+| 11 | Regenerate | FFT | On damage taken | Gain Regen status | `trg_onTakeDamage` + HoT |
+
+**Key synergies with active skill components:**
+- `stance_counter` actives → counter passives: double the counter potential
+- Stun actives → First Strike passive: stun them before they hit you
+- High-defense actives (`buff_stat` on def) → Riposte: survive to counter more
+- Bleed actives → Reach Advantage: stack defense while bleeding them
+
+#### Category 5: Kill Chain
+
+Passives that trigger on killing. Create snowball momentum and clutch multi-kill turns.
+
+| # | Name | Source | Trigger | Effect | iTactics Mapping |
+|---|------|--------|---------|--------|-----------------|
+| 1 | Serial | XCOM 2 | On kill | Full action refund | `trg_onKill` + full AP refund (very strong) |
+| 2 | Reaper (XCOM) | XCOM 2 | On melee kill | Extra action, -dmg | `trg_onKill` + AP + damage penalty |
+| 3 | Berserk | BB | On kill (1/turn) | +4 AP | `trg_onKill` + `res_apRefund` |
+| 4 | Killing Frenzy | BB | On kill | +25% dmg, 2 turns | `trg_onKill` + `buff_stat` |
+| 5 | Untouchable | XCOM 2 | On kill | Next attack auto-miss | `trg_onKill` + evasion buff |
+| 6 | Implacable | XCOM 2 | On kill | Bonus move | `trg_onKill` + movement bonus |
+| 7 | Survival Instinct | FE:3H | On kill | Stat boosts | `trg_onKill` + `buff_stat` |
+
+**Key synergies with active skill components:**
+- Execute actives (`dmg_execute`) → kill chain passives: execute finishes weakened targets, triggers chain
+- AoE actives → kill chain: multi-kill potential in one action
+- `res_apRefund` on active + kill chain passive = enormous AP generation on kills
+- Multi-hit actives → kill potential per hit = more chain opportunities
+
+#### Category 6: Turn Economy
+
+Passives that grant extra actions or modify turn structure. The most game-warping category.
+
+| # | Name | Source | Trigger | Effect | iTactics Mapping |
+|---|------|--------|---------|--------|-----------------|
+| 1 | Canto | FE (mounted) | After action | Move remaining distance | `trg_afterAction` + free move |
+| 2 | Quick Hands | BB | On weapon swap | Free swap (1/turn) | No equip swap in combat — skip |
+| 3 | Adrenaline | BB | Activate | Act first next round | Priority manipulation |
+| 4 | Glass Cannon | DOS2 | Always | Max AP, but no status resist | Static AP boost + vulnerability |
+| 5 | What a Rush | DOS2 | Below 50% HP | +1 max AP | `trg_belowHP` + AP cap increase |
+| 6 | Run and Gun | XCOM 2 | Activate (3T CD) | Action after dash | Cooldown active, not passive |
+
+**Key synergies with active skill components:**
+- Any active skill → Canto: use skill then reposition (powerful with melee actives)
+- High-cost actives (6+ AP) → What a Rush: extra AP lets you afford expensive skills when injured
+- `res_apRefund` actives → compounds with turn economy passives for extreme action compression
+
+#### Category 7: Ally Support / Auras
+
+Passives that buff nearby allies. Create formation incentives.
+
+| # | Name | Source | Trigger | Effect | iTactics Mapping |
+|---|------|--------|---------|--------|-----------------|
+| 1 | Lily's Poise | FE:3H | Always (aura) | Adjacent allies -3 dmg | `trg_turnStart` + `aura_dmgReduce` |
+| 2 | Songstress | FE:3H | Ally turn start | Adjacent allies +10% HP | `trg_allyTurnStart` + `aura_heal` |
+| 3 | Sacred Power | FE:3H | Always (aura) | Adjacent +3 dmg, -3 dmg taken | `trg_turnStart` + aura buff |
+| 4 | Solace | XCOM 2 | Always (aura) | Blocks mental status nearby | Status immunity aura |
+| 5 | Rally the Troops | BB | Activate | Restore morale nearby | Active, not passive — skip |
+| 6 | Holo-Targeting | XCOM 2 | On attack | +15% hit for allies vs target | `trg_onHit` + mark debuff |
+
+**Not yet supported** in combat system. Requires aura/adjacency checking in PassiveResolver. Good V2 candidates.
+
+#### Category 8: Status / Condition Manipulation
+
+Passives that inflict, resist, or extend debuffs.
+
+| # | Name | Source | Trigger | Effect | iTactics Mapping |
+|---|------|--------|---------|--------|-----------------|
+| 1 | Crippling Strikes | BB | On hit | Lower injury threshold by 33% | `trg_onHit` + injury check bonus |
+| 2 | Fearsome | BB | On 15+ dmg attack | Force morale check | `trg_onHit` + morale check (with MoraleManager) |
+| 3 | Overwhelm | BB | On attack vs slower target | -10% skill per stack | `trg_onHit` + `debuff_stat` on slower targets |
+| 4 | Torturer | DOS2 | Always | Status bypasses armor, +1 turn | `trg_onHit` + status duration extension |
+| 5 | Seal Strength | FE:3H | After combat | -6 Str to foe, 1 turn | `trg_onHit` + `debuff_stat` |
+| 6 | Resilient | BB | On status received | Duration capped at 1 | `trg_onDebuffReceived` + duration reduction |
+
+**Key synergies with active skill components:**
+- DoT actives (`dot_bleed`) → Torturer: bleeds last longer and bypass armor
+- CC actives (`cc_stun`, `cc_daze`) → Fearsome: stun + morale check = devastating
+- Debuff actives (`debuff_stat`) → Overwhelm: stacking debuffs compound
+- Multi-hit → Crippling Strikes: more hits = more injury chances
+
+#### Category 9: Stat Scaling
+
+Passives where stats dynamically change based on game state.
+
+| # | Name | Source | Trigger | Effect | iTactics Mapping |
+|---|------|--------|---------|--------|-----------------|
+| 1 | Dodge | BB | Always | +15% Init → melee/ranged def | Initiative-to-defense conversion |
+| 2 | Fast Adaptation | BB | On miss | +10% hit per miss, reset on hit | `trg_onMiss` + stacking hit buff |
+| 3 | Lone Wolf | BB | No allies in 3 tiles | +15% all skills | `trg_turnStart` + isolation conditional |
+| 4 | Reach Advantage | BB | On 2H hit | +5 melee def/stack (max 5) | `trg_onHit` + stacking defense |
+| 5 | Defiant Strength | FE:3H | Below 25% HP | +8 Str | `trg_belowHP` + large stat boost |
+| 6 | King of Grappling | FE:3H | Below 50% HP | +6 Str, +6 Def | `trg_belowHP` + multi-stat boost |
+| 7 | Strength Surge | FFT | On damage taken | +Atk | `trg_onTakeDamage` + `buff_stat` stack |
+
+**Key synergies with active skill components:**
+- 2H weapon actives → Reach Advantage: each attack builds defense
+- Multi-hit actives → Fast Adaptation: misses build accuracy for next hits
+- Execute actives → Defiant Strength: low HP = more damage for finishing blows
+- High-damage actives → Strength Surge: getting hit back makes next attack stronger
+
+### 18.2 Synergy Matrix: Passive Triggers × Active Effect Types
+
+This matrix identifies which passive trigger types create the strongest synergies with which active effect types:
+
+| Passive Trigger | Best Active Synergies | Synergy Strength | Why |
+|----------------|----------------------|-------------------|-----|
+| `trg_onKill` (AP refund) | `dmg_execute`, `dmg_weapon` (high mult), AoE | **S-tier** | Execute finishers + AP refund = chain kills |
+| `trg_onKill` (buff) | `dmg_multihit`, AoE | **A-tier** | Multi-hit or AoE = higher kill chance → buff active |
+| `trg_belowHP` (+dmg) | `dot_bleed`, `dmg_execute` | **S-tier** | Bleed ticks reduce HP → threshold met → execute bonus |
+| `trg_onHit` (AP) | `debuff_stat`, `debuff_vuln`, `cc_daze` | **A-tier** | Every debuff applied = free AP |
+| `trg_turnStart` (buff) | `stance_counter`, `stance_overwatch` | **A-tier** | Buff active during stance = defense + offense |
+| `trg_onTakeDamage` (buff) | `stance_counter`, `buff_dmgReduce` | **B-tier** | Get hit → get stronger → counter harder |
+| `trg_onTakeDamage` (lifesteal) | `buff_dmgReduce`, high-HP builds | **A-tier** | Reduce damage + heal back = unkillable |
+| `trg_targetDebuffed` (+dmg) | `debuff_stat`, `debuff_vuln`, `dot_bleed`, `cc_stun` | **S-tier** | Any condition on target = bonus damage |
+| `trg_onKill` (defense) | `dmg_execute`, AoE | **A-tier** | Kill → defense buff → survive to kill again |
+
+### 18.3 Passive Generator Design
+
+The passive generator takes one or more active `GeneratedAbility` as input and produces complementary passives. It analyzes what conditions the actives create/exploit and what trigger points are most valuable, then assembles a passive from the appropriate primitive pool.
+
+#### Input Analysis
+
+For each active ability, extract:
+1. **Conditions created**: from `synergyTags.creates` (e.g., "bleeding", "stunned", "debuffed")
+2. **Conditions exploited**: from `synergyTags.exploits`
+3. **Effect types used**: from `effects[].type` (e.g., "dmg_execute", "dot_bleed")
+4. **Targeting type**: single vs AoE
+5. **Cost profile**: AP cost, fatigue, cooldown
+
+#### Passive Archetype Selection
+
+Based on analysis, weight selection from these archetypes:
+
+| Archetype | When Selected | Trigger | Effect |
+|-----------|--------------|---------|--------|
+| **Condition Exploiter** | Actives create conditions | `trg_targetDebuffed` / `trg_belowHP` | +damage vs condition |
+| **Kill Rewarder** | Actives have high single-target damage | `trg_onKill` | AP refund / stat buff / defense buff |
+| **Debuff Amplifier** | Actives apply debuffs or DoTs | `trg_onHit` | AP refund / extend debuff / apply secondary debuff |
+| **Reactive Defender** | Actives include stances or self-buffs | `trg_onTakeDamage` | Buff stat / damage reduction / counter |
+| **Sustained Fighter** | Actives have high fatigue cost | `trg_turnStart` | Stat buff / fatigue recovery |
+| **Stack Builder** | Actives are multi-hit or fast | `trg_onHit` | Stacking stat buff (defense or offense) |
+
+#### Power Levels
+
+Passives generated at 3 power levels:
+
+| Level | Power Budget | Typical Effect |
+|-------|-------------|----------------|
+| Minor (T1) | 3-5 | +8% damage vs condition, +1 AP on kill |
+| Standard (T2) | 5-8 | +15% damage vs condition, +2 AP on kill, +8 defense |
+| Major (T3) | 8-12 | +25% damage vs condition, +3 AP on kill, multi-effect |
+
+#### Generation Rules
+
+1. **Must synergize**: Generated passive must reference at least one condition or effect type from the input actives
+2. **No redundancy**: Don't generate a passive that does exactly what an input active already does
+3. **Diminishing returns**: Cap total AP refund at +4/turn across all passives
+4. **One trigger type per passive**: Keep passives simple and readable
+5. **Exploit what actives create**: If actives create "bleeding", passive should exploit "bleeding"
+6. **Chain potential**: Prefer passives that enable using the active again (AP refund for high-cost actives, damage for execute thresholds)
