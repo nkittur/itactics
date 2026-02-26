@@ -13,14 +13,32 @@ import { generateShopInventory, shopRefreshCost, qualityColor } from "@data/Item
 import { resolveAbility, getAbilityRegistry } from "@data/AbilityResolver";
 import { THEMES } from "@data/ThemeData";
 import { detectUnitSynergies, detectTeamSynergies } from "@data/SynergyDetector";
+import { ALL_STAT_KEYS, statDisplayName, type StatKey } from "@data/TalentData";
 
 type Tab = "roster" | "shop" | "recruit" | "contracts";
 const MAX_BAG = 2;
 
+interface DetailUnit {
+  name: string;
+  classId: string;
+  level: number;
+  stats: RosterMember["stats"];
+  maxHp: number;
+  talentStars: Record<StatKey, number>;
+  spriteType: string;
+  abilities: { uid: string; unlockLevel: number }[];
+  skillTheme: string;
+  equipment: RosterMember["equipment"];
+  armor: RosterMember["armor"];
+  isRecruit: boolean;
+  cost?: number;
+}
 
 const DIFFICULTY_COLORS: Record<string, string> = {
   easy: "#44bb44", normal: "#cccc44", hard: "#dd7722", deadly: "#dd3333",
 };
+
+const TIER_COLORS: Record<number, string> = { 1: "#ccc", 2: "#4c4", 3: "#48d" };
 
 function el(tag: string, cls?: string, text?: string): HTMLElement {
   const e = document.createElement(tag);
@@ -39,8 +57,8 @@ export class ManagementScreen {
   private root: HTMLDivElement;
   private saveData: SaveData;
   private activeTab: Tab = "contracts";
-  private expandedUnit: number | null = null;
-  private equipTarget: { rosterIdx: number; stashIdx: number; itemId: string; category: StoreCategory } | null = null;
+  private detailUnit: { type: "roster"; index: number } | { type: "recruit"; index: number } | null = null;
+  private detailTab: "stats" | "skills" | "equipment" = "stats";
 
   constructor(saveData: SaveData) {
     this.saveData = saveData;
@@ -96,7 +114,7 @@ export class ManagementScreen {
       btn.addEventListener("pointerup", (e) => {
         e.stopPropagation();
         this.activeTab = tab;
-        this.equipTarget = null;
+        this.detailUnit = null;
         this.render();
       });
       tabs.appendChild(btn);
@@ -126,6 +144,354 @@ export class ManagementScreen {
     });
     footer.appendChild(delBtn);
     this.root.appendChild(footer);
+
+    // Detail overlay (on top of everything)
+    if (this.detailUnit) {
+      this.root.appendChild(this.renderUnitDetail());
+    }
+  }
+
+  // ── Shared: Sprite + Detail Unit ──
+
+  private renderSpritePortrait(spriteType: string, size: number): HTMLElement {
+    const sprite = el("div");
+    sprite.style.width = `${size}px`;
+    sprite.style.height = `${size}px`;
+    sprite.style.imageRendering = "pixelated";
+    sprite.style.backgroundSize = "600% 100%";
+    sprite.style.backgroundPosition = "0 0";
+    sprite.style.borderRadius = size > 64 ? "6px" : "4px";
+    sprite.style.backgroundColor = "#141428";
+    sprite.style.backgroundImage = `url(sprites/${spriteType}/Idle.png)`;
+    return sprite;
+  }
+
+  private getDetailUnit(): DetailUnit | null {
+    if (!this.detailUnit) return null;
+
+    if (this.detailUnit.type === "roster") {
+      const m = this.saveData.roster[this.detailUnit.index];
+      if (!m) return null;
+      const abilities: DetailUnit["abilities"] = [];
+      if (m.abilities) {
+        for (const uid of m.abilities) {
+          const unlockLevel = m.abilityUnlockLevels?.[uid] ?? 5;
+          abilities.push({ uid, unlockLevel });
+        }
+      }
+      return {
+        name: m.name,
+        classId: m.classId ?? "fighter",
+        level: m.level,
+        stats: m.stats,
+        maxHp: m.maxHp,
+        talentStars: m.talentStars,
+        spriteType: m.spriteType ?? "soldier",
+        abilities,
+        skillTheme: m.skillTheme ?? "",
+        equipment: m.equipment,
+        armor: m.armor,
+        isRecruit: false,
+      };
+    } else {
+      const r = (this.saveData.availableRecruits ?? [])[this.detailUnit.index];
+      if (!r) return null;
+      return {
+        name: r.name,
+        classId: r.classId,
+        level: r.level,
+        stats: r.stats,
+        maxHp: r.maxHp,
+        talentStars: r.talentStars,
+        spriteType: r.sprite,
+        abilities: r.uniqueSkills.map(sk => ({ uid: sk.uid, unlockLevel: sk.unlockLevel })),
+        skillTheme: r.skillTheme,
+        equipment: r.equipment,
+        armor: r.armor,
+        isRecruit: true,
+        cost: r.cost,
+      };
+    }
+  }
+
+  private renderUnitGrid(type: "roster" | "recruit"): HTMLElement {
+    const grid = el("div", "unit-grid");
+    const items = type === "roster" ? this.saveData.roster : (this.saveData.availableRecruits ?? []);
+
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i]!;
+      const card = el("div", "unit-grid-card");
+
+      // Sprite
+      const spriteType = type === "roster"
+        ? (item as RosterMember).spriteType ?? "soldier"
+        : (item as RecruitDef).sprite;
+      card.appendChild(this.renderSpritePortrait(spriteType, 64));
+
+      // Name
+      card.appendChild(el("div", "unit-grid-name", item.name));
+
+      // Class + Level
+      const classId = type === "roster"
+        ? (item as RosterMember).classId ?? "fighter"
+        : (item as RecruitDef).classId;
+      const className = getClassDef(classId as CharacterClass).name;
+      card.appendChild(el("div", "unit-grid-class", `${className} Lv${item.level}`));
+
+      // Cost badge (recruit only)
+      if (type === "recruit") {
+        card.appendChild(el("div", "unit-grid-cost", `${(item as RecruitDef).cost}g`));
+      }
+
+      const capturedI = i;
+      card.addEventListener("pointerup", (e) => {
+        e.stopPropagation();
+        this.detailUnit = { type, index: capturedI };
+        this.detailTab = "stats";
+        this.render();
+      });
+
+      grid.appendChild(card);
+    }
+
+    return grid;
+  }
+
+  // ── Detail Overlay ──
+
+  private renderUnitDetail(): HTMLElement {
+    const unit = this.getDetailUnit()!;
+    const overlay = el("div", "unit-detail-overlay");
+
+    // Header
+    const header = el("div", "detail-header");
+    const backBtn = el("button", "detail-back-btn", "\u2190");
+    backBtn.addEventListener("pointerup", (e) => {
+      e.stopPropagation();
+      this.detailUnit = null;
+      this.render();
+    });
+    header.appendChild(backBtn);
+
+    header.appendChild(this.renderSpritePortrait(unit.spriteType, 80));
+
+    const info = el("div", "detail-info");
+    info.appendChild(el("div", "detail-name", unit.name));
+    const className = getClassDef(unit.classId as CharacterClass).name;
+    info.appendChild(el("div", "detail-class", `${className} Lv${unit.level}`));
+    if (unit.skillTheme) {
+      const themeName = THEMES[unit.skillTheme]?.name ?? unit.skillTheme;
+      info.appendChild(el("span", "detail-theme-badge", themeName));
+    }
+    header.appendChild(info);
+    overlay.appendChild(header);
+
+    // Sub-tabs
+    const tabBar = el("div", "detail-tabs");
+    for (const tab of ["stats", "skills", "equipment"] as const) {
+      const btn = el("button", `detail-tab-btn${this.detailTab === tab ? " active" : ""}`, tab.charAt(0).toUpperCase() + tab.slice(1));
+      btn.addEventListener("pointerup", (e) => {
+        e.stopPropagation();
+        this.detailTab = tab;
+        this.render();
+      });
+      tabBar.appendChild(btn);
+    }
+    overlay.appendChild(tabBar);
+
+    // Tab content
+    const content = el("div", "detail-content");
+    switch (this.detailTab) {
+      case "stats": content.appendChild(this.renderStatsTab(unit)); break;
+      case "skills": content.appendChild(this.renderSkillsTab(unit)); break;
+      case "equipment": content.appendChild(this.renderEquipmentTab(unit)); break;
+    }
+    overlay.appendChild(content);
+
+    // Footer (recruit only)
+    if (unit.isRecruit && unit.cost !== undefined) {
+      const footer = el("div", "detail-footer");
+      const hireBtn = el("button", "detail-hire-btn", `Hire (${unit.cost}g)`);
+      if (this.saveData.gold < unit.cost) {
+        hireBtn.classList.add("disabled");
+      } else {
+        hireBtn.addEventListener("pointerup", (e) => {
+          e.stopPropagation();
+          this.hireRecruit(this.detailUnit!.index);
+        });
+      }
+      footer.appendChild(hireBtn);
+      overlay.appendChild(footer);
+    }
+
+    return overlay;
+  }
+
+  private renderStatsTab(unit: DetailUnit): HTMLElement {
+    const container = el("div");
+
+    const grid = el("div", "stat-grid");
+    for (const key of ALL_STAT_KEYS) {
+      const row = el("div", "stat-row");
+      row.appendChild(el("span", "stat-name", statDisplayName(key)));
+
+      const valueArea = el("span");
+      const valSpan = el("span", "stat-value", `${unit.stats[key]}`);
+      valueArea.appendChild(valSpan);
+
+      const stars = unit.talentStars[key] ?? 0;
+      if (stars > 0) {
+        const starSpan = el("span", "stat-stars", "\u2605".repeat(stars));
+        valueArea.appendChild(starSpan);
+      }
+      row.appendChild(valueArea);
+      grid.appendChild(row);
+    }
+    container.appendChild(grid);
+
+    // Extra stats
+    const extras = el("div", "stat-extra");
+    extras.textContent = `Max HP: ${unit.maxHp}  |  Movement: ${unit.stats.movementPoints}`;
+    container.appendChild(extras);
+
+    return container;
+  }
+
+  private renderSkillsTab(unit: DetailUnit): HTMLElement {
+    const container = el("div");
+
+    if (unit.abilities.length === 0) {
+      container.appendChild(el("div", "mgmt-empty", "No abilities."));
+      return container;
+    }
+
+    for (const ab of unit.abilities) {
+      const ability = resolveAbility(ab.uid);
+      if (!ability) continue;
+
+      const unlocked = unit.level >= ab.unlockLevel;
+      const card = el("div", `skill-card${unlocked ? "" : " locked"}`);
+      card.style.borderLeftColor = TIER_COLORS[ability.tier] ?? "#ccc";
+
+      const header = el("div", "skill-header");
+      const nameSpan = el("span", "skill-name", ability.name);
+      nameSpan.style.color = unlocked ? (TIER_COLORS[ability.tier] ?? "#ccc") : "#666";
+      header.appendChild(nameSpan);
+
+      if (ability.isPassive) {
+        header.appendChild(el("span", "skill-passive-badge", "Passive"));
+      }
+      if (!unlocked) {
+        header.appendChild(el("span", "skill-unlock-badge", `Unlocks Lv.${ab.unlockLevel}`));
+      }
+      card.appendChild(header);
+
+      if (unlocked) {
+        card.appendChild(el("div", "skill-desc", ability.description));
+        const costParts: string[] = [];
+        costParts.push(`${ability.cost.ap} AP`);
+        costParts.push(`${ability.cost.fatigue} Fatigue`);
+        if (ability.cost.cooldown > 0) costParts.push(`${ability.cost.cooldown}T CD`);
+        if (ability.cost.turnEnding) costParts.push("Turn Ending");
+        card.appendChild(el("div", "skill-cost-info", costParts.join(" | ")));
+      }
+
+      container.appendChild(card);
+    }
+
+    // Unit synergies
+    const abilityIds = unit.abilities.map(a => a.uid);
+    const synergies = detectUnitSynergies(abilityIds);
+    if (synergies.length > 0) {
+      container.appendChild(el("div", "mgmt-equip-label", "Synergies:"));
+      for (const syn of synergies) {
+        container.appendChild(el("div", "mgmt-synergy-row", `\u2194 ${syn.description}`));
+      }
+    }
+
+    return container;
+  }
+
+  private renderEquipmentTab(unit: DetailUnit): HTMLElement {
+    const container = el("div");
+    const isRoster = !unit.isRecruit;
+    const rosterIdx = isRoster && this.detailUnit ? this.detailUnit.index : -1;
+
+    // Equipment slots
+    const slots: { label: string; itemId: string | null; category: StoreCategory }[] = [
+      { label: "Weapon", itemId: unit.equipment.mainHand, category: "weapon" },
+      { label: "Shield", itemId: unit.equipment.offHand, category: "shield" },
+      { label: "Body Armor", itemId: unit.armor.body?.id ?? null, category: "body_armor" },
+      { label: "Head Armor", itemId: unit.armor.head?.id ?? null, category: "head_armor" },
+    ];
+
+    for (const slot of slots) {
+      const card = el("div", "equip-slot-card");
+      const left = el("div");
+      left.appendChild(el("div", "equip-slot-label", slot.label));
+      if (slot.itemId) {
+        left.appendChild(el("div", "equip-slot-name", resolveItemName(slot.itemId)));
+      } else {
+        left.appendChild(el("div", "equip-slot-empty", "Empty"));
+      }
+      card.appendChild(left);
+
+      if (isRoster && slot.itemId) {
+        const unBtn = el("button", "mgmt-unequip-btn", "X");
+        const cat = slot.category;
+        unBtn.addEventListener("pointerup", (e) => {
+          e.stopPropagation();
+          this.unequipSlot(rosterIdx, cat);
+        });
+        card.appendChild(unBtn);
+      }
+
+      container.appendChild(card);
+    }
+
+    // Bag
+    if (unit.equipment.bag.length > 0) {
+      const bagCard = el("div", "equip-slot-card");
+      const left = el("div");
+      left.appendChild(el("div", "equip-slot-label", "Bag"));
+      left.appendChild(el("div", "equip-slot-name", unit.equipment.bag.map(resolveItemName).join(", ")));
+      bagCard.appendChild(left);
+      container.appendChild(bagCard);
+    }
+
+    // Equip from stash (roster only)
+    if (isRoster && this.saveData.stash.length > 0) {
+      const m = this.saveData.roster[rosterIdx];
+      if (m) {
+        const section = el("div", "equip-stash-section");
+        section.appendChild(el("div", "mgmt-equip-label", "Equip from stash:"));
+        let hasItems = false;
+        for (let si = 0; si < this.saveData.stash.length; si++) {
+          const itemId = this.saveData.stash[si]!;
+          const cat = this.categorizeItem(itemId);
+          if (!cat) continue;
+          if (!this.canEquipOnUnit(m, itemId, cat)) continue;
+
+          hasItems = true;
+          const row = el("div", "equip-stash-item");
+          row.appendChild(el("span", "", resolveItemName(itemId)));
+          const eBtn = el("button", "mgmt-equip-btn", "Equip");
+          const capturedSi = si;
+          eBtn.addEventListener("pointerup", (e) => {
+            e.stopPropagation();
+            this.equipOnUnit(rosterIdx, capturedSi, itemId, cat);
+          });
+          row.appendChild(eBtn);
+          section.appendChild(row);
+        }
+        if (!hasItems) {
+          section.appendChild(el("div", "mgmt-empty-text", "No compatible items in stash"));
+        }
+        container.appendChild(section);
+      }
+    }
+
+    return container;
   }
 
   // ── Roster Tab ──
@@ -150,147 +516,62 @@ export class ManagementScreen {
       content.appendChild(synSection);
     }
 
-    for (let i = 0; i < this.saveData.roster.length; i++) {
-      const m = this.saveData.roster[i]!;
-      const card = el("div", "mgmt-unit-card");
-
-      // Summary row
-      const summary = el("div", "mgmt-unit-summary");
-      const className = m.classId ? getClassDef(m.classId as CharacterClass).name : "Unknown";
-      summary.appendChild(el("span", "mgmt-unit-name", m.name));
-      summary.appendChild(el("span", "mgmt-unit-class", `${className} Lv${m.level}`));
-      summary.appendChild(el("span", "mgmt-unit-hp", `HP: ${m.stats.hitpoints}`));
-
-      const weaponName = m.equipment.mainHand ? resolveWeapon(m.equipment.mainHand).name : "Unarmed";
-      summary.appendChild(el("span", "mgmt-unit-weapon", weaponName));
-
-      summary.addEventListener("pointerup", (e) => {
-        e.stopPropagation();
-        this.expandedUnit = this.expandedUnit === i ? null : i;
-        this.render();
-      });
-      card.appendChild(summary);
-
-      // Expanded detail
-      if (this.expandedUnit === i) {
-        const detail = el("div", "mgmt-unit-detail");
-
-        // Stats
-        const stats = el("div", "mgmt-unit-stats");
-        stats.innerHTML = `
-          <div>Melee: ${m.stats.meleeSkill} | Defense: ${m.stats.meleeDefense}</div>
-          <div>HP: ${m.stats.hitpoints} | Init: ${m.stats.initiative} | MP: ${m.stats.movementPoints}</div>
-          <div>Fatigue: ${m.stats.fatigue} | Resolve: ${m.stats.resolve}</div>
-        `;
-        detail.appendChild(stats);
-
-        // Equipment
-        const equip = el("div", "mgmt-unit-equip");
-        equip.appendChild(el("div", "mgmt-equip-label", "Equipment:"));
-
-        this.renderEquipSlot(equip, i, "Weapon", m.equipment.mainHand, "weapon");
-        this.renderEquipSlot(equip, i, "Shield", m.equipment.offHand, "shield");
-        this.renderEquipSlot(equip, i, "Body", m.armor.body?.id ?? null, "body_armor");
-        this.renderEquipSlot(equip, i, "Head", m.armor.head?.id ?? null, "head_armor");
-
-        if (m.equipment.bag.length > 0) {
-          equip.appendChild(el("div", "mgmt-equip-slot", `Bag: ${m.equipment.bag.map(resolveItemName).join(", ")}`));
-        }
-
-        detail.appendChild(equip);
-
-        // Abilities section
-        if (m.abilities && m.abilities.length > 0) {
-          const abSection = el("div", "mgmt-unit-abilities");
-          const themeName = m.skillTheme ? (THEMES[m.skillTheme]?.name ?? m.skillTheme) : "";
-          abSection.appendChild(el("div", "mgmt-equip-label", `Abilities${themeName ? ` (${themeName})` : ""}:`));
-
-          for (const uid of m.abilities) {
-            const ability = resolveAbility(uid);
-            if (!ability) continue;
-
-            const unlockLevel = m.abilityUnlockLevels?.[uid] ?? 5;
-            const unlocked = m.level >= unlockLevel;
-
-            const row = el("div", "mgmt-ability-row");
-            const tierColors: Record<number, string> = { 1: "#ccc", 2: "#4c4", 3: "#48d" };
-            const nameSpan = el("span", "mgmt-ability-name", ability.name);
-            nameSpan.style.color = unlocked ? (tierColors[ability.tier] ?? "#ccc") : "#666";
-            row.appendChild(nameSpan);
-
-            if (unlocked) {
-              row.appendChild(el("span", "mgmt-ability-desc", ` - ${ability.description}`));
-            } else {
-              row.appendChild(el("span", "mgmt-ability-locked", ` (Unlocks Lv.${unlockLevel})`));
-            }
-            abSection.appendChild(row);
-          }
-
-          // Unit synergies
-          const synergies = detectUnitSynergies(m.abilities!);
-          if (synergies.length > 0) {
-            const synDiv = el("div", "mgmt-synergy-list");
-            for (const syn of synergies) {
-              synDiv.appendChild(el("div", "mgmt-synergy-row", `\u2194 ${syn.description}`));
-            }
-            abSection.appendChild(synDiv);
-          }
-
-          detail.appendChild(abSection);
-        }
-
-        // Stash items that can be equipped
-        if (this.saveData.stash.length > 0) {
-          const stashLabel = el("div", "mgmt-equip-label", "Equip from stash:");
-          detail.appendChild(stashLabel);
-          const stashList = el("div", "mgmt-stash-list");
-          for (let si = 0; si < this.saveData.stash.length; si++) {
-            const itemId = this.saveData.stash[si]!;
-            const cat = this.categorizeItem(itemId);
-            if (!cat) continue;
-            if (!this.canEquipOnUnit(m, itemId, cat)) continue;
-
-            const row = el("div", "mgmt-stash-item");
-            row.appendChild(el("span", "", resolveItemName(itemId)));
-            const eBtn = el("button", "mgmt-equip-btn", "Equip");
-            const capturedSi = si;
-            eBtn.addEventListener("pointerup", (e) => {
-              e.stopPropagation();
-              this.equipOnUnit(i, capturedSi, itemId, cat);
-            });
-            row.appendChild(eBtn);
-            stashList.appendChild(row);
-          }
-          if (stashList.children.length === 0) {
-            stashList.appendChild(el("div", "mgmt-empty-text", "No compatible items in stash"));
-          }
-          detail.appendChild(stashList);
-        }
-
-        card.appendChild(detail);
-      }
-
-      content.appendChild(card);
-    }
+    content.appendChild(this.renderUnitGrid("roster"));
   }
 
-  private renderEquipSlot(parent: HTMLElement, rosterIdx: number, label: string, itemId: string | null, _category: StoreCategory): void {
-    const name = itemId ? resolveItemName(itemId) : "None";
-    const slot = el("div", "mgmt-equip-slot");
-    slot.textContent = `${label}: ${name}`;
+  // ── Recruit Tab ──
 
-    // Unequip button
-    if (itemId) {
-      const unBtn = el("button", "mgmt-unequip-btn", "X");
-      unBtn.addEventListener("pointerup", (e) => {
-        e.stopPropagation();
-        this.unequipSlot(rosterIdx, _category);
-      });
-      slot.appendChild(unBtn);
+  private renderRecruit(content: HTMLElement): void {
+    const recruits = this.saveData.availableRecruits ?? [];
+    if (recruits.length === 0) {
+      content.appendChild(el("div", "mgmt-empty", "No recruits available."));
+      return;
     }
 
-    parent.appendChild(slot);
+    content.appendChild(this.renderUnitGrid("recruit"));
   }
+
+  private hireRecruit(index: number): void {
+    const recruits = this.saveData.availableRecruits;
+    if (!recruits) return;
+    const r = recruits[index];
+    if (!r || this.saveData.gold < r.cost) return;
+
+    this.saveData.gold -= r.cost;
+
+    // Convert RecruitDef to RosterMember
+    const unlockLevels: Record<string, number> = {};
+    for (const sk of r.uniqueSkills) {
+      unlockLevels[sk.uid] = sk.unlockLevel;
+    }
+    const member: RosterMember = {
+      name: r.name,
+      classId: r.classId,
+      level: r.level,
+      experience: 0,
+      stats: { ...r.stats },
+      maxHp: r.maxHp,
+      talentStars: { ...r.talentStars },
+      perks: { unlocked: [], availablePoints: 0 },
+      equipment: { ...r.equipment, bag: [...r.equipment.bag] },
+      armor: {
+        body: r.armor.body ? { ...r.armor.body } : null,
+        head: r.armor.head ? { ...r.armor.head } : null,
+      },
+      spriteType: r.sprite,
+      skillTheme: r.skillTheme,
+      abilities: r.uniqueSkills.map(sk => sk.uid),
+      abilityUnlockLevels: unlockLevels,
+    };
+
+    this.saveData.roster.push(member);
+    recruits.splice(index, 1);
+    this.detailUnit = null;
+    void this.save();
+    this.render();
+  }
+
+  // ── Equipment Logic ──
 
   private unequipSlot(rosterIdx: number, category: StoreCategory): void {
     const m = this.saveData.roster[rosterIdx]!;
@@ -626,106 +907,6 @@ export class ManagementScreen {
     this.saveData.gold += sellPrice;
     this.saveData.stash.splice(idx, 1);
     pruneItemRegistry(this.saveData);
-    void this.save();
-    this.render();
-  }
-
-  // ── Recruit Tab ──
-
-  private renderRecruit(content: HTMLElement): void {
-    const recruits = this.saveData.availableRecruits ?? [];
-    if (recruits.length === 0) {
-      content.appendChild(el("div", "mgmt-empty", "No recruits available."));
-      return;
-    }
-
-    for (let i = 0; i < recruits.length; i++) {
-      const r = recruits[i]!;
-      const card = el("div", "recruit-card");
-
-      const header = el("div", "recruit-header");
-      const className = getClassDef(r.classId).name;
-      header.appendChild(el("span", "recruit-name", r.name));
-      header.appendChild(el("span", "recruit-class", `${className} Lv${r.level}`));
-      header.appendChild(el("span", "recruit-cost", `${r.cost}g`));
-      card.appendChild(header);
-
-      const stats = el("div", "recruit-stats");
-      stats.textContent = `HP:${r.stats.hitpoints} Mel:${r.stats.meleeSkill} Def:${r.stats.meleeDefense} Init:${r.stats.initiative}`;
-      card.appendChild(stats);
-
-      // Theme badge + skill preview
-      if (r.skillTheme) {
-        const themeName = THEMES[r.skillTheme]?.name ?? r.skillTheme;
-        const badge = el("span", "recruit-theme-badge", themeName);
-        card.appendChild(badge);
-      }
-      if (r.uniqueSkills && r.uniqueSkills.length > 0) {
-        const skillList = el("div", "recruit-skills");
-        for (const sk of r.uniqueSkills) {
-          const ability = resolveAbility(sk.uid);
-          if (!ability) continue;
-          const tierColors: Record<number, string> = { 1: "#ccc", 2: "#4c4", 3: "#48d" };
-          const row = el("div", "recruit-skill-row");
-          const nameSpan = el("span", "", ability.name);
-          nameSpan.style.color = tierColors[ability.tier] ?? "#ccc";
-          row.appendChild(nameSpan);
-          row.appendChild(el("span", "recruit-skill-lvl", ` Lv${sk.unlockLevel}`));
-          skillList.appendChild(row);
-        }
-        card.appendChild(skillList);
-      }
-
-      const hireBtn = el("button", "mgmt-hire-btn", "Hire");
-      if (this.saveData.gold < r.cost) {
-        hireBtn.classList.add("disabled");
-      } else {
-        const capturedI = i;
-        hireBtn.addEventListener("pointerup", (e) => {
-          e.stopPropagation();
-          this.hireRecruit(capturedI);
-        });
-      }
-      card.appendChild(hireBtn);
-      content.appendChild(card);
-    }
-  }
-
-  private hireRecruit(index: number): void {
-    const recruits = this.saveData.availableRecruits;
-    if (!recruits) return;
-    const r = recruits[index];
-    if (!r || this.saveData.gold < r.cost) return;
-
-    this.saveData.gold -= r.cost;
-
-    // Convert RecruitDef to RosterMember
-    const unlockLevels: Record<string, number> = {};
-    for (const sk of r.uniqueSkills) {
-      unlockLevels[sk.uid] = sk.unlockLevel;
-    }
-    const member: RosterMember = {
-      name: r.name,
-      classId: r.classId,
-      level: r.level,
-      experience: 0,
-      stats: { ...r.stats },
-      maxHp: r.maxHp,
-      talentStars: { ...r.talentStars },
-      perks: { unlocked: [], availablePoints: 0 },
-      equipment: { ...r.equipment, bag: [...r.equipment.bag] },
-      armor: {
-        body: r.armor.body ? { ...r.armor.body } : null,
-        head: r.armor.head ? { ...r.armor.head } : null,
-      },
-      spriteType: r.sprite,
-      skillTheme: r.skillTheme,
-      abilities: r.uniqueSkills.map(sk => sk.uid),
-      abilityUnlockLevels: unlockLevels,
-    };
-
-    this.saveData.roster.push(member);
-    recruits.splice(index, 1);
     void this.save();
     this.render();
   }

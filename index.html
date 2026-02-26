@@ -1090,6 +1090,132 @@
     }
     .mgmt-accept-btn:active { background: #1a4a80; }
 
+    /* ── FFT-Style Unit Grid ── */
+    .unit-grid {
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;
+    }
+    .unit-grid-card {
+      background: #1e2740; border-radius: 8px; padding: 8px;
+      text-align: center; cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+      touch-action: manipulation;
+    }
+    .unit-grid-card:active { background: #2a3a5a; }
+    .unit-sprite {
+      width: 64px; height: 64px; margin: 0 auto 4px;
+      image-rendering: pixelated;
+      background-size: 600% 100%; background-position: 0 0;
+      border-radius: 4px; background-color: #141428;
+    }
+    .unit-grid-name {
+      font-size: 12px; font-weight: bold; color: #ddd;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .unit-grid-class { font-size: 11px; color: #8899aa; }
+    .unit-grid-cost { font-size: 11px; color: #ffd700; }
+
+    /* ── Detail Overlay ── */
+    .unit-detail-overlay {
+      position: fixed; inset: 0; background: #1a1a2e;
+      z-index: 1001; display: flex; flex-direction: column; overflow: hidden;
+    }
+    .detail-header {
+      display: flex; align-items: center; gap: 12px;
+      padding: 12px 16px; background: #16213e;
+      border-bottom: 2px solid #0f3460;
+    }
+    .detail-back-btn {
+      background: none; border: none; color: #e94560;
+      font-size: 20px; cursor: pointer; padding: 4px 8px;
+    }
+    .detail-sprite {
+      width: 80px; height: 80px;
+      image-rendering: pixelated;
+      background-size: 600% 100%; background-position: 0 0;
+      border-radius: 6px; background-color: #141428;
+    }
+    .detail-info { flex: 1; }
+    .detail-name { font-size: 18px; font-weight: bold; color: #ddd; }
+    .detail-class { font-size: 13px; color: #8899aa; }
+    .detail-theme-badge {
+      display: inline-block; background: #2a3a5a; color: #88bbdd;
+      font-size: 11px; padding: 2px 8px; border-radius: 10px; margin-top: 2px;
+    }
+
+    /* Detail Sub-tabs */
+    .detail-tabs {
+      display: flex; background: #16213e;
+      border-bottom: 1px solid #0f3460;
+    }
+    .detail-tab-btn {
+      flex: 1; padding: 10px; background: transparent; border: none;
+      color: #667; font-size: 14px; font-weight: bold; cursor: pointer;
+      border-bottom: 3px solid transparent;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .detail-tab-btn.active { color: #e94560; border-bottom-color: #e94560; }
+    .detail-content {
+      flex: 1; overflow-y: auto; padding: 12px;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    /* Stats Tab */
+    .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 16px; }
+    .stat-row {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 4px 0; border-bottom: 1px solid #1e2740;
+    }
+    .stat-name { font-size: 13px; color: #8899aa; }
+    .stat-value { font-size: 14px; font-weight: bold; color: #ddd; }
+    .stat-stars { color: #ffd700; font-size: 11px; letter-spacing: 1px; margin-left: 4px; }
+    .stat-extra {
+      grid-column: 1 / -1; font-size: 13px; color: #99aabb;
+      padding: 4px 0; border-bottom: 1px solid #1e2740;
+    }
+
+    /* Skills Tab */
+    .skill-card {
+      background: #1e2740; border-radius: 6px;
+      padding: 10px 12px; margin-bottom: 8px;
+      border-left: 3px solid #ccc;
+    }
+    .skill-card.locked { opacity: 0.5; }
+    .skill-header { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+    .skill-name { font-size: 14px; font-weight: bold; }
+    .skill-desc { font-size: 12px; color: #99aabb; margin-top: 2px; }
+    .skill-cost-info { font-size: 11px; color: #667; margin-top: 4px; }
+    .skill-unlock-badge { font-size: 11px; color: #886; font-style: italic; }
+    .skill-passive-badge {
+      font-size: 10px; background: #2a3a2a; color: #6a6;
+      padding: 1px 6px; border-radius: 8px;
+    }
+
+    /* Equipment Tab */
+    .equip-slot-card {
+      background: #1e2740; border-radius: 6px;
+      padding: 8px 12px; margin-bottom: 6px;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .equip-slot-label { font-size: 12px; color: #667; }
+    .equip-slot-name { font-size: 13px; color: #bbb; }
+    .equip-slot-empty { font-size: 13px; color: #445; font-style: italic; }
+    .equip-stash-section { margin-top: 12px; }
+    .equip-stash-item {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 4px 0; font-size: 13px;
+    }
+
+    /* Detail Footer */
+    .detail-footer {
+      padding: 12px 16px; border-top: 2px solid #0f3460; background: #16213e;
+    }
+    .detail-hire-btn {
+      width: 100%; padding: 10px; background: #0f3460; border: none;
+      color: #aabbcc; font-size: 15px; font-weight: bold;
+      border-radius: 6px; cursor: pointer;
+    }
+    .detail-hire-btn.disabled { opacity: 0.4; pointer-events: none; }
+
   </style>
 </head>
 <body>
