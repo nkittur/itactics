@@ -28,6 +28,9 @@ import type { AttackResult } from "@combat/DamageCalculator";
 import { getZoCDangerHexes } from "@combat/ZoneOfControl";
 import { UNARMED } from "@data/WeaponData";
 import { resolveWeapon, resolveShield, resolveArmor, resolveItemName, setItemRegistry } from "@data/ItemResolver";
+import { setAbilityRegistry } from "@data/AbilityResolver";
+import { createAbilities } from "@entities/components/Abilities";
+import { createAbilityCooldowns } from "@entities/components/AbilityCooldowns";
 import { SCENARIOS, type ScenarioDef } from "@data/ScenarioData";
 import { generateBattle } from "@data/BattleGenerator";
 import { generateContracts } from "@data/ContractData";
@@ -350,6 +353,10 @@ export class DemoBattle {
       if (saveDataOrIndex.itemRegistry) {
         setItemRegistry(saveDataOrIndex.itemRegistry);
       }
+      // Initialize ability registry for generated abilities
+      if (saveDataOrIndex.abilityRegistry) {
+        setAbilityRegistry(saveDataOrIndex.abilityRegistry);
+      }
       if (saveDataOrIndex.pendingContract) {
         scenario = generateBattle(
           saveDataOrIndex.pendingContract,
@@ -377,6 +384,21 @@ export class DemoBattle {
 
     // Spawn units from scenario
     this.spawnFromScenario(scenario);
+
+    // Add ability components for player units from roster data
+    if (this.incomingSaveData?.roster) {
+      for (let i = 0; i < this.playerIds.length && i < this.incomingSaveData.roster.length; i++) {
+        const pid = this.playerIds[i]!;
+        const member = this.incomingSaveData.roster[i]!;
+        // Filter abilities by unlock level
+        const unlockedAbilities = (member.abilities ?? []).filter(uid => {
+          const unlockLvl = member.abilityUnlockLevels?.[uid] ?? 0;
+          return member.level >= unlockLvl;
+        });
+        this.world.addComponent(pid, createAbilities(unlockedAbilities));
+        this.world.addComponent(pid, createAbilityCooldowns());
+      }
+    }
 
     // Render units with tint indices for visual differentiation
     for (let i = 0; i < this.playerIds.length; i++) {
@@ -762,6 +784,11 @@ export class DemoBattle {
       }
     };
 
+    // Passive trigger popup
+    this.combat.onPassiveTriggered = (entityId, passiveName, effect) => {
+      this.showTextPopup(entityId, `${effect} (${passiveName})`, "#44ddaa");
+    };
+
     // Turn skipped popup
     this.combat.onTurnSkipped = (entityId, reason) => {
       this.showTextPopup(entityId, reason, "#999999");
@@ -1125,23 +1152,26 @@ export class DemoBattle {
     const team = this.world.getComponent<TeamComponent>(entityId, "team");
     if (!team) return;
 
-    const skill = this.combat.pendingSkill ?? this.combat.getActiveSkill();
+    const cs = this.combat.pendingSkill;
+    const skillDef = cs?.skillDef ?? this.combat.getActiveSkill();
     const preview = this.combat.damageCalc.previewSkillAttack(
-      this.world, this.combat.selectedUnit, entityId, skill,
+      this.world, this.combat.selectedUnit, entityId, skillDef,
     );
 
     this.attackPreviewTarget = { q, r, entityId };
     this.unitInfoPanel.hide();
-    this.attackPreviewPanel.show({ targetName: team.name, preview, skill });
+    this.attackPreviewPanel.show({ targetName: team.name, preview, skill: skillDef });
   }
 
   private showStancePreview(q: number, r: number): void {
-    const skill = this.combat.pendingSkill;
-    if (!skill || !this.combat.selectedUnit) return;
+    const cs = this.combat.pendingSkill;
+    if (!cs || !this.combat.selectedUnit) return;
+    const skillDef = cs.skillDef;
+    if (!skillDef) return;
 
     this.attackPreviewTarget = { q, r, entityId: this.combat.selectedUnit };
     this.unitInfoPanel.hide();
-    this.attackPreviewPanel.showStance({ skill });
+    this.attackPreviewPanel.showStance({ skill: skillDef });
   }
 
   private confirmAttackPreview(): void {
@@ -1259,6 +1289,11 @@ export class DemoBattle {
 
     const moraleState = this.combat.morale.getState(this.world, entityId);
     const statusEffects = this.combat.statusEffects.getActiveEffects(this.world, entityId);
+    // Add active stances to status display
+    const stanceTypes = this.combat.skillExecutor.getActiveStanceTypes(this.world, entityId);
+    for (const s of stanceTypes) {
+      statusEffects.push(s.charAt(0).toUpperCase() + s.slice(1));
+    }
 
     const cc = this.world.getComponent<CharacterClassComponent>(entityId, "characterClass");
     const displayName = cc ? `${team.name} (${getClassDef(cc.classId).name})` : team.name;
@@ -1287,11 +1322,11 @@ export class DemoBattle {
     if (!this.combat.selectedUnit) return;
     const skills = this.combat.getAvailableSkills();
     const affordable = new Set<string>();
-    for (const skill of skills) {
-      if (skill.isBasicAttack) continue;
-      const apCost = this.combat.getSkillAPCost(skill);
+    for (const cs of skills) {
+      if (cs.isBasicAttack) continue;
+      const apCost = this.combat.getCombatSkillAPCost(cs);
       if (this.combat.apRemaining >= apCost) {
-        affordable.add(skill.id);
+        affordable.add(cs.id);
       }
     }
     this.actionBar.updateSkillAffordability(affordable);

@@ -52,6 +52,27 @@ export const STATUS_EFFECT_DEFS: Record<string, StatusEffectDef> = {
     modifiers: { meleeSkill: -30, meleeDefense: -30 },
     maxStacks: 1,
   },
+  root: {
+    id: "root",
+    name: "Rooted",
+    duration: 1,
+    modifiers: { movementPoints: -999 },
+    maxStacks: 1,
+  },
+  vulnerable: {
+    id: "vulnerable",
+    name: "Vulnerable",
+    duration: 2,
+    modifiers: {},
+    maxStacks: 1,
+  },
+  dmg_reduce: {
+    id: "dmg_reduce",
+    name: "Hardened",
+    duration: 2,
+    modifiers: {},
+    maxStacks: 1,
+  },
 };
 
 export interface BleedTickResult {
@@ -118,6 +139,52 @@ export class StatusEffectManager {
   }
 
   /**
+   * Apply a dynamic status effect with custom id/name/modifiers/duration.
+   * Used by generated abilities for effects like "debuff_meleeSkill", "buff_meleeSkill", etc.
+   */
+  applyDynamic(
+    world: World,
+    entityId: EntityId,
+    customDef: { id: string; name: string; duration: number; modifiers: Record<string, number>; maxStacks?: number; dmgPerTurn?: number },
+  ): void {
+    const comp = world.getComponent<StatusEffectsComponent>(entityId, "statusEffects");
+    if (!comp) return;
+
+    const maxStacks = customDef.maxStacks ?? 1;
+
+    if (maxStacks > 1) {
+      const currentStacks = comp.effects.filter((e) => e.id === customDef.id).length;
+      if (currentStacks < maxStacks) {
+        comp.effects.push({
+          id: customDef.id,
+          name: customDef.name,
+          remainingTurns: customDef.duration,
+          modifiers: { ...customDef.modifiers, ...(customDef.dmgPerTurn != null ? { _dmgPerTurn: customDef.dmgPerTurn } : {}) },
+        });
+      } else {
+        const existing = comp.effects
+          .filter((e) => e.id === customDef.id)
+          .sort((a, b) => a.remainingTurns - b.remainingTurns);
+        if (existing.length > 0) {
+          existing[0]!.remainingTurns = Math.max(existing[0]!.remainingTurns, customDef.duration);
+        }
+      }
+    } else {
+      const existing = comp.effects.find((e) => e.id === customDef.id);
+      if (existing) {
+        existing.remainingTurns = Math.max(existing.remainingTurns, customDef.duration);
+      } else {
+        comp.effects.push({
+          id: customDef.id,
+          name: customDef.name,
+          remainingTurns: customDef.duration,
+          modifiers: { ...customDef.modifiers, ...(customDef.dmgPerTurn != null ? { _dmgPerTurn: customDef.dmgPerTurn } : {}) },
+        });
+      }
+    }
+  }
+
+  /**
    * Tick all status effects at turn start for the given entity.
    * Decrements durations and removes expired effects.
    * Returns bleed tick results if any.
@@ -128,15 +195,15 @@ export class StatusEffectManager {
 
     let bleedResult: BleedTickResult | null = null;
 
-    // Process bleed ticks
+    // Process bleed ticks (both standard and ability-generated with custom dmg)
     const bleedStacks = comp.effects.filter((e) => e.id === "bleed");
     if (bleedStacks.length > 0) {
       const health = world.getComponent<HealthComponent>(entityId, "health");
       if (health) {
-        // Each bleed stack deals 5-10 damage
         let totalDmg = 0;
-        for (let i = 0; i < bleedStacks.length; i++) {
-          totalDmg += this.rng.nextInt(5, 10);
+        for (const stack of bleedStacks) {
+          const customDmg = stack.modifiers._dmgPerTurn;
+          totalDmg += customDmg != null ? customDmg : this.rng.nextInt(5, 10);
         }
         health.current = Math.max(0, health.current - totalDmg);
         bleedResult = {
@@ -175,6 +242,7 @@ export class StatusEffectManager {
   /**
    * Get total modifier for a stat from all active status effects.
    * For daze: applies -25% of the base stat value.
+   * Handles both static and dynamic effects (debuff_*, buff_*).
    */
   getModifier(
     world: World,
@@ -201,6 +269,30 @@ export class StatusEffectManager {
     return total;
   }
 
+  /** Get the vulnerability bonus damage multiplier (0 if not vulnerable). */
+  getVulnerabilityBonus(world: World, entityId: EntityId): number {
+    const comp = world.getComponent<StatusEffectsComponent>(entityId, "statusEffects");
+    if (!comp) return 0;
+    const vuln = comp.effects.find(e => e.id === "vulnerable");
+    return vuln ? (vuln.modifiers._bonusDmgPct ?? 20) / 100 : 0;
+  }
+
+  /** Get the damage reduction percentage (0 if no dmg_reduce). */
+  getDamageReduction(world: World, entityId: EntityId): number {
+    const comp = world.getComponent<StatusEffectsComponent>(entityId, "statusEffects");
+    if (!comp) return 0;
+    const reduce = comp.effects.find(e => e.id === "dmg_reduce");
+    return reduce ? (reduce.modifiers._reducePct ?? 20) / 100 : 0;
+  }
+
+  /** Count total active debuffs on an entity. */
+  countDebuffs(world: World, entityId: EntityId): number {
+    const comp = world.getComponent<StatusEffectsComponent>(entityId, "statusEffects");
+    if (!comp) return 0;
+    const debuffIds = new Set(["stun", "bleed", "daze", "root", "vulnerable", "fleeing"]);
+    return comp.effects.filter(e => debuffIds.has(e.id) || e.id.startsWith("debuff_")).length;
+  }
+
   /** Remove a specific effect from an entity. */
   removeEffect(world: World, entityId: EntityId, effectId: string): void {
     const comp = world.getComponent<StatusEffectsComponent>(entityId, "statusEffects");
@@ -220,15 +312,19 @@ export class StatusEffectManager {
     if (!comp) return [];
 
     // Deduplicate names, show stack count for bleed
-    const seen = new Map<string, number>();
+    const seen = new Map<string, { name: string; count: number }>();
     for (const e of comp.effects) {
-      seen.set(e.id, (seen.get(e.id) ?? 0) + 1);
+      const existing = seen.get(e.id);
+      if (existing) {
+        existing.count++;
+      } else {
+        const def = STATUS_EFFECT_DEFS[e.id];
+        seen.set(e.id, { name: def?.name ?? e.name, count: 1 });
+      }
     }
 
     const result: string[] = [];
-    for (const [id, count] of seen) {
-      const def = STATUS_EFFECT_DEFS[id];
-      const name = def?.name ?? id;
+    for (const [, { name, count }] of seen) {
       result.push(count > 1 ? `${name} x${count}` : name);
     }
     return result;

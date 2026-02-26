@@ -102,6 +102,42 @@ export class SkillExecutor {
   }
 
   /**
+   * Activate a generalized stance (counter, overwatch, etc.) from generated abilities.
+   */
+  activateStance(
+    world: World,
+    entityId: EntityId,
+    stanceType: string,
+    params: { skillId: string; turnsLeft?: number; maxCounters?: number },
+  ): void {
+    let stances = world.getComponent<ActiveStancesComponent>(entityId, "activeStances");
+    if (!stances) {
+      world.addComponent(entityId, {
+        type: "activeStances",
+        stances: new Map(),
+      });
+      stances = world.getComponent<ActiveStancesComponent>(entityId, "activeStances")!;
+    }
+    stances.stances.set(stanceType, {
+      skillId: params.skillId,
+      turnsLeft: params.turnsLeft ?? 1,
+    });
+  }
+
+  /** Check if entity has a specific stance active. */
+  hasStance(world: World, entityId: EntityId, stanceType: string): boolean {
+    const stances = world.getComponent<ActiveStancesComponent>(entityId, "activeStances");
+    return stances?.stances.has(stanceType) ?? false;
+  }
+
+  /** Get all active stance types for an entity. */
+  getActiveStanceTypes(world: World, entityId: EntityId): string[] {
+    const stances = world.getComponent<ActiveStancesComponent>(entityId, "activeStances");
+    if (!stances) return [];
+    return [...stances.stances.keys()];
+  }
+
+  /**
    * Clear expired stances at the start of a unit's turn.
    */
   clearStances(world: World, entityId: EntityId): void {

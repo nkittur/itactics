@@ -4,6 +4,8 @@ import { generateTalentStars, rollStatIncrease, ALL_STAT_KEYS } from "./TalentDa
 import type { SpriteCharType } from "@rendering/SpriteAnimator";
 import type { RosterMember } from "@save/SaveManager";
 import { getArmorDef } from "./ArmorData";
+import { pickTheme } from "./ThemeData";
+import { generateRecruitSkills } from "./AbilityGenerator";
 
 export interface RecruitDef {
   name: string;
@@ -16,6 +18,10 @@ export interface RecruitDef {
   cost: number;
   equipment: RosterMember["equipment"];
   armor: RosterMember["armor"];
+  /** Skill theme ID (e.g., "bleeder", "crusher"). */
+  skillTheme: string;
+  /** 4 generated ability UIDs with unlock levels. */
+  uniqueSkills: { uid: string; unlockLevel: number }[];
 }
 
 const NAMES = [
@@ -171,6 +177,15 @@ export function generateRecruits(partyLevel: number, rng: () => number): Recruit
 
     const is2H = weapon === "longsword" || weapon === "pike" || weapon === "short_bow" || weapon === "hunting_bow";
 
+    // Generate skill theme and abilities
+    const theme = pickTheme(classId, rng);
+    const abilities = generateRecruitSkills(theme, rng);
+    const unlockLevels = [5, 10, 15, 20];
+    const uniqueSkills = abilities.map((a, idx) => ({
+      uid: a.uid,
+      unlockLevel: unlockLevels[idx]!,
+    }));
+
     recruits.push({
       name,
       classId,
@@ -188,6 +203,8 @@ export function generateRecruits(partyLevel: number, rng: () => number): Recruit
         bag: [],
       },
       armor: armorForLevel(level),
+      skillTheme: theme.id,
+      uniqueSkills,
     });
   }
 

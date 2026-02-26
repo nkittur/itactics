@@ -10,6 +10,9 @@ import { generateRecruits, getPartyLevel } from "@data/RecruitData";
 import { resolveWeapon, resolveShield, resolveArmor, resolveItemName, setItemRegistry } from "@data/ItemResolver";
 import { isGeneratedItemId } from "@data/GeneratedItemData";
 import { generateShopInventory, shopRefreshCost, qualityColor } from "@data/ItemGenerator";
+import { resolveAbility, getAbilityRegistry } from "@data/AbilityResolver";
+import { THEMES } from "@data/ThemeData";
+import { detectUnitSynergies, detectTeamSynergies } from "@data/SynergyDetector";
 
 type Tab = "roster" | "shop" | "recruit" | "contracts";
 const MAX_BAG = 2;
@@ -56,6 +59,8 @@ export class ManagementScreen {
     }
     if (!this.saveData.availableRecruits || this.saveData.availableRecruits.length === 0) {
       this.saveData.availableRecruits = generateRecruits(partyLevel, simpleRng);
+      // Sync ability registry to save data after recruit generation
+      this.saveData.abilityRegistry = getAbilityRegistry();
     }
 
     // Generate shop if not cached
@@ -131,6 +136,20 @@ export class ManagementScreen {
       return;
     }
 
+    // Team synergies
+    const teamSynergies = detectTeamSynergies(this.saveData.roster);
+    if (teamSynergies.length > 0) {
+      const synSection = el("div", "mgmt-team-synergies");
+      synSection.appendChild(el("div", "mgmt-equip-label", `Team Synergies (${teamSynergies.length}):`));
+      for (const syn of teamSynergies.slice(0, 5)) {
+        synSection.appendChild(el("div", "mgmt-synergy-row", `\u2194 ${syn.description}`));
+      }
+      if (teamSynergies.length > 5) {
+        synSection.appendChild(el("div", "mgmt-synergy-row", `...and ${teamSynergies.length - 5} more`));
+      }
+      content.appendChild(synSection);
+    }
+
     for (let i = 0; i < this.saveData.roster.length; i++) {
       const m = this.saveData.roster[i]!;
       const card = el("div", "mgmt-unit-card");
@@ -179,6 +198,46 @@ export class ManagementScreen {
         }
 
         detail.appendChild(equip);
+
+        // Abilities section
+        if (m.abilities && m.abilities.length > 0) {
+          const abSection = el("div", "mgmt-unit-abilities");
+          const themeName = m.skillTheme ? (THEMES[m.skillTheme]?.name ?? m.skillTheme) : "";
+          abSection.appendChild(el("div", "mgmt-equip-label", `Abilities${themeName ? ` (${themeName})` : ""}:`));
+
+          for (const uid of m.abilities) {
+            const ability = resolveAbility(uid);
+            if (!ability) continue;
+
+            const unlockLevel = m.abilityUnlockLevels?.[uid] ?? 5;
+            const unlocked = m.level >= unlockLevel;
+
+            const row = el("div", "mgmt-ability-row");
+            const tierColors: Record<number, string> = { 1: "#ccc", 2: "#4c4", 3: "#48d" };
+            const nameSpan = el("span", "mgmt-ability-name", ability.name);
+            nameSpan.style.color = unlocked ? (tierColors[ability.tier] ?? "#ccc") : "#666";
+            row.appendChild(nameSpan);
+
+            if (unlocked) {
+              row.appendChild(el("span", "mgmt-ability-desc", ` - ${ability.description}`));
+            } else {
+              row.appendChild(el("span", "mgmt-ability-locked", ` (Unlocks Lv.${unlockLevel})`));
+            }
+            abSection.appendChild(row);
+          }
+
+          // Unit synergies
+          const synergies = detectUnitSynergies(m.abilities!);
+          if (synergies.length > 0) {
+            const synDiv = el("div", "mgmt-synergy-list");
+            for (const syn of synergies) {
+              synDiv.appendChild(el("div", "mgmt-synergy-row", `\u2194 ${syn.description}`));
+            }
+            abSection.appendChild(synDiv);
+          }
+
+          detail.appendChild(abSection);
+        }
 
         // Stash items that can be equipped
         if (this.saveData.stash.length > 0) {
@@ -595,6 +654,28 @@ export class ManagementScreen {
       stats.textContent = `HP:${r.stats.hitpoints} Mel:${r.stats.meleeSkill} Def:${r.stats.meleeDefense} Init:${r.stats.initiative}`;
       card.appendChild(stats);
 
+      // Theme badge + skill preview
+      if (r.skillTheme) {
+        const themeName = THEMES[r.skillTheme]?.name ?? r.skillTheme;
+        const badge = el("span", "recruit-theme-badge", themeName);
+        card.appendChild(badge);
+      }
+      if (r.uniqueSkills && r.uniqueSkills.length > 0) {
+        const skillList = el("div", "recruit-skills");
+        for (const sk of r.uniqueSkills) {
+          const ability = resolveAbility(sk.uid);
+          if (!ability) continue;
+          const tierColors: Record<number, string> = { 1: "#ccc", 2: "#4c4", 3: "#48d" };
+          const row = el("div", "recruit-skill-row");
+          const nameSpan = el("span", "", ability.name);
+          nameSpan.style.color = tierColors[ability.tier] ?? "#ccc";
+          row.appendChild(nameSpan);
+          row.appendChild(el("span", "recruit-skill-lvl", ` Lv${sk.unlockLevel}`));
+          skillList.appendChild(row);
+        }
+        card.appendChild(skillList);
+      }
+
       const hireBtn = el("button", "mgmt-hire-btn", "Hire");
       if (this.saveData.gold < r.cost) {
         hireBtn.classList.add("disabled");
@@ -619,6 +700,10 @@ export class ManagementScreen {
     this.saveData.gold -= r.cost;
 
     // Convert RecruitDef to RosterMember
+    const unlockLevels: Record<string, number> = {};
+    for (const sk of r.uniqueSkills) {
+      unlockLevels[sk.uid] = sk.unlockLevel;
+    }
     const member: RosterMember = {
       name: r.name,
       classId: r.classId,
@@ -634,6 +719,9 @@ export class ManagementScreen {
         head: r.armor.head ? { ...r.armor.head } : null,
       },
       spriteType: r.sprite,
+      skillTheme: r.skillTheme,
+      abilities: r.uniqueSkills.map(sk => sk.uid),
+      abilityUnlockLevels: unlockLevels,
     };
 
     this.saveData.roster.push(member);

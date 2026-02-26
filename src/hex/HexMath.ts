@@ -71,6 +71,39 @@ export function hexRing(center: AxialCoord, radius: number): AxialCoord[] {
   return results;
 }
 
+/**
+ * Return the hex direction (dq, dr) from `from` toward `to`.
+ * Snaps to the nearest of the 6 hex directions.
+ * Returns null if from === to.
+ */
+export function hexDirection(
+  from: AxialCoord,
+  to: AxialCoord,
+): { dq: number; dr: number } | null {
+  const dq = to.q - from.q;
+  const dr = to.r - from.r;
+  if (dq === 0 && dr === 0) return null;
+
+  // Convert to cube coords to find closest direction
+  const ds = -dq - dr;
+  // Find which of the 6 directions is closest by checking dot products
+  let bestDir = 0;
+  let bestDot = -Infinity;
+  for (let i = 0; i < 6; i++) {
+    const d = HEX_DIRECTIONS[i]!;
+    const ddq = d.q;
+    const ddr = d.r;
+    const dds = -ddq - ddr;
+    const dot = dq * ddq + dr * ddr + ds * dds;
+    if (dot > bestDot) {
+      bestDot = dot;
+      bestDir = i;
+    }
+  }
+  const best = HEX_DIRECTIONS[bestDir]!;
+  return { dq: best.q, dr: best.r };
+}
+
 /** Return all hexes within `radius` steps (a filled hex area). */
 export function hexSpiral(center: AxialCoord, radius: number): AxialCoord[] {
   const results: AxialCoord[] = [{ q: center.q, r: center.r }];

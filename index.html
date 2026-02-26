@@ -127,6 +127,23 @@
       background: #4a4a6a;
     }
 
+    /* Cooldown badge on skill buttons */
+    .skill-cooldown-badge {
+      position: absolute;
+      top: -4px;
+      right: -4px;
+      background: #cc4444;
+      color: #fff;
+      font-size: 10px;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: bold;
+    }
+
     .turn-order-bar {
       position: absolute;
       top: calc(5px + env(safe-area-inset-top, 0px));
@@ -1028,6 +1045,30 @@
       padding: 5px 16px; border-radius: 4px; font-size: 13px; cursor: pointer;
     }
     .mgmt-hire-btn.disabled { opacity: 0.4; pointer-events: none; }
+
+    /* Recruit theme + skills */
+    .recruit-theme-badge {
+      display: inline-block;
+      background: #2a3a5a;
+      color: #88bbdd;
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 10px;
+      margin-bottom: 4px;
+    }
+    .recruit-skills { font-size: 12px; margin: 4px 0; }
+    .recruit-skill-row { display: flex; gap: 4px; line-height: 1.6; }
+    .recruit-skill-lvl { color: #666; font-size: 11px; }
+
+    /* Roster abilities section */
+    .mgmt-unit-abilities { margin-top: 6px; }
+    .mgmt-ability-row { font-size: 12px; line-height: 1.5; padding: 1px 0; }
+    .mgmt-ability-name { font-weight: bold; }
+    .mgmt-ability-desc { color: #99aabb; }
+    .mgmt-ability-locked { color: #666; font-style: italic; }
+    .mgmt-synergy-list { margin-top: 4px; }
+    .mgmt-synergy-row { font-size: 11px; color: #44ddaa; line-height: 1.5; }
+    .mgmt-team-synergies { background: #1a2840; border-radius: 6px; padding: 8px 10px; margin-bottom: 10px; }
 
     /* Contracts */
     .contract-card {

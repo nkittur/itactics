@@ -8,9 +8,12 @@ export const MAX_AP = 9;
  */
 export class ActionPointManager {
   private current = MAX_AP;
+  /** Track total AP refunded this turn (capped at 4). */
+  private refundedThisTurn = 0;
 
   resetForTurn(): void {
     this.current = MAX_AP;
+    this.refundedThisTurn = 0;
   }
 
   canAfford(cost: number): boolean {
@@ -21,6 +24,16 @@ export class ActionPointManager {
     if (!this.canAfford(cost)) return false;
     this.current -= cost;
     return true;
+  }
+
+  /** Refund AP (e.g., from passive triggers). Capped at +4/turn. */
+  refund(amount: number): number {
+    const maxRefund = 4;
+    const allowed = Math.min(amount, maxRefund - this.refundedThisTurn);
+    if (allowed <= 0) return 0;
+    this.current = Math.min(MAX_AP, this.current + allowed);
+    this.refundedThisTurn += allowed;
+    return allowed;
   }
 
   get remaining(): number {

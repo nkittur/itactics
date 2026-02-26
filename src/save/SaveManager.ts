@@ -3,6 +3,7 @@ import type { StatKey } from "@data/TalentData";
 import type { ContractDef } from "@data/ContractData";
 import type { RecruitDef } from "@data/RecruitData";
 import type { GeneratedItem } from "@data/GeneratedItemData";
+import type { GeneratedAbility } from "@data/AbilityData";
 
 const SAVE_KEY = "itactics-save";
 
@@ -39,6 +40,12 @@ export interface RosterMember {
   spriteType?: string;
   backgroundId?: string;
   traits?: string[];
+  /** Generated ability UIDs this unit has. */
+  abilities?: string[];
+  /** Recruit theme ID (e.g., "bleeder", "crusher"). */
+  skillTheme?: string;
+  /** Maps ability UID → level at which it unlocks. */
+  abilityUnlockLevels?: Record<string, number>;
 }
 
 export interface BattleState {
@@ -75,6 +82,8 @@ export interface SaveData {
   battleInProgress?: BattleState;
   /** Registry of procedurally generated items, keyed by UID. */
   itemRegistry?: Record<string, GeneratedItem>;
+  /** Registry of procedurally generated abilities, keyed by UID. */
+  abilityRegistry?: Record<string, GeneratedAbility>;
   /** Current shop state. */
   shopState?: ShopState;
 }
@@ -91,6 +100,7 @@ export async function loadGame(): Promise<SaveData | null> {
     if (raw.gold == null) data.gold = 0;
     if (!Array.isArray(raw.stash)) data.stash = [];
     if (!data.itemRegistry) data.itemRegistry = {};
+    if (!data.abilityRegistry) data.abilityRegistry = {};
     return data;
   }
   return null;

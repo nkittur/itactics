@@ -17,12 +17,18 @@ import { getSkillsForWeapon, skillAPCost, skillRange, BASIC_ATTACK, type SkillDe
 import type { ArmorComponent } from "@entities/components/Armor";
 import type { CharacterClassComponent } from "@entities/components/CharacterClass";
 import { getClassDef, getClassAPDiscount, getClassArmorMPReduction } from "@data/ClassData";
+import type { AbilitiesComponent } from "@entities/components/Abilities";
+import type { AbilityCooldownsComponent } from "@entities/components/AbilityCooldowns";
+import { resolveAbility } from "@data/AbilityResolver";
+import type { GeneratedAbility } from "@data/AbilityData";
+import type { CombatSkill } from "@data/CombatSkill";
+import { wrapGeneratedAbility } from "@data/CombatSkill";
 
 export type TacticalAction =
-  | { type: "moveAndAttack"; path: Array<{ q: number; r: number }>; targetId: EntityId; skill?: SkillDef }
+  | { type: "moveAndAttack"; path: Array<{ q: number; r: number }>; targetId: EntityId; skill?: SkillDef; combatSkill?: CombatSkill }
   | { type: "move"; path: Array<{ q: number; r: number }> }
-  | { type: "attack"; targetId: EntityId; skill?: SkillDef }
-  | { type: "activateStance"; skill: SkillDef }
+  | { type: "attack"; targetId: EntityId; skill?: SkillDef; combatSkill?: CombatSkill }
+  | { type: "activateStance"; skill: SkillDef; combatSkill?: CombatSkill }
   | { type: "recover" }
   | { type: "wait" };
 
@@ -147,6 +153,9 @@ export function decideTacticalAction(
   let bestScore = -Infinity;
   let bestAction: TacticalAction = { type: "wait" };
 
+  // Get generated abilities for this entity
+  const genAbilities = getUsableAbilities(world, entityId, weapon);
+
   // Evaluate each skill from current position
   for (const skill of skills) {
     if (skill.isStance) {
@@ -177,6 +186,36 @@ export function decideTacticalAction(
     if (score > bestScore) {
       bestScore = score;
       bestAction = { type: "attack", targetId: currentTarget, skill: skill.isBasicAttack ? undefined : skill };
+    }
+  }
+
+  // Evaluate generated abilities from current position
+  for (const { ability, cs } of genAbilities) {
+    if (cs.isStance) {
+      // Score stances based on nearby enemies
+      let nearbyEnemies = 0;
+      for (const eid of enemyIds) {
+        const ep = world.getComponent<PositionComponent>(eid, "position");
+        if (ep && hexDistance(pos, ep) <= 3) nearbyEnemies++;
+      }
+      if (nearbyEnemies > 0) {
+        const stanceScore = nearbyEnemies * 10;
+        if (stanceScore > bestScore) {
+          bestScore = stanceScore;
+          bestAction = { type: "activateStance", skill: BASIC_ATTACK, combatSkill: cs };
+        }
+      }
+      continue;
+    }
+    if (cs.targetType !== "enemy") continue;
+
+    const currentTarget = findAdjacentTarget(world, pos, enemyIds, cs.range);
+    if (!currentTarget) continue;
+
+    const score = scoreGeneratedAbility(world, currentTarget, ability, weights);
+    if (score > bestScore) {
+      bestScore = score;
+      bestAction = { type: "attack", targetId: currentTarget, combatSkill: cs };
     }
   }
 
@@ -211,7 +250,7 @@ export function decideTacticalAction(
     const terrainScore = (tile.defenseBonusMelee + tile.elevation * 5) * (weights.terrain / 10);
 
     // Can we attack from this hex with any skill?
-    let bestSkillAction: { target: EntityId; skill?: SkillDef; score: number } | null = null;
+    let bestSkillAction: { target: EntityId; skill?: SkillDef; combatSkill?: CombatSkill; score: number } | null = null;
     const hexPos = { q: hq, r: hr, elevation: tile.elevation, facing: 0 } as PositionComponent;
     for (const skill of skills) {
       if (skill.isStance || skill.targetType !== "enemy") continue;
@@ -221,6 +260,16 @@ export function decideTacticalAction(
       const score = scoreSkillTarget(world, target, skill, weights);
       if (!bestSkillAction || score > bestSkillAction.score) {
         bestSkillAction = { target, skill: skill.isBasicAttack ? undefined : skill, score };
+      }
+    }
+    // Also check generated abilities from this hex
+    for (const { ability, cs } of genAbilities) {
+      if (cs.isStance || cs.targetType !== "enemy") continue;
+      const target = findAdjacentTarget(world, hexPos, enemyIds, cs.range);
+      if (!target) continue;
+      const score = scoreGeneratedAbility(world, target, ability, weights);
+      if (!bestSkillAction || score > bestSkillAction.score) {
+        bestSkillAction = { target, combatSkill: cs, score };
       }
     }
 
@@ -234,6 +283,7 @@ export function decideTacticalAction(
           path: pathResult.path,
           targetId: bestSkillAction.target,
           skill: bestSkillAction.skill,
+          combatSkill: bestSkillAction.combatSkill,
         };
       }
     } else {
@@ -348,4 +398,75 @@ function findAdjacentTarget(
   }
 
   return bestTarget;
+}
+
+/** Get generated abilities usable by this entity (non-passive, off cooldown, weapon-compatible). */
+function getUsableAbilities(
+  world: World,
+  entityId: EntityId,
+  weapon: { family: string; range: number },
+): { ability: GeneratedAbility; cs: CombatSkill }[] {
+  const abComp = world.getComponent<AbilitiesComponent>(entityId, "abilities");
+  if (!abComp) return [];
+
+  const cdComp = world.getComponent<AbilityCooldownsComponent>(entityId, "abilityCooldowns");
+  const results: { ability: GeneratedAbility; cs: CombatSkill }[] = [];
+
+  for (const uid of abComp.abilityIds) {
+    // Skip if on cooldown
+    if (cdComp && cdComp.cooldowns[uid] && cdComp.cooldowns[uid] > 0) continue;
+
+    const ability = resolveAbility(uid);
+    if (!ability || ability.isPassive) continue;
+
+    // Check weapon requirement
+    if (ability.weaponReq.length > 0 && !ability.weaponReq.includes(weapon.family)) continue;
+
+    const cs = wrapGeneratedAbility(ability, weapon as any);
+    results.push({ ability, cs });
+  }
+
+  return results;
+}
+
+/** Score a generated ability against a target. */
+function scoreGeneratedAbility(
+  world: World,
+  targetId: EntityId,
+  ability: GeneratedAbility,
+  weights: ScoreWeights,
+): number {
+  let score = scoreAttackTarget(world, targetId, weights);
+
+  // Bonus for damage effects
+  for (const eff of ability.effects) {
+    switch (eff.type) {
+      case "cc_stun":
+      case "cc_root":
+      case "cc_daze": {
+        // CC is valuable vs healthy targets
+        const health = world.getComponent<HealthComponent>(targetId, "health");
+        if (health && health.current > health.max * 0.5) score += 10;
+        break;
+      }
+      case "dot_bleed":
+        score += 5;
+        break;
+      case "debuff_stat":
+      case "debuff_vuln":
+        score += 5;
+        break;
+      case "dmg_execute": {
+        // Execute is very valuable vs low HP
+        const health = world.getComponent<HealthComponent>(targetId, "health");
+        if (health && health.current / health.max < 0.3) score += 20;
+        break;
+      }
+      case "dmg_multihit":
+        score += 3;
+        break;
+    }
+  }
+
+  return score;
 }

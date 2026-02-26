@@ -190,6 +190,14 @@ export class DamageCalculator {
       hpDamage = Math.floor(hpDamage * 1.5);
     }
 
+    // ── 6b. Vulnerability check (from generated abilities) ──
+    if (this.statusEffects) {
+      const vulnBonus = this.statusEffects.getVulnerabilityBonus(world, defenderId);
+      if (vulnBonus > 0) hpDamage = Math.floor(hpDamage * (1 + vulnBonus));
+      const dmgReduce = this.statusEffects.getDamageReduction(world, defenderId);
+      if (dmgReduce > 0) hpDamage = Math.floor(hpDamage * (1 - dmgReduce));
+    }
+
     // ── 7. Apply HP damage ──
     defenderHealth.current = Math.max(0, defenderHealth.current - hpDamage);
     const targetKilled = defenderHealth.current <= 0;
@@ -529,6 +537,14 @@ export class DamageCalculator {
     // ── 6. Head hit multiplier ──
     if (headHit) {
       hpDamage = Math.floor(hpDamage * 1.5);
+    }
+
+    // ── 6b. Vulnerability + damage reduction ──
+    if (this.statusEffects) {
+      const vulnBonus = this.statusEffects.getVulnerabilityBonus(world, defenderId);
+      if (vulnBonus > 0) hpDamage = Math.floor(hpDamage * (1 + vulnBonus));
+      const dmgReduce = this.statusEffects.getDamageReduction(world, defenderId);
+      if (dmgReduce > 0) hpDamage = Math.floor(hpDamage * (1 - dmgReduce));
     }
 
     // ── 7. Apply HP damage ──

@@ -15,10 +15,17 @@ import type { ArmorComponent } from "@entities/components/Armor";
 import { StatusEffectManager, type BleedTickResult } from "./StatusEffectManager";
 import { MoraleManager, type MoraleCheckResult } from "./MoraleManager";
 import { SkillExecutor } from "./SkillExecutor";
+import { AbilityExecutor, type AbilityResult } from "./AbilityExecutor";
+import { PassiveResolver, type PassiveResult } from "./PassiveResolver";
 import type { ActiveStancesComponent } from "@entities/components/ActiveStances";
 import { UNARMED, type WeaponDef } from "@data/WeaponData";
 import { resolveWeapon, resolveShield } from "@data/ItemResolver";
 import { BASIC_ATTACK, getSkillsForWeapon, skillAPCost, skillFatigueCost, skillRange, type SkillDef } from "@data/SkillData";
+import type { CombatSkill } from "@data/CombatSkill";
+import { wrapSkillDef, wrapGeneratedAbility } from "@data/CombatSkill";
+import { resolveAbility } from "@data/AbilityResolver";
+import type { AbilitiesComponent } from "@entities/components/Abilities";
+import type { AbilityCooldownsComponent } from "@entities/components/AbilityCooldowns";
 import type { CharacterClassComponent } from "@entities/components/CharacterClass";
 import { getClassDef, getClassAPDiscount, getClassArmorMPReduction, canEquipWeapon, canEquipShield } from "@data/ClassData";
 import { getConsumable } from "@data/ItemData";
@@ -46,6 +53,8 @@ export class CombatManager {
   turnOrder: TurnOrder;
   damageCalc: DamageCalculator;
   skillExecutor: SkillExecutor;
+  abilityExecutor: AbilityExecutor;
+  passiveResolver: PassiveResolver;
   statusEffects: StatusEffectManager;
   morale: MoraleManager;
   phase: CombatPhase = "playerTurn";
@@ -53,10 +62,10 @@ export class CombatManager {
   selectedUnit: EntityId | null = null;
 
   /** Currently selected skill for attack. Null = basic attack. */
-  selectedSkill: SkillDef | null = null;
+  selectedSkill: CombatSkill | null = null;
 
   /** Skill pending target selection (activation mode). */
-  pendingSkill: SkillDef | null = null;
+  pendingSkill: CombatSkill | null = null;
 
   /** Movement range cache for the currently selected unit. */
   moveRange: Map<string, number> | null = null;
@@ -110,6 +119,7 @@ export class CombatManager {
     defenderId: EntityId,
   ) => void;
   onStanceActivated?: (entityId: EntityId, stanceId: string) => void;
+  onPassiveTriggered?: (entityId: EntityId, passiveName: string, effect: string) => void;
 
   constructor(
     private world: World,
@@ -123,6 +133,8 @@ export class CombatManager {
     this.damageCalc = new DamageCalculator(rng, grid);
     this.damageCalc.setStatusEffectManager(this.statusEffects);
     this.skillExecutor = new SkillExecutor(rng, this.damageCalc);
+    this.abilityExecutor = new AbilityExecutor(rng, this.damageCalc, this.statusEffects, this.skillExecutor, grid);
+    this.passiveResolver = new PassiveResolver(this.statusEffects);
   }
 
   /** Start combat — calculate initial turn order, begin first turn. */
@@ -166,8 +178,38 @@ export class CombatManager {
 
   // ── Skill selection ──
 
-  /** Get available skills for the currently selected unit. */
-  getAvailableSkills(): SkillDef[] {
+  /** Get available skills for the currently selected unit as CombatSkills. */
+  getAvailableSkills(): CombatSkill[] {
+    if (!this.selectedUnit) return [];
+    const equip = this.world.getComponent<EquipmentComponent>(this.selectedUnit, "equipment");
+    const weaponId = equip?.mainHand ?? "unarmed";
+    const weapon = this.getWeaponDef(this.selectedUnit);
+
+    // Static weapon skills
+    const staticSkills = getSkillsForWeapon(weaponId);
+    const result: CombatSkill[] = staticSkills.map(s => wrapSkillDef(s, weapon));
+
+    // Generated abilities from AbilitiesComponent
+    const abilities = this.world.getComponent<AbilitiesComponent>(this.selectedUnit, "abilities");
+    const cooldowns = this.world.getComponent<AbilityCooldownsComponent>(this.selectedUnit, "abilityCooldowns");
+    if (abilities) {
+      for (const uid of abilities.abilityIds) {
+        const ability = resolveAbility(uid);
+        if (!ability) continue;
+        if (ability.isPassive) continue;
+        // Check cooldown
+        if (cooldowns && (cooldowns.cooldowns[uid] ?? 0) > 0) continue;
+        // Check weapon requirement
+        if (ability.weaponReq.length > 0 && !ability.weaponReq.includes(weapon.family)) continue;
+        result.push(wrapGeneratedAbility(ability, weapon));
+      }
+    }
+
+    return result;
+  }
+
+  /** Get available skills as raw SkillDef[] (legacy support for AI and other callers). */
+  getAvailableSkillDefs(): SkillDef[] {
     if (!this.selectedUnit) return [];
     const equip = this.world.getComponent<EquipmentComponent>(this.selectedUnit, "equipment");
     const weaponId = equip?.mainHand ?? "unarmed";
@@ -175,17 +217,23 @@ export class CombatManager {
   }
 
   /** Select a skill for the next attack. */
-  selectSkill(skill: SkillDef | null): void {
+  selectSkill(skill: CombatSkill | null): void {
     this.selectedSkill = skill;
   }
 
-  /** Get the active skill (selected or basic attack). */
+  /** Get the active skill as a SkillDef (selected or basic attack). */
   getActiveSkill(): SkillDef {
-    return this.selectedSkill ?? BASIC_ATTACK;
+    if (this.selectedSkill?.skillDef) return this.selectedSkill.skillDef;
+    return BASIC_ATTACK;
+  }
+
+  /** Get the active CombatSkill wrapper (or null). */
+  getActiveCombatSkill(): CombatSkill | null {
+    return this.selectedSkill;
   }
 
   /** Enter skill targeting mode — shows valid targets for the skill. */
-  activateSkill(skill: SkillDef): void {
+  activateSkill(skill: CombatSkill): void {
     if (this.phase !== "playerTurn") return;
     if (!this.selectedUnit) return;
     this.pendingSkill = skill;
@@ -206,16 +254,18 @@ export class CombatManager {
     const pos = this.world.getComponent<PositionComponent>(this.selectedUnit, "position");
     if (!pos) return hexes;
 
-    const skill = this.pendingSkill;
-    const weapon = this.getWeaponDef(this.selectedUnit);
-    const range = skillRange(skill, weapon);
-    const apCost = this.getEffectiveAPCost(this.selectedUnit, skill, weapon);
+    const cs = this.pendingSkill;
+    const apCost = cs.isGenerated
+      ? cs.apCost
+      : this.getEffectiveAPCost(this.selectedUnit, cs.skillDef!, this.getWeaponDef(this.selectedUnit));
     if (!this.apManager.canAfford(apCost)) return hexes;
 
-    if (skill.targetType === "self") {
+    const range = cs.range;
+
+    if (cs.targetType === "self") {
       hexes.add(`${pos.q},${pos.r}`);
-    } else if (skill.targetType === "enemy") {
-      const isRanged = skill.rangeType === "ranged";
+    } else if (cs.targetType === "enemy") {
+      const isRanged = cs.rangeType === "ranged";
       if (isRanged) {
         const enemies = this.getEnemyUnits();
         for (const eid of enemies) {
@@ -251,11 +301,15 @@ export class CombatManager {
     if (this.playerTurnState !== "awaitingInput" && this.playerTurnState !== "skillTargeting") return false;
     if (!this.selectedUnit) return false;
 
-    const skill = this.playerTurnState === "skillTargeting" && this.pendingSkill
-      ? this.pendingSkill
-      : this.getActiveSkill();
+    // Use pending CombatSkill if in targeting, otherwise active SkillDef
+    const cs = this.playerTurnState === "skillTargeting" && this.pendingSkill
+      ? this.pendingSkill : null;
+    const skill = cs?.skillDef ?? this.getActiveSkill();
+    const targetType = cs?.targetType ?? skill.targetType;
+    const rangeType = cs?.rangeType ?? skill.rangeType;
+
     // Stance skills target self, not enemies
-    if (skill.targetType === "self") return false;
+    if (targetType === "self") return false;
 
     const tile = this.grid.get(q, r);
     const attackerPos = this.world.getComponent<PositionComponent>(
@@ -270,11 +324,10 @@ export class CombatManager {
     ) {
       const dist = hexDistance({ q: attackerPos.q, r: attackerPos.r }, { q, r });
       const weapon = this.getWeaponDef(this.selectedUnit);
-      const range = skillRange(skill, weapon);
-      const apCost = this.getEffectiveAPCost(this.selectedUnit, skill, weapon);
+      const range = cs ? cs.range : skillRange(skill, weapon);
+      const apCost = cs?.isGenerated ? cs.apCost : this.getEffectiveAPCost(this.selectedUnit, skill, weapon);
       if (dist > range || !this.apManager.canAfford(apCost)) return false;
-      // Ranged attacks require line of sight
-      if (skill.rangeType === "ranged") {
+      if (rangeType === "ranged") {
         return hasLineOfSight(this.grid, attackerPos, { q, r });
       }
       return true;
@@ -296,18 +349,18 @@ export class CombatManager {
 
     // ── Skill targeting mode: execute pending skill on valid target, or cancel ──
     if (this.playerTurnState === "skillTargeting" && this.pendingSkill) {
-      const skill = this.pendingSkill;
+      const cs = this.pendingSkill;
       const targetHexes = this.getSkillTargetHexes();
       const key = `${q},${r}`;
 
       if (targetHexes.has(key)) {
         // Valid target — execute the skill
-        this.selectedSkill = skill;
+        this.selectedSkill = cs;
         this.pendingSkill = null;
 
-        if (skill.isStance && skill.targetType === "self") {
-          this.executeStance(this.selectedUnit, skill);
-        } else if (skill.targetType === "enemy" && tile?.occupant) {
+        if (cs.isStance && cs.targetType === "self") {
+          this.executeStanceCombatSkill(this.selectedUnit, cs);
+        } else if (cs.targetType === "enemy" && tile?.occupant) {
           this.executeAttack(this.selectedUnit, tile.occupant);
         }
         return true;
@@ -526,8 +579,16 @@ export class CombatManager {
 
   /** Execute an attack action using the active skill. */
   private executeAttack(attackerId: EntityId, defenderId: EntityId): void {
-    const skill = this.getActiveSkill();
+    const activeCombatSkill = this.getActiveCombatSkill();
     const weapon = this.getWeaponDef(attackerId);
+
+    // Route generated abilities through AbilityExecutor
+    if (activeCombatSkill?.isGenerated && activeCombatSkill.generatedAbility) {
+      this.executeGeneratedAbility(attackerId, defenderId, activeCombatSkill);
+      return;
+    }
+
+    const skill = this.getActiveSkill();
     const apCost = this.getEffectiveAPCost(attackerId, skill, weapon);
     const fatCost = skillFatigueCost(skill, weapon);
 
@@ -563,11 +624,10 @@ export class CombatManager {
 
     if (result.targetKilled) {
       this.handleDeath(defenderId);
-      // Morale: ally death check + enemy kill boost
       this.triggerAllyMoraleChecks(defenderId);
       this.triggerEnemyKillBoost(attackerId);
+      this.fireOnKillPassives(attackerId, defenderId);
     } else if (result.hit) {
-      // Morale: heavy damage check
       const moraleResult = this.morale.onHeavyDamage(this.world, defenderId, result.hpDamage);
       if (moraleResult) {
         this.onMoraleChange?.(moraleResult);
@@ -577,7 +637,6 @@ export class CombatManager {
       }
     }
 
-    // Continuation: check battle end, then return to awaitingInput
     this.pendingContinuation = () => {
       if (!this.checkBattleEnd()) {
         this.recalculateAndContinue(attackerId);
@@ -587,7 +646,67 @@ export class CombatManager {
     this.onActionComplete?.();
   }
 
-  /** Execute a stance skill (self-targeting). */
+  /** Execute a generated ability through AbilityExecutor. */
+  private executeGeneratedAbility(attackerId: EntityId, defenderId: EntityId, cs: CombatSkill): void {
+    const ability = cs.generatedAbility!;
+    const weapon = this.getWeaponDef(attackerId);
+
+    if (!this.apManager.canAfford(cs.apCost)) return;
+
+    this.playerTurnState = "animating";
+    this.apManager.spend(cs.apCost);
+    this.addFatigue(attackerId, cs.fatigueCost);
+    this.undoInfo = null;
+
+    const abilityResult = this.abilityExecutor.execute(this.world, attackerId, defenderId, ability, weapon);
+
+    // Notify UI about each attack result
+    for (const ar of abilityResult.attackResults) {
+      this.onAttackResult?.(ar, attackerId, defenderId);
+    }
+    for (const eff of abilityResult.appliedEffects) {
+      this.onStatusApplied?.(defenderId, eff);
+    }
+    if (abilityResult.stanceActivated) {
+      this.onStanceActivated?.(attackerId, abilityResult.stanceActivated);
+    }
+
+    // Start cooldown
+    if (ability.cost.cooldown > 0) {
+      this.startAbilityCooldown(attackerId, ability.uid, ability.cost.cooldown);
+    }
+
+    // Check kills
+    const targetHealth = this.world.getComponent<HealthComponent>(defenderId, "health");
+    if (targetHealth && targetHealth.current <= 0) {
+      this.handleDeath(defenderId);
+      this.triggerAllyMoraleChecks(defenderId);
+      this.triggerEnemyKillBoost(attackerId);
+      this.fireOnKillPassives(attackerId, defenderId);
+    } else {
+      // Morale check from total damage
+      const totalHpDmg = abilityResult.attackResults.reduce((sum, r) => sum + r.hpDamage, 0);
+      if (totalHpDmg > 0) {
+        const moraleResult = this.morale.onHeavyDamage(this.world, defenderId, totalHpDmg);
+        if (moraleResult) {
+          this.onMoraleChange?.(moraleResult);
+          if (moraleResult.newState === "fleeing") {
+            this.statusEffects.apply(this.world, defenderId, "fleeing");
+          }
+        }
+      }
+    }
+
+    this.pendingContinuation = () => {
+      if (!this.checkBattleEnd()) {
+        this.recalculateAndContinue(attackerId);
+      }
+    };
+
+    this.onActionComplete?.();
+  }
+
+  /** Execute a stance skill (self-targeting) from a SkillDef. */
   private executeStance(entityId: EntityId, skill: SkillDef): void {
     const weapon = this.getWeaponDef(entityId);
     const apCost = this.getEffectiveAPCost(entityId, skill, weapon);
@@ -604,6 +723,22 @@ export class CombatManager {
     }
 
     this.onStanceActivated?.(entityId, skill.id);
+    this.recalculateAndContinue(entityId);
+  }
+
+  /** Execute a stance from a CombatSkill (handles both static and generated). */
+  private executeStanceCombatSkill(entityId: EntityId, cs: CombatSkill): void {
+    if (cs.skillDef) {
+      this.executeStance(entityId, cs.skillDef);
+      return;
+    }
+    // Generated stance ability — spend AP/fatigue, activate stance
+    if (!this.apManager.canAfford(cs.apCost)) return;
+    this.apManager.spend(cs.apCost);
+    this.addFatigue(entityId, cs.fatigueCost);
+    this.undoInfo = null;
+    // Generated stances handled by AbilityExecutor (Step 3)
+    this.onStanceActivated?.(entityId, cs.id);
     this.recalculateAndContinue(entityId);
   }
 
@@ -650,6 +785,32 @@ export class CombatManager {
 
       // Enemy-targeted skills: check if any enemy is in range
       if (this.canSkillReachEnemy(entityId, pos, skill, weapon)) return true;
+    }
+
+    // Check generated abilities
+    const abilities = this.world.getComponent<AbilitiesComponent>(entityId, "abilities");
+    const cooldowns = this.world.getComponent<AbilityCooldownsComponent>(entityId, "abilityCooldowns");
+    if (abilities) {
+      for (const uid of abilities.abilityIds) {
+        const ability = resolveAbility(uid);
+        if (!ability || ability.isPassive) continue;
+        if (cooldowns && (cooldowns.cooldowns[uid] ?? 0) > 0) continue;
+        if (ability.weaponReq.length > 0 && !ability.weaponReq.includes(weapon.family)) continue;
+        if (!this.apManager.canAfford(ability.cost.ap)) continue;
+        const cs = wrapGeneratedAbility(ability, weapon);
+        if (cs.targetType === "self") return true;
+        if (cs.targetType === "enemy") {
+          // Check if any enemy in range
+          const range = cs.range;
+          for (const n of hexNeighbors(pos.q, pos.r)) {
+            const tile = this.grid.get(n.q, n.r);
+            if (!tile?.occupant || tile.occupant === entityId) continue;
+            if (!this.isEnemyEntity(tile.occupant)) continue;
+            const health = this.world.getComponent<HealthComponent>(tile.occupant, "health");
+            if (health && health.current > 0 && hexDistance(pos, { q: n.q, r: n.r }) <= range) return true;
+          }
+        }
+      }
     }
 
     // Check basic attack separately
@@ -763,6 +924,15 @@ export class CombatManager {
     // Clear expired stances
     this.skillExecutor.clearStances(this.world, entityId);
 
+    // Tick ability cooldowns
+    this.tickAbilityCooldowns(entityId);
+
+    // Fire turn-start passives
+    const passiveResults = this.passiveResolver.onTurnStart(this.world, entityId);
+    for (const pr of passiveResults) {
+      this.onPassiveTriggered?.(entityId, pr.abilityName, pr.effect);
+    }
+
     // Passive morale recovery
     this.morale.passiveRecovery(this.world, entityId);
 
@@ -865,7 +1035,7 @@ export class CombatManager {
     switch (action.type) {
       case "moveAndAttack": {
         if (!this.executeEnemyMove(entityId, action.path)) return; // died to ZoC or spearwall
-        this.executeEnemyAttack(entityId, action.targetId, action.skill);
+        this.executeEnemyAttack(entityId, action.targetId, action.skill, action.combatSkill);
         break;
       }
 
@@ -875,12 +1045,16 @@ export class CombatManager {
       }
 
       case "attack": {
-        this.executeEnemyAttack(entityId, action.targetId, action.skill);
+        this.executeEnemyAttack(entityId, action.targetId, action.skill, action.combatSkill);
         break;
       }
 
       case "activateStance": {
-        this.executeStanceEnemy(entityId, action.skill);
+        if (action.combatSkill?.isGenerated && action.combatSkill.generatedAbility) {
+          this.executeStanceCombatSkill(entityId, action.combatSkill);
+        } else {
+          this.executeStanceEnemy(entityId, action.skill);
+        }
         break;
       }
 
@@ -978,7 +1152,13 @@ export class CombatManager {
   }
 
   /** Execute an enemy attack with morale/status handling. */
-  private executeEnemyAttack(entityId: EntityId, targetId: EntityId, skill?: SkillDef): void {
+  private executeEnemyAttack(entityId: EntityId, targetId: EntityId, skill?: SkillDef, combatSkill?: CombatSkill): void {
+    // Route generated abilities through AbilityExecutor
+    if (combatSkill?.isGenerated && combatSkill.generatedAbility) {
+      this.executeGeneratedAbility(entityId, targetId, combatSkill);
+      return;
+    }
+
     const weapon = this.getWeaponDef(entityId);
     const useSkill = skill ?? BASIC_ATTACK;
     const fatCost = skillFatigueCost(useSkill, weapon);
@@ -1002,6 +1182,7 @@ export class CombatManager {
       this.handleDeath(targetId);
       this.triggerAllyMoraleChecks(targetId);
       this.triggerEnemyKillBoost(entityId);
+      this.fireOnKillPassives(entityId, targetId);
     } else if (result.hit) {
       const mr = this.morale.onHeavyDamage(this.world, targetId, result.hpDamage);
       if (mr) {
@@ -1155,6 +1336,13 @@ export class CombatManager {
     return this.getEffectiveAPCost(this.selectedUnit, skill, weapon);
   }
 
+  /** Public: get AP cost for a CombatSkill. */
+  getCombatSkillAPCost(cs: CombatSkill): number {
+    if (cs.isGenerated) return cs.apCost;
+    if (!cs.skillDef) return cs.apCost;
+    return this.getSkillAPCost(cs.skillDef);
+  }
+
   private getWeaponAPCost(entityId: EntityId): number {
     const equip = this.world.getComponent<EquipmentComponent>(entityId, "equipment");
     const weapon = equip?.mainHand ? resolveWeapon(equip.mainHand) : UNARMED;
@@ -1178,6 +1366,29 @@ export class CombatManager {
     if (fatigue) {
       fatigue.current = Math.max(0, Math.min(fatigue.max, fatigue.current + amount));
     }
+  }
+
+  /** Decrement ability cooldowns by 1 at turn start, removing entries at 0. */
+  private tickAbilityCooldowns(entityId: EntityId): void {
+    const cd = this.world.getComponent<AbilityCooldownsComponent>(entityId, "abilityCooldowns");
+    if (!cd) return;
+    for (const uid of Object.keys(cd.cooldowns)) {
+      cd.cooldowns[uid] = (cd.cooldowns[uid] ?? 1) - 1;
+      if (cd.cooldowns[uid]! <= 0) {
+        delete cd.cooldowns[uid];
+      }
+    }
+  }
+
+  /** Start cooldown for an ability after use. */
+  startAbilityCooldown(entityId: EntityId, abilityUid: string, turns: number): void {
+    if (turns <= 0) return;
+    let cd = this.world.getComponent<AbilityCooldownsComponent>(entityId, "abilityCooldowns");
+    if (!cd) {
+      this.world.addComponent(entityId, { type: "abilityCooldowns" as const, cooldowns: {} });
+      cd = this.world.getComponent<AbilityCooldownsComponent>(entityId, "abilityCooldowns")!;
+    }
+    cd.cooldowns[abilityUid] = turns;
   }
 
   /**
@@ -1219,6 +1430,17 @@ export class CombatManager {
       }
     }
     return false;
+  }
+
+  /** Fire on-kill passives for the killer and refund AP. */
+  private fireOnKillPassives(killerId: EntityId, killedId: EntityId): void {
+    const { results, apRefund } = this.passiveResolver.onKill(this.world, killerId, killedId);
+    if (apRefund > 0) {
+      this.apManager.refund(apRefund);
+    }
+    for (const pr of results) {
+      this.onPassiveTriggered?.(killerId, pr.abilityName, pr.effect);
+    }
   }
 
   private handleDeath(entityId: EntityId): void {

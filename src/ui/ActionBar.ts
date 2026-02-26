@@ -1,6 +1,13 @@
-import type { SkillDef } from "@data/SkillData";
+import type { CombatSkill } from "@data/CombatSkill";
 
 export type ActionType = "wait" | "endTurn";
+
+/** Tier color borders: T1 white, T2 green, T3 blue. */
+const TIER_COLORS: Record<number, string> = {
+  1: "#cccccc",
+  2: "#44cc44",
+  3: "#4488dd",
+};
 
 export class ActionBar {
   private container: HTMLDivElement;
@@ -9,11 +16,11 @@ export class ActionBar {
   private actionSection: HTMLDivElement;
   private actionButtons: Map<string, HTMLButtonElement> = new Map();
   private skillButtons: Map<string, HTMLButtonElement> = new Map();
-  private skills: SkillDef[] = [];
+  private skills: CombatSkill[] = [];
   private activeSkillId: string | null = null;
 
   onAction?: (action: ActionType) => void;
-  onSkillSelect?: (skill: SkillDef) => void;
+  onSkillSelect?: (skill: CombatSkill) => void;
 
   constructor(root: HTMLDivElement) {
     this.container = document.createElement("div");
@@ -55,11 +62,11 @@ export class ActionBar {
     this.actionButtons.set(id, btn);
   }
 
-  /** Populate skill buttons. Only shows non-basic skills. */
-  setSkills(skills: SkillDef[]): void {
+  /** Populate skill buttons. Only shows non-basic, non-passive skills. */
+  setSkills(skills: CombatSkill[]): void {
     this.skillSection.innerHTML = "";
     this.skillButtons.clear();
-    this.skills = skills.filter(s => !s.isBasicAttack);
+    this.skills = skills.filter(s => !s.isBasicAttack && !s.isPassive);
     this.activeSkillId = null;
 
     if (this.skills.length === 0) {
@@ -74,6 +81,24 @@ export class ActionBar {
       btn.className = "skill-btn";
       btn.textContent = skill.name;
       btn.title = skill.description;
+
+      // Tier color border for generated abilities
+      if (skill.isGenerated && skill.generatedAbility) {
+        const tier = skill.generatedAbility.tier;
+        btn.style.borderColor = TIER_COLORS[tier] ?? "#cccccc";
+        btn.style.borderWidth = "2px";
+        btn.style.borderStyle = "solid";
+      }
+
+      // Cooldown badge for abilities on cooldown
+      if (skill.isGenerated && skill.cooldown > 0) {
+        const badge = document.createElement("span");
+        badge.className = "skill-cooldown-badge";
+        badge.textContent = `${skill.cooldown}`;
+        btn.style.position = "relative";
+        btn.appendChild(badge);
+      }
+
       btn.addEventListener("pointerup", (e) => {
         e.stopPropagation();
         this.onSkillSelect?.(skill);
