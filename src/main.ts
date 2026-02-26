@@ -9,6 +9,10 @@ import { ManagementScreen } from "@ui/ManagementScreen";
 import { generateTalentStars } from "@data/TalentData";
 import { getArmorDef } from "@data/ArmorData";
 import { setItemRegistry } from "@data/ItemResolver";
+import { setAbilityRegistry } from "@data/AbilityResolver";
+import { pickTheme } from "@data/ThemeData";
+import { generateSkillTree } from "@data/SkillTreeData";
+import type { CharacterClass } from "@data/ClassData";
 
 function simpleRng(): number {
   return Math.random();
@@ -25,6 +29,11 @@ function createStarterUnit(
 ): RosterMember {
   const bodyArmor = getArmorDef("linen_tunic");
   const headArmor = getArmorDef("hood");
+
+  // Generate skill tree
+  const theme = pickTheme(classId as CharacterClass, simpleRng);
+  const skillTree = generateSkillTree(theme, simpleRng);
+
   return {
     name,
     classId,
@@ -60,10 +69,20 @@ function createStarterUnit(
         : null,
     },
     spriteType: sprite,
+    skillTheme: theme.id,
+    abilities: skillTree.nodes.map(n => n.abilityUid),
+    skillTree,
+    unlockedNodes: [],
+    nodeStacks: {},
+    classPoints: 0,
   };
 }
 
 function createNewGame(): SaveData {
+  // Initialize registries so generated abilities are captured
+  const abilityRegistry: Record<string, import("@data/AbilityData").GeneratedAbility> = {};
+  setAbilityRegistry(abilityRegistry);
+
   return {
     version: 1,
     roster: [
@@ -74,6 +93,7 @@ function createNewGame(): SaveData {
     currentScenarioIndex: 0,
     gold: 200,
     stash: [],
+    abilityRegistry,
   };
 }
 

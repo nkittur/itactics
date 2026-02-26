@@ -1192,6 +1192,11 @@
 
     /* ── Skill Tree ── */
     .skill-tree-container { padding: 4px 0; }
+    .skill-tree-wrapper { position: relative; }
+    .tree-svg-lines {
+      position: absolute; inset: 0;
+      pointer-events: none; overflow: visible;
+    }
     .cp-header {
       font-size: 15px; font-weight: bold; color: #ffcc44;
       text-align: center; padding: 8px 0; margin-bottom: 8px;
@@ -1199,13 +1204,7 @@
     }
     .skill-tree-tier {
       display: flex; justify-content: center; gap: 6px;
-      margin-bottom: 0;
-    }
-    .tree-tier-connector {
-      height: 10px; display: flex; justify-content: center;
-    }
-    .tree-tier-connector::before {
-      content: ''; display: block; width: 2px; height: 100%; background: #334;
+      margin-bottom: 14px; position: relative; z-index: 1;
     }
     .tree-node {
       background: #1e2740; border-radius: 8px;
@@ -1233,6 +1232,7 @@
     .tree-node-cost { font-size: 10px; color: #cc8; font-weight: bold; }
     .tree-node-status { font-size: 12px; color: #4a4; }
     .tree-node-stacks { font-size: 9px; color: #aad; }
+    .tree-node-from { font-size: 8px; color: #776; margin-top: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 75px; }
 
     /* Skill Node Detail Popup */
     .node-detail-backdrop {

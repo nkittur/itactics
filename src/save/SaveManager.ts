@@ -119,7 +119,7 @@ export async function loadGame(): Promise<SaveData | null> {
 
     // Migrate level-based abilities → skill tree
     for (const member of data.roster) {
-      if (!member.skillTree && member.skillTheme) {
+      if (!member.skillTree) {
         migrateToSkillTree(member);
       }
     }

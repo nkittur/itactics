@@ -44,7 +44,7 @@ export const CP_COST_BY_TIER: Record<1 | 2 | 3 | 4, number> = {
 };
 
 const TIER_NODE_COUNTS: Record<1 | 2 | 3 | 4, [number, number]> = {
-  1: [1, 2],
+  1: [2, 3],
   2: [2, 3],
   3: [3, 4],
   4: [2, 3],

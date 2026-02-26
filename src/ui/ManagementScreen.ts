@@ -406,17 +406,16 @@ export class ManagementScreen {
     const cpHeader = el("div", "cp-header", `Class Points: ${unit.classPoints}`);
     container.appendChild(cpHeader);
 
+    // Tree wrapper (positioned for SVG lines)
+    const treeWrapper = el("div", "skill-tree-wrapper");
+    const nodeElements = new Map<string, HTMLElement>();
+
     // Render tiers 1-4
     for (const tier of [1, 2, 3, 4] as const) {
       const tierNodes = unit.skillTree.nodes
         .filter(n => n.tier === tier)
         .sort((a, b) => a.col - b.col);
       if (tierNodes.length === 0) continue;
-
-      // Connector line above (except tier 1)
-      if (tier > 1) {
-        container.appendChild(el("div", "tree-tier-connector"));
-      }
 
       const tierRow = el("div", "skill-tree-tier");
       for (const node of tierNodes) {
@@ -431,6 +430,7 @@ export class ManagementScreen {
         const canStack = node.stackable && isUnlocked && currentStacks < node.maxStacks && canAfford;
 
         const nodeEl = el("div", "tree-node");
+        nodeEl.dataset.nodeId = node.nodeId;
         if (isUnlocked) nodeEl.classList.add("unlocked");
         else if (isAvailable) nodeEl.classList.add("available");
         else nodeEl.classList.add("locked");
@@ -456,6 +456,18 @@ export class ManagementScreen {
           nodeEl.appendChild(el("div", "tree-node-cost", `${node.cpCost}`));
         }
 
+        // Prerequisites label
+        if (node.prerequisites.length > 0) {
+          const prereqLabel = node.prerequisites.map(pid => {
+            const pn = unit.skillTree!.nodes.find(n => n.nodeId === pid);
+            if (!pn) return "?";
+            const pa = resolveAbility(pn.abilityUid);
+            return pa?.name ?? "?";
+          }).join(", ");
+          const fromEl = el("div", "tree-node-from", "\u2191 " + prereqLabel);
+          nodeEl.appendChild(fromEl);
+        }
+
         // Tap handler
         nodeEl.addEventListener("pointerup", (e) => {
           e.stopPropagation();
@@ -463,10 +475,58 @@ export class ManagementScreen {
         });
 
         tierRow.appendChild(nodeEl);
+        nodeElements.set(node.nodeId, nodeEl);
       }
 
-      container.appendChild(tierRow);
+      treeWrapper.appendChild(tierRow);
     }
+
+    container.appendChild(treeWrapper);
+
+    // Draw SVG connector lines after layout
+    requestAnimationFrame(() => {
+      const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      svg.classList.add("tree-svg-lines");
+      const wrapperRect = treeWrapper.getBoundingClientRect();
+
+      for (const [parentId, childId] of unit.skillTree!.edges) {
+        const parentEl = nodeElements.get(parentId);
+        const childEl = nodeElements.get(childId);
+        if (!parentEl || !childEl) continue;
+
+        const pr = parentEl.getBoundingClientRect();
+        const cr = childEl.getBoundingClientRect();
+
+        const x1 = pr.left + pr.width / 2 - wrapperRect.left;
+        const y1 = pr.top + pr.height - wrapperRect.top;
+        const x2 = cr.left + cr.width / 2 - wrapperRect.left;
+        const y2 = cr.top - wrapperRect.top;
+
+        const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+        line.setAttribute("x1", String(x1));
+        line.setAttribute("y1", String(y1));
+        line.setAttribute("x2", String(x2));
+        line.setAttribute("y2", String(y2));
+
+        // Color based on unlock state
+        const childNode = unit.skillTree!.nodes.find(n => n.nodeId === childId);
+        const bothUnlocked = unit.unlockedNodes.has(parentId) && unit.unlockedNodes.has(childId);
+        const parentUnlocked = unit.unlockedNodes.has(parentId);
+        if (bothUnlocked) {
+          line.setAttribute("stroke", "#4a4");
+        } else if (parentUnlocked) {
+          line.setAttribute("stroke", "#886");
+        } else {
+          line.setAttribute("stroke", "#334");
+        }
+        line.setAttribute("stroke-width", "2");
+        svg.appendChild(line);
+      }
+
+      svg.style.width = wrapperRect.width + "px";
+      svg.style.height = wrapperRect.height + "px";
+      treeWrapper.insertBefore(svg, treeWrapper.firstChild);
+    });
 
     // Unit synergies (from all unlocked abilities)
     const unlockedAbilityIds = unit.skillTree.nodes
