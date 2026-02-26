@@ -3,35 +3,10 @@ import { generateAbilityUID } from "./AbilityData";
 import { registerAbility } from "./AbilityResolver";
 import type { Theme, ThemeProgressionSlot } from "./ThemeData";
 import { generatePassiveSuite, type PowerLevel } from "./PassiveGenerator";
+import { generateAbility } from "./AbilityGenerator";
 
 // Re-export for convenience
 export type { PowerLevel };
-
-// ── Forward-declared imports (avoid circular) ──
-// generateAbility is imported lazily to avoid circular dep with AbilityGenerator
-
-let _generateAbility: ((
-  slot: ThemeProgressionSlot,
-  tier: 1 | 2 | 3,
-  themeId: string,
-  weaponReq: string[],
-  rng: () => number,
-) => GeneratedAbility) | null = null;
-
-export function setAbilityGenerator(fn: typeof _generateAbility): void {
-  _generateAbility = fn;
-}
-
-function callGenerateAbility(
-  slot: ThemeProgressionSlot,
-  tier: 1 | 2 | 3,
-  themeId: string,
-  weaponReq: string[],
-  rng: () => number,
-): GeneratedAbility {
-  if (!_generateAbility) throw new Error("setAbilityGenerator not called");
-  return _generateAbility(slot, tier, themeId, weaponReq, rng);
-}
 
 // ── Types ──
 
@@ -273,7 +248,7 @@ export function generateSkillTree(theme: Theme, rng: () => number): SkillTree {
     const slotIndex = i % theme.progression.length;
     const slot = theme.progression[slotIndex]!;
     const tier = activeTierForTreeTier(node.tier, node.dualParent);
-    const ability = callGenerateAbility(
+    const ability = generateAbility(
       { ...slot, isPassive: false }, // Force active
       tier,
       theme.id,
