@@ -1,3 +1,7 @@
+// ── Rarity ──
+
+export type Rarity = "common" | "uncommon" | "rare" | "epic" | "legendary";
+
 // ── Effect types (V1: 14 of 30 — enough for all 7 theme progressions) ──
 
 export type EffectType =
@@ -8,7 +12,8 @@ export type EffectType =
   | "debuff_stat" | "debuff_vuln"
   | "buff_stat" | "buff_dmgReduce"
   | "stance_counter" | "stance_overwatch"
-  | "res_apRefund";
+  | "res_apRefund"
+  | "heal_pctDmg";
 
 export interface EffectPrimitive {
   type: EffectType;
@@ -70,6 +75,7 @@ export interface GeneratedAbility {
   weaponReq: string[];
   tier: 1 | 2 | 3;
   isPassive: boolean;
+  rarity: Rarity;
   synergyTags: { creates: string[]; exploits: string[] };
 }
 

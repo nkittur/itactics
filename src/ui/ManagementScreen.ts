@@ -45,6 +45,18 @@ const DIFFICULTY_COLORS: Record<string, string> = {
 
 const TIER_COLORS: Record<number, string> = { 1: "#ccc", 2: "#4c4", 3: "#48d" };
 
+const RARITY_COLORS: Record<string, string> = {
+  common: "#9d9d9d",
+  uncommon: "#1eff00",
+  rare: "#0070ff",
+  epic: "#a335ee",
+  legendary: "#ff8000",
+};
+
+function rarityLabel(rarity: string): string {
+  return rarity.charAt(0).toUpperCase() + rarity.slice(1);
+}
+
 function el(tag: string, cls?: string, text?: string): HTMLElement {
   const e = document.createElement(tag);
   if (cls) e.className = cls;
@@ -398,9 +410,9 @@ export class ManagementScreen {
         if (!ability) continue;
         const unlocked = unit.level >= ab.unlockLevel;
         const card = el("div", `skill-card${unlocked ? "" : " locked"}`);
-        card.style.borderLeftColor = TIER_COLORS[ability.tier] ?? "#ccc";
+        card.style.borderLeftColor = RARITY_COLORS[ability.rarity] ?? "#9d9d9d";
         const nameSpan = el("span", "skill-name", ability.name);
-        nameSpan.style.color = unlocked ? (TIER_COLORS[ability.tier] ?? "#ccc") : "#666";
+        nameSpan.style.color = unlocked ? (RARITY_COLORS[ability.rarity] ?? "#9d9d9d") : "#666";
         card.appendChild(nameSpan);
         if (unlocked) card.appendChild(el("div", "skill-desc", ability.description));
         container.appendChild(card);
@@ -444,11 +456,17 @@ export class ManagementScreen {
         nodeEl.classList.add(node.isActive ? "node-active" : "node-passive");
         if (node.dualParent) nodeEl.classList.add("dual-parent");
 
-        // Name
-        nodeEl.appendChild(el("div", "tree-node-name", ability.name));
+        // Name (colored by rarity)
+        const nameEl = el("div", "tree-node-name", ability.name);
+        const rarityColor = RARITY_COLORS[ability.rarity] ?? "#9d9d9d";
+        nameEl.style.color = rarityColor;
+        nodeEl.appendChild(nameEl);
 
-        // Type badge
-        nodeEl.appendChild(el("span", "tree-node-type", node.isActive ? "Active" : "Passive"));
+        // Type badge with rarity
+        const typeText = `${rarityLabel(ability.rarity)} ${node.isActive ? "Active" : "Passive"}`;
+        const typeEl = el("span", "tree-node-type", typeText);
+        if (ability.rarity !== "common") typeEl.style.color = rarityColor;
+        nodeEl.appendChild(typeEl);
 
         // Stack indicator for stackable nodes
         if (node.stackable) {
@@ -568,14 +586,14 @@ export class ManagementScreen {
     const backdrop = el("div", "node-detail-backdrop");
     const panel = el("div", "node-detail-panel");
 
-    // Title
+    // Title (colored by rarity)
     const title = el("div", "node-detail-title", ability.name);
-    title.style.color = node.isActive ? "#6af" : "#8c8";
+    title.style.color = RARITY_COLORS[ability.rarity] ?? "#9d9d9d";
     panel.appendChild(title);
 
-    // Type + tier
+    // Type + tier + rarity
     const meta: string[] = [];
-    meta.push(node.isActive ? "Active Skill" : "Passive Skill");
+    meta.push(`${rarityLabel(ability.rarity)} ${node.isActive ? "Active" : "Passive"}`);
     meta.push(`Tier ${node.tier}`);
     if (node.dualParent) meta.push("\u2605 Dual-parent bonus");
     if (node.stackable) meta.push(`Stackable (${currentStacks}/${node.maxStacks})`);

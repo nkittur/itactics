@@ -78,6 +78,21 @@ export class AbilityExecutor {
       }
     }
 
+    // Post-process: heal_pctDmg (lifesteal)
+    const healEffect = ability.effects.find(e => e.type === "heal_pctDmg");
+    if (healEffect) {
+      const pct = (healEffect.params.pct as number) ?? 30;
+      const totalDmg = result.attackResults.reduce((sum, r) => sum + r.hpDamage, 0);
+      if (totalDmg > 0) {
+        const healAmt = Math.round(totalDmg * pct / 100);
+        const attackerHealth = world.getComponent<HealthComponent>(attackerId, "health");
+        if (attackerHealth) {
+          attackerHealth.current = Math.min(attackerHealth.max, attackerHealth.current + healAmt);
+          result.appliedEffects.push(`heal_${healAmt}`);
+        }
+      }
+    }
+
     return result;
   }
 
@@ -119,6 +134,11 @@ export class AbilityExecutor {
         case "stance_counter": effects.push("Counter Stance"); break;
         case "stance_overwatch": effects.push("Overwatch"); break;
         case "res_apRefund": effects.push("AP Refund on Kill"); break;
+        case "heal_pctDmg": {
+          const pct = (effect.params.pct as number) ?? 30;
+          effects.push(`Lifesteal ${pct}%`);
+          break;
+        }
       }
     }
 
@@ -181,6 +201,9 @@ export class AbilityExecutor {
         break;
       case "res_apRefund":
         // AP refund handled via passive/trigger system, not as direct effect
+        break;
+      case "heal_pctDmg":
+        // Deferred — processed after all damage effects in execute()
         break;
     }
   }

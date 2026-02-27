@@ -2,8 +2,9 @@ import type { GeneratedAbility } from "./AbilityData";
 import { generateAbilityUID } from "./AbilityData";
 import { registerAbility } from "./AbilityResolver";
 import type { Theme, ThemeProgressionSlot } from "./ThemeData";
+import { THEMES } from "./ThemeData";
 import { generatePassiveSuite, type PowerLevel } from "./PassiveGenerator";
-import { generateAbility } from "./AbilityGenerator";
+import { generateAbility, rollRarity } from "./AbilityGenerator";
 
 // Re-export for convenience
 export type { PowerLevel };
@@ -266,6 +267,29 @@ function activeTierForTreeTier(tier: 1 | 2 | 3 | 4, dualParent: boolean): 1 | 2 
   }
 }
 
+// ── Off-theme mixing ──
+
+const OFF_THEME_CHANCE = 0.40;
+
+function findCompatibleThemes(primary: Theme): { theme: Theme; weight: number }[] {
+  const results: { theme: Theme; weight: number }[] = [];
+  const primaryConds = new Set(
+    primary.progression.flatMap(s => [...s.conditions.creates, ...s.conditions.exploits]),
+  );
+  for (const theme of Object.values(THEMES)) {
+    if (theme.id === primary.id) continue;
+    const sharedWeapons = theme.weaponAffinity.filter(w => primary.weaponAffinity.includes(w));
+    if (sharedWeapons.length === 0) continue;
+    let weight = sharedWeapons.length * 3;
+    const themeConds = new Set(
+      theme.progression.flatMap(s => [...s.conditions.creates, ...s.conditions.exploits]),
+    );
+    for (const c of themeConds) if (primaryConds.has(c)) weight += 2;
+    results.push({ theme, weight });
+  }
+  return results;
+}
+
 // ── Full tree generation ──
 
 /**
@@ -278,18 +302,40 @@ export function generateSkillTree(theme: Theme, rng: () => number): SkillTree {
   const activeNodes = topology.filter(n => n.isActive);
   const passiveNodes = topology.filter(n => !n.isActive);
 
-  // Generate actives by cycling through theme progression slots
+  // Generate actives — primary theme weighted, with off-theme mixing
+  const compatible = findCompatibleThemes(theme);
   const actives: GeneratedAbility[] = [];
   for (let i = 0; i < activeNodes.length; i++) {
     const node = activeNodes[i]!;
-    const slotIndex = i % theme.progression.length;
-    const slot = theme.progression[slotIndex]!;
     const tier = activeTierForTreeTier(node.tier, node.dualParent);
+
+    let useTheme = theme;
+    let weaponReq = theme.weaponAffinity;
+
+    // Chance to pull from a compatible off-theme
+    if (compatible.length > 0 && rng() < OFF_THEME_CHANCE) {
+      const totalW = compatible.reduce((s, c) => s + c.weight, 0);
+      let roll = rng() * totalW;
+      for (const c of compatible) {
+        roll -= c.weight;
+        if (roll <= 0) { useTheme = c.theme; break; }
+      }
+      // Weapon req = intersection of primary + off-theme
+      const shared = useTheme.weaponAffinity.filter(w => theme.weaponAffinity.includes(w));
+      weaponReq = shared.length > 0 ? shared : theme.weaponAffinity;
+    }
+
+    // Pick progression slot: cycle for on-theme, tier-based for off-theme
+    const slotIndex = useTheme === theme
+      ? (i % useTheme.progression.length)
+      : (node.tier <= 2 ? (rng() < 0.5 ? 0 : 1) : node.tier === 3 ? 2 : 3);
+
+    const slot = useTheme.progression[slotIndex]!;
     const ability = generateAbility(
-      { ...slot, isPassive: false }, // Force active
+      { ...slot, isPassive: false },
       tier,
-      theme.id,
-      theme.weaponAffinity,
+      useTheme.id,
+      weaponReq,
       rng,
     );
     registerAbility(ability);
@@ -300,7 +346,8 @@ export function generateSkillTree(theme: Theme, rng: () => number): SkillTree {
   const passivePowerLevels: PowerLevel[] = passiveNodes.map(n =>
     passivePowerForTier(n.tier, n.dualParent),
   );
-  const passives = generatePassiveSuite(actives, passivePowerLevels, rng, true);
+  const passiveRarities = passiveNodes.map(() => rollRarity(rng));
+  const passives = generatePassiveSuite(actives, passivePowerLevels, rng, true, passiveRarities);
 
   // Deduplicate names within the tree — use adjective variants before "II" suffix
   const DEDUP_ADJECTIVES = [

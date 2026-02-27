@@ -7,6 +7,7 @@ import type {
   AbilityCost,
   EffectType,
   TargetingType,
+  Rarity,
 } from "./AbilityData";
 import { generateAbilityUID } from "./AbilityData";
 import { registerAbility } from "./AbilityResolver";
@@ -34,6 +35,7 @@ const EFFECT_POWER: Record<EffectType, number> = {
   stance_counter: 5,
   stance_overwatch: 4,
   res_apRefund: 3,
+  heal_pctDmg: 4,
 };
 
 // ── Targeting power multipliers ──
@@ -99,6 +101,8 @@ function defaultEffectParams(type: EffectType, tier: 1 | 2 | 3, rng: () => numbe
       return { maxTriggers: tier >= 3 ? 5 : 3 };
     case "res_apRefund":
       return { amount: snap(3, 1, 2) };
+    case "heal_pctDmg":
+      return { pct: 30 };
   }
 }
 
@@ -370,6 +374,11 @@ function generateDescription(ability: GeneratedAbility): string {
         parts.push(`Refund ${amt} AP`);
         break;
       }
+      case "heal_pctDmg": {
+        const pct = effect.params["pct"] as number;
+        parts.push(`Heal ${pct}% of damage dealt`);
+        break;
+      }
     }
   }
 
@@ -444,6 +453,159 @@ function generatePassiveDescription(ability: GeneratedAbility): string {
   return "Passive: " + parts.join(". ") + ".";
 }
 
+// ── Rarity system ──
+
+const RARITY_ORDER: Rarity[] = ["common", "uncommon", "rare", "epic", "legendary"];
+
+// Cumulative thresholds: common 60%, uncommon 33%, rare 6%, epic 0.8%, legendary 0.1%
+const RARITY_CDF: [number, Rarity][] = [
+  [0.60, "common"],
+  [0.93, "uncommon"],
+  [0.99, "rare"],
+  [0.998, "epic"],
+  [1.0, "legendary"],
+];
+
+const RARITY_MULT: Record<Rarity, number> = {
+  common: 1.0,
+  uncommon: 1.1,
+  rare: 1.25,
+  epic: 1.5,
+  legendary: 1.75,
+};
+
+export function rollRarity(rng: () => number): Rarity {
+  const roll = rng();
+  for (const [threshold, rarity] of RARITY_CDF) {
+    if (roll < threshold) return rarity;
+  }
+  return "common";
+}
+
+/** Scale numeric params on an ability by its rarity multiplier. */
+export function applyRarityScaling(ability: GeneratedAbility): void {
+  const mult = RARITY_MULT[ability.rarity];
+  if (mult === 1.0) return;
+
+  for (const effect of ability.effects) {
+    scaleParams(effect.params, mult);
+  }
+  for (const mod of ability.modifiers) {
+    scaleParams(mod.params, mult);
+  }
+  for (const trigger of ability.triggers) {
+    if (trigger.triggeredEffect) {
+      scaleParams(trigger.triggeredEffect.params, mult);
+    }
+  }
+}
+
+function scaleParams(params: Record<string, number | string>, mult: number): void {
+  for (const key of Object.keys(params)) {
+    const val = params[key];
+    if (typeof val !== "number") continue;
+    // Skip non-scaling fields
+    if (key === "turns" || key === "hits" || key === "distance" || key === "maxCounters" || key === "maxTriggers") continue;
+    // Multipliers (0-2 range): snap to 0.2
+    if (key === "multiplier" || key === "multPerHit" || key === "bonusMult") {
+      params[key] = Math.round(val * mult * 5) / 5; // snap to 0.2
+    }
+    // Percentages and stat amounts: snap to 5
+    else if (key === "amount" || key === "bonusDmg" || key === "bonusPercent" || key === "percent" || key === "pct" || key === "chance") {
+      params[key] = Math.max(5, Math.round(val * mult / 5) * 5);
+    }
+    // Integer values (dmgPerTurn, apLoss, statReduce, hpThreshold, hpPercent): snap to nearest int
+    else {
+      params[key] = Math.max(1, Math.round(val * mult));
+    }
+  }
+}
+
+/** Add a bonus effect for epic-rarity active abilities. */
+function addEpicBonus(ability: GeneratedAbility, rng: () => number): void {
+  if (ability.isPassive) return;
+
+  const hasDmg = ability.effects.some(e =>
+    e.type === "dmg_weapon" || e.type === "dmg_execute" || e.type === "dmg_multihit" || e.type === "dmg_spell");
+  const hasCC = ability.effects.some(e =>
+    e.type === "cc_stun" || e.type === "cc_root" || e.type === "cc_daze");
+  const hasDoT = ability.effects.some(e =>
+    e.type === "dot_bleed" || e.type === "dot_burn" || e.type === "dot_poison");
+
+  // Build candidate pool
+  type Bonus = { label: string; apply: () => void };
+  const pool: Bonus[] = [];
+
+  if (hasDmg) {
+    pool.push({
+      label: "Armor Piercing",
+      apply: () => ability.modifiers.push({ type: "mod_armorIgnore", params: { pct: 0.5 }, powerAdd: 2 }),
+    });
+    pool.push({
+      label: "Expose Weakness",
+      apply: () => ability.effects.push({ type: "debuff_vuln", params: { bonusDmg: 25, turns: 2 }, power: EFFECT_POWER.debuff_vuln }),
+    });
+  }
+  if (!hasCC) {
+    pool.push({
+      label: "Concussive",
+      apply: () => ability.effects.push({ type: "cc_daze", params: { chance: 80, apLoss: 1, turns: 1 }, power: EFFECT_POWER.cc_daze }),
+    });
+  }
+  if (!hasDoT) {
+    pool.push({
+      label: "Bloodletting",
+      apply: () => ability.effects.push({ type: "dot_bleed", params: { dmgPerTurn: 4, turns: 3 }, power: EFFECT_POWER.dot_bleed }),
+    });
+  }
+  // Fallback always available
+  const stats = ["meleeDefense", "rangedDefense", "meleeSkill", "rangedSkill", "initiative", "resolve"];
+  pool.push({
+    label: "Battle Focus",
+    apply: () => ability.effects.push({ type: "buff_stat", params: { stat: stats[Math.floor(rng() * stats.length)]!, amount: 15, turns: 2 }, power: EFFECT_POWER.buff_stat }),
+  });
+
+  const chosen = pool[Math.floor(rng() * pool.length)]!;
+  chosen.apply();
+}
+
+/** Add a powerful bonus effect for legendary-rarity active abilities. */
+function addLegendaryBonus(ability: GeneratedAbility, rng: () => number): void {
+  if (ability.isPassive) return;
+
+  type Bonus = { label: string; apply: () => void };
+  const pool: Bonus[] = [];
+
+  pool.push({
+    label: "Sunder",
+    apply: () => ability.modifiers.push({ type: "mod_armorIgnore", params: { pct: 1.0 }, powerAdd: 3 }),
+  });
+  pool.push({
+    label: "Doom Mark",
+    apply: () => ability.effects.push({ type: "debuff_vuln", params: { bonusDmg: 50, turns: 3 }, power: EFFECT_POWER.debuff_vuln + 2 }),
+  });
+  pool.push({
+    label: "Vampiric",
+    apply: () => ability.effects.push({ type: "heal_pctDmg", params: { pct: 30 }, power: EFFECT_POWER.heal_pctDmg }),
+  });
+  pool.push({
+    label: "Overwhelming",
+    apply: () => ability.effects.push({ type: "cc_stun", params: { chance: 100 }, power: EFFECT_POWER.cc_stun + 1 }),
+  });
+  // Devastating: double main damage multiplier
+  const mainDmg = ability.effects.find(e =>
+    e.type === "dmg_weapon" || e.type === "dmg_execute" || e.type === "dmg_spell");
+  if (mainDmg && typeof mainDmg.params["multiplier"] === "number") {
+    pool.push({
+      label: "Devastating",
+      apply: () => { mainDmg.params["multiplier"] = (mainDmg.params["multiplier"] as number) * 2; },
+    });
+  }
+
+  const chosen = pool[Math.floor(rng() * pool.length)]!;
+  chosen.apply();
+}
+
 // ── Main generation functions ──
 
 /**
@@ -509,6 +671,8 @@ export function generateAbility(
   const uid = generateAbilityUID();
   const name = generateAbilityName(effects, targeting, isPassive, themeId, rng);
 
+  const rarity = rollRarity(rng);
+
   const ability: GeneratedAbility = {
     uid,
     name,
@@ -522,26 +686,40 @@ export function generateAbility(
     weaponReq,
     tier,
     isPassive,
+    rarity,
     synergyTags: {
       creates: [...slot.conditions.creates],
       exploits: [...slot.conditions.exploits],
     },
   };
 
+  // Apply rarity scaling and bonuses
+  applyRarityScaling(ability);
+  if (rarity === "epic") addEpicBonus(ability, rng);
+  if (rarity === "legendary") addLegendaryBonus(ability, rng);
+
+  // Recalculate power and cost after rarity adjustments
+  if (rarity !== "common") {
+    ability.powerBudget = calculatePowerBudget(ability.effects, ability.targeting, ability.modifiers, ability.triggers);
+    if (!isPassive) {
+      ability.cost = deriveCost(ability.powerBudget, tier, rng);
+    }
+  }
+
   // Execute abilities inherently create low_hp condition
-  const hasExecute = effects.some(e => e.type === "dmg_execute");
+  const hasExecute = ability.effects.some(e => e.type === "dmg_execute");
   if (hasExecute && !ability.synergyTags.creates.includes("low_hp")) {
     ability.synergyTags.creates.push("low_hp");
   }
 
   // Burn abilities inherently create burning condition
-  const hasBurn = effects.some(e => e.type === "dot_burn");
+  const hasBurn = ability.effects.some(e => e.type === "dot_burn");
   if (hasBurn && !ability.synergyTags.creates.includes("burning")) {
     ability.synergyTags.creates.push("burning");
   }
 
   // Poison abilities inherently create poisoned condition
-  const hasPoison = effects.some(e => e.type === "dot_poison");
+  const hasPoison = ability.effects.some(e => e.type === "dot_poison");
   if (hasPoison && !ability.synergyTags.creates.includes("poisoned")) {
     ability.synergyTags.creates.push("poisoned");
   }

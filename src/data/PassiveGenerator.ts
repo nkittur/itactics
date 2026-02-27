@@ -4,9 +4,11 @@ import type {
   TriggerPrimitive,
   EffectType,
   TriggerType,
+  Rarity,
 } from "./AbilityData";
 import { generateAbilityUID } from "./AbilityData";
 import { registerAbility } from "./AbilityResolver";
+import { applyRarityScaling } from "./AbilityGenerator";
 
 // ── Passive archetypes ──
 
@@ -637,6 +639,7 @@ export function generatePassiveSuite(
   levels: PowerLevel[],
   rng: () => number,
   register = true,
+  rarities?: Rarity[],
 ): GeneratedAbility[] {
   const analysis = analyzeActiveAbilities(actives);
   const weights = weightArchetypes(analysis);
@@ -654,7 +657,9 @@ export function generatePassiveSuite(
   // Track which conditions condition_exploiters have covered
   const exploitedConditions = new Set<string>();
 
-  for (const level of levels) {
+  for (let li = 0; li < levels.length; li++) {
+    const level = levels[li]!;
+    const rarity: Rarity = rarities?.[li] ?? "common";
     let archetype: PassiveArchetype;
     // Allow strongly-weighted archetypes to repeat, but cap at 3
     const available = weights.filter(w => {
@@ -688,7 +693,7 @@ export function generatePassiveSuite(
       }
     }
 
-    const passive = buildPassive(archetype, passiveAnalysis, level, rng, register);
+    const passive = buildPassive(archetype, passiveAnalysis, level, rng, register, rarity);
 
     // Track exploited conditions
     for (const c of passive.synergyTags.exploits) exploitedConditions.add(c);
@@ -705,6 +710,7 @@ function buildPassive(
   level: PowerLevel,
   rng: () => number,
   register: boolean,
+  rarity: Rarity = "common",
 ): GeneratedAbility {
   let trigger: TriggerPrimitive;
   let effects: EffectPrimitive[] = [];
@@ -794,8 +800,15 @@ function buildPassive(
     weaponReq: [],
     tier,
     isPassive: true,
+    rarity,
     synergyTags: { creates, exploits },
   };
+
+  // Apply rarity scaling to passive params
+  applyRarityScaling(ability);
+
+  // Regenerate description after scaling
+  ability.description = generatePassiveDesc(archetype, ability.triggers[0]!, exploits);
 
   if (register) {
     registerAbility(ability);
