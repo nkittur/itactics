@@ -295,7 +295,6 @@ export class StoreScreen {
         if (wep.hands === 2 && member.equipment.offHand) {
           this.stash.push(member.equipment.offHand);
           member.equipment.offHand = null;
-          member.equipment.shieldDurability = null;
         }
         break;
       }
@@ -304,9 +303,7 @@ export class StoreScreen {
         if (member.equipment.offHand) {
           this.stash.push(member.equipment.offHand);
         }
-        const shield = getShield(itemId);
         member.equipment.offHand = itemId;
-        member.equipment.shieldDurability = shield?.durability ?? 0;
         break;
       }
       case "body_armor": {
@@ -317,8 +314,8 @@ export class StoreScreen {
         if (armor) {
           member.armor.body = {
             id: itemId,
-            currentDurability: armor.durability,
-            maxDurability: armor.durability,
+            armor: armor.armor,
+            magicResist: armor.magicResist,
           };
         }
         break;
@@ -331,8 +328,8 @@ export class StoreScreen {
         if (armor) {
           member.armor.head = {
             id: itemId,
-            currentDurability: armor.durability,
-            maxDurability: armor.durability,
+            armor: armor.armor,
+            magicResist: armor.magicResist,
           };
         }
         break;
@@ -421,13 +418,13 @@ export class StoreScreen {
       case "shield": {
         const s = getShield(itemId);
         if (!s) return "";
-        return `Def: +${s.meleeDefBonus}/${s.rangedDefBonus}  Dur: ${s.durability}`;
+        return `Dodge: +${s.dodgeBonus}  Armor: +${s.armor}`;
       }
       case "body_armor":
       case "head_armor": {
         const a = getArmorDef(itemId);
         if (!a) return "";
-        return `Dur: ${a.durability}  Tier: ${a.tier}`;
+        return `Armor: ${a.armor}  MR: ${a.magicResist}  Wt: ${a.weight}`;
       }
       case "consumable":
         return "Restores 25 HP";

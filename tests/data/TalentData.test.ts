@@ -14,15 +14,15 @@ describe("TalentData", () => {
     });
 
     it("3-star standard stat: +4 to +6", () => {
-      expect(getStatRollRange("meleeDefense", 3)).toEqual([4, 6]);
+      expect(getStatRollRange("dodge", 3)).toEqual([4, 6]);
     });
 
     it("0-star HP (high range): +2 to +4", () => {
       expect(getStatRollRange("hitpoints", 0)).toEqual([2, 4]);
     });
 
-    it("3-star fatigue (high range): +5 to +7", () => {
-      expect(getStatRollRange("fatigue", 3)).toEqual([5, 7]);
+    it("3-star stamina (high range): +5 to +7", () => {
+      expect(getStatRollRange("stamina", 3)).toEqual([5, 7]);
     });
 
     it("2-star initiative: +3 to +5", () => {
@@ -56,9 +56,9 @@ describe("TalentData", () => {
   });
 
   describe("generateTalentStars", () => {
-    it("generates stars for all 8 stats", () => {
+    it("generates stars for all 7 stats", () => {
       const stars = generateTalentStars(Math.random);
-      expect(Object.keys(stars).length).toBe(8);
+      expect(Object.keys(stars).length).toBe(7);
       for (const key of ALL_STAT_KEYS) {
         expect(stars[key]).toBeGreaterThanOrEqual(0);
         expect(stars[key]).toBeLessThanOrEqual(3);
@@ -88,7 +88,7 @@ describe("TalentData", () => {
     it("returns correct display names", () => {
       expect(statDisplayName("hitpoints")).toBe("HP");
       expect(statDisplayName("meleeSkill")).toBe("Melee Skill");
-      expect(statDisplayName("rangedDefense")).toBe("Ranged Def");
+      expect(statDisplayName("dodge")).toBe("Dodge");
     });
   });
 });

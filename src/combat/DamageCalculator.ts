@@ -3,10 +3,10 @@ import type { HexGrid } from "@hex/HexGrid";
 import type { EntityId } from "@entities/Entity";
 import type { StatsComponent } from "@entities/components/Stats";
 import type { HealthComponent } from "@entities/components/Health";
-import type { ArmorComponent } from "@entities/components/Armor";
 import type { EquipmentComponent } from "@entities/components/Equipment";
+import type { ArmorComponent } from "@entities/components/Armor";
 import type { PositionComponent } from "@entities/components/Position";
-import { UNARMED, type WeaponDef } from "@data/WeaponData";
+import { UNARMED, type WeaponDef, type DamageType } from "@data/WeaponData";
 import { type ShieldDef } from "@data/ShieldData";
 import { resolveWeapon, resolveShield } from "@data/ItemResolver";
 import { BASIC_ATTACK, type SkillDef, skillRange } from "@data/SkillData";
@@ -17,6 +17,11 @@ import { clamp } from "@utils/MathUtils";
 import type { StatusEffectManager } from "./StatusEffectManager";
 import type { CharacterClassComponent } from "@entities/components/CharacterClass";
 import { getClassDef, getClassHitBonus, getClassDamageBonus } from "@data/ClassData";
+
+/** Armor values above this threshold get diminishing returns. */
+const SOFT_CAP = 10;
+/** Multiplier for armor above the soft cap. */
+const DIMINISH_RATE = 0.5;
 
 export interface AttackPreview {
   hitChance: number;
@@ -32,38 +37,44 @@ export interface HitChanceModifier {
 export interface DetailedAttackPreview extends AttackPreview {
   modifiers: HitChanceModifier[];
   weaponName: string;
-  armorIgnorePct: number;
-  armorDamageMult: number;
-  headHitChance: number;
+  damageType: DamageType;
+  armorPiercing: number;
+  critChance: number;
 }
 
 export interface AttackResult {
   hit: boolean;
   hitChance: number;
-  /** Raw damage rolled from weapon. */
+  /** Raw damage rolled from weapon (before armor reduction). */
   damage: number;
-  /** Damage dealt to armor durability. */
-  armorDamage: number;
-  /** Damage dealt to HP. */
+  damageType: DamageType;
+  /** Whether this was a critical hit. */
+  critical: boolean;
+  /** Flat armor piercing applied. */
+  armorPiercing: number;
+  /** Damage absorbed by armor/magic resist. */
+  armorReduction: number;
+  /** Final damage dealt to HP. */
   hpDamage: number;
   targetKilled: boolean;
-  headHit: boolean;
   /** Weapon used for this attack. */
   weaponId: string;
-  /** Status effects applied on hit (e.g. "stun", "bleed"). */
+  /** Status effects applied on hit. */
   appliedEffects: string[];
 }
 
 /**
  * Weapon-based damage calculator.
  *
- * Damage pipeline (from planning/03-weapons-and-equipment.md):
- * 1. Roll hit chance (meleeSkill + weaponBonus - meleeDefense - shieldBonus)
- * 2. Roll raw damage between weapon min-max
- * 3. Armor durability damage = floor(raw * armorDamageMult)
- * 4. Armor ignore HP damage = floor(raw * armorIgnorePct)
- * 5. HP damage = armorIgnoreHp + overflow (if armor breaks)
- * 6. Head hit: 1.5x HP damage
+ * Damage pipeline:
+ * 1. Roll hit chance (meleeSkill + weaponBonus - dodge - shieldDodge + elevation + surround)
+ * 2. Roll raw damage between weapon min-max (+ class bonus)
+ * 3. Critical hit: roll critChance + weapon.critChanceBonus; if crit, raw *= critMultiplier
+ * 4. Calculate effective armor (physical: body+head+shield armor; magical: body+head magicResist + base MR)
+ * 5. Apply armor piercing: flat first, then % ignore on remainder
+ * 6. Soft-cap reduction: min(armor, SOFT_CAP) + max(0, armor - SOFT_CAP) * DIMINISH_RATE
+ * 7. HP damage = max(1, rawDamage - reduction)
+ * 8. Apply vulnerability/dmg_reduce modifiers
  */
 export class DamageCalculator {
   private statusEffects: StatusEffectManager | null = null;
@@ -87,7 +98,6 @@ export class DamageCalculator {
     const attackerStats = world.getComponent<StatsComponent>(attackerId, "stats");
     const defenderStats = world.getComponent<StatsComponent>(defenderId, "stats");
     const defenderHealth = world.getComponent<HealthComponent>(defenderId, "health");
-    const defenderArmor = world.getComponent<ArmorComponent>(defenderId, "armor");
     const attackerEquip = world.getComponent<EquipmentComponent>(attackerId, "equipment");
     const defenderEquip = world.getComponent<EquipmentComponent>(defenderId, "equipment");
 
@@ -95,7 +105,6 @@ export class DamageCalculator {
       return miss(0, "unarmed");
     }
 
-    // Look up weapon and shield from data registries
     const weapon: WeaponDef = attackerEquip?.mainHand
       ? resolveWeapon(attackerEquip.mainHand)
       : UNARMED;
@@ -108,18 +117,15 @@ export class DamageCalculator {
     const attackerPos = world.getComponent<PositionComponent>(attackerId, "position");
     const defenderPos = world.getComponent<PositionComponent>(defenderId, "position");
 
-    const shieldBonus = shield?.meleeDefBonus ?? 0;
+    const shieldBonus = shield?.dodgeBonus ?? 0;
 
-    // Terrain defense bonus (defender's tile)
     const defenderTile = defenderPos ? this.grid.get(defenderPos.q, defenderPos.r) : undefined;
     const terrainDefBonus = defenderTile?.defenseBonusMelee ?? 0;
 
-    // Elevation modifier: +10 per level advantage
     const attackerElev = attackerPos?.elevation ?? 0;
     const defenderElev = defenderPos?.elevation ?? 0;
     const elevationMod = (attackerElev - defenderElev) * 10;
 
-    // Surrounding bonus: +5 per ally adjacent to defender beyond the first
     const surroundBonus = defenderPos
       ? this.countSurroundBonus(world, attackerId, defenderId)
       : 0;
@@ -134,14 +140,14 @@ export class DamageCalculator {
     const attackerMeleeSkillMod = this.statusEffects
       ? this.statusEffects.getModifier(world, attackerId, "meleeSkill", attackerStats.meleeSkill)
       : 0;
-    const defenderMeleeDefMod = this.statusEffects
-      ? this.statusEffects.getModifier(world, defenderId, "meleeDefense", defenderStats.meleeDefense)
+    const defenderDodgeMod = this.statusEffects
+      ? this.statusEffects.getModifier(world, defenderId, "dodge", defenderStats.dodge)
       : 0;
 
     const hitChance = clamp(
       (attackerStats.meleeSkill + attackerMeleeSkillMod) + weapon.hitChanceBonus
         + classHitBonus
-        - (defenderStats.meleeDefense + defenderMeleeDefMod) - shieldBonus
+        - (defenderStats.dodge + defenderDodgeMod) - shieldBonus
         - terrainDefBonus
         + elevationMod
         + surroundBonus,
@@ -158,39 +164,25 @@ export class DamageCalculator {
     let rawDamage = this.rng.nextInt(weapon.minDamage, weapon.maxDamage);
     if (classDmgBonus > 0) rawDamage = Math.floor(rawDamage * (1 + classDmgBonus / 100));
 
-    // ── 3. Head hit (25% chance) ──
-    const headHit = this.rng.roll(25);
-
-    // ── 4-5. Damage resolution ──
-    const armorIgnoreHp = Math.floor(rawDamage * weapon.armorIgnorePct);
-    const armorDurabilityDmg = Math.floor(rawDamage * weapon.armorDamageMult);
-
-    const armorSlot = defenderArmor
-      ? (headHit ? defenderArmor.head : defenderArmor.body)
-      : null;
-
-    let armorDamageDealt = 0;
-    let hpDamage: number;
-
-    if (armorSlot && armorSlot.currentDurability > 0) {
-      // Armor absorbs durability damage
-      const absorbed = Math.min(armorDurabilityDmg, armorSlot.currentDurability);
-      armorSlot.currentDurability -= absorbed;
-      armorDamageDealt = absorbed;
-      // Overflow when armor breaks goes to HP
-      const overflow = armorDurabilityDmg - absorbed;
-      hpDamage = armorIgnoreHp + overflow;
-    } else {
-      // No armor on this slot — all damage goes to HP
-      hpDamage = rawDamage;
+    // ── 3. Critical hit ──
+    const critChance = clamp(attackerStats.critChance + weapon.critChanceBonus, 0, 75);
+    const critical = this.rng.roll(critChance);
+    if (critical) {
+      rawDamage = Math.floor(rawDamage * attackerStats.critMultiplier);
     }
 
-    // ── 6. Head hit multiplier ──
-    if (headHit) {
-      hpDamage = Math.floor(hpDamage * 1.5);
-    }
+    // ── 4-6. Armor reduction ──
+    const defenderArmor = world.getComponent<ArmorComponent>(defenderId, "armor");
+    const armorPiercing = weapon.armorPiercing;
+    const armorIgnorePct = 0; // base attacks have no % ignore
+    const armorReduction = this.calculateArmorReduction(
+      weapon.damageType, defenderStats, defenderArmor, shield, armorPiercing, armorIgnorePct,
+    );
 
-    // ── 6b. Vulnerability check (from generated abilities) ──
+    // ── 7. HP damage ──
+    let hpDamage = Math.max(1, rawDamage - armorReduction);
+
+    // ── 8. Vulnerability + damage reduction ──
     if (this.statusEffects) {
       const vulnBonus = this.statusEffects.getVulnerabilityBonus(world, defenderId);
       if (vulnBonus > 0) hpDamage = Math.floor(hpDamage * (1 + vulnBonus));
@@ -198,47 +190,31 @@ export class DamageCalculator {
       if (dmgReduce > 0) hpDamage = Math.floor(hpDamage * (1 - dmgReduce));
     }
 
-    // ── 7. Apply HP damage ──
+    // ── 9. Apply HP damage ──
     defenderHealth.current = Math.max(0, defenderHealth.current - hpDamage);
     const targetKilled = defenderHealth.current <= 0;
 
-    // ── 8. Apply weapon family status effects ──
+    // ── 10. Weapon family status effects ──
     const appliedEffects: string[] = [];
     if (!targetKilled && this.statusEffects) {
-      // Maces: 10% chance to stun
-      if (weapon.family === "mace" && this.rng.roll(10)) {
-        this.statusEffects.apply(world, defenderId, "stun");
-        appliedEffects.push("stun");
-      }
-      // Swords and cleavers: 15% chance to bleed (2-3 turns)
-      if ((weapon.family === "sword" || weapon.family === "cleaver") && this.rng.roll(15)) {
-        this.statusEffects.apply(world, defenderId, "bleed", this.rng.nextInt(2, 3));
-        appliedEffects.push("bleed");
-      }
-      // Axes: 10% chance to bleed
-      if (weapon.family === "axe" && this.rng.roll(10)) {
-        this.statusEffects.apply(world, defenderId, "bleed", this.rng.nextInt(2, 3));
-        appliedEffects.push("bleed");
-      }
-      // Daggers: 20% chance to bleed (shorter duration)
-      if (weapon.family === "dagger" && this.rng.roll(20)) {
-        this.statusEffects.apply(world, defenderId, "bleed", 2);
-        appliedEffects.push("bleed");
-      }
+      this.applyWeaponFamilyEffects(world, defenderId, weapon, appliedEffects);
     }
 
     return {
       hit: true,
       hitChance,
       damage: rawDamage,
-      armorDamage: armorDamageDealt,
+      damageType: weapon.damageType,
+      critical,
+      armorPiercing,
+      armorReduction,
       hpDamage,
       targetKilled,
-      headHit,
       weaponId: weapon.id,
       appliedEffects,
     };
   }
+
   /** Preview a melee attack: compute hit chance and damage range without rolling. */
   previewMelee(
     world: World,
@@ -271,7 +247,7 @@ export class DamageCalculator {
     const attackerPos = world.getComponent<PositionComponent>(attackerId, "position");
     const defenderPos = world.getComponent<PositionComponent>(defenderId, "position");
 
-    const shieldBonus = shield?.meleeDefBonus ?? 0;
+    const shieldBonus = shield?.dodgeBonus ?? 0;
     const defenderTile = defenderPos ? this.grid.get(defenderPos.q, defenderPos.r) : undefined;
     const terrainDefBonus = defenderTile?.defenseBonusMelee ?? 0;
     const attackerElev = attackerPos?.elevation ?? 0;
@@ -284,14 +260,14 @@ export class DamageCalculator {
     const attackerMeleeSkillMod = this.statusEffects
       ? this.statusEffects.getModifier(world, attackerId, "meleeSkill", attackerStats.meleeSkill)
       : 0;
-    const defenderMeleeDefMod = this.statusEffects
-      ? this.statusEffects.getModifier(world, defenderId, "meleeDefense", defenderStats.meleeDefense)
+    const defenderDodgeMod = this.statusEffects
+      ? this.statusEffects.getModifier(world, defenderId, "dodge", defenderStats.dodge)
       : 0;
 
     const hitChance = clamp(
       (attackerStats.meleeSkill + attackerMeleeSkillMod) + weapon.hitChanceBonus
         + classHitBonus
-        - (defenderStats.meleeDefense + defenderMeleeDefMod) - shieldBonus
+        - (defenderStats.dodge + defenderDodgeMod) - shieldBonus
         - terrainDefBonus
         + elevationMod
         + surroundBonus,
@@ -322,7 +298,7 @@ export class DamageCalculator {
       return {
         hitChance: 5, minDamage: 0, maxDamage: 0,
         modifiers: [], weaponName: "Unarmed",
-        armorIgnorePct: 0, armorDamageMult: 0, headHitChance: 25,
+        damageType: "physical", armorPiercing: 0, critChance: 5,
       };
     }
 
@@ -340,7 +316,7 @@ export class DamageCalculator {
     const attackerPos = world.getComponent<PositionComponent>(attackerId, "position");
     const defenderPos = world.getComponent<PositionComponent>(defenderId, "position");
 
-    const shieldBonus = shield?.meleeDefBonus ?? 0;
+    const shieldBonus = shield?.dodgeBonus ?? 0;
     const defenderTile = defenderPos ? this.grid.get(defenderPos.q, defenderPos.r) : undefined;
     const terrainDefBonus = defenderTile?.defenseBonusMelee ?? 0;
     const attackerElev = attackerPos?.elevation ?? 0;
@@ -351,8 +327,8 @@ export class DamageCalculator {
 
     const attackerMeleeSkillMod = this.statusEffects
       ? this.statusEffects.getModifier(world, attackerId, "meleeSkill", attackerStats.meleeSkill) : 0;
-    const defenderMeleeDefMod = this.statusEffects
-      ? this.statusEffects.getModifier(world, defenderId, "meleeDefense", defenderStats.meleeDefense) : 0;
+    const defenderDodgeMod = this.statusEffects
+      ? this.statusEffects.getModifier(world, defenderId, "dodge", defenderStats.dodge) : 0;
 
     // Build modifier breakdown
     const modifiers: HitChanceModifier[] = [];
@@ -363,9 +339,9 @@ export class DamageCalculator {
       modifiers.push({ label: weapon.name, value: weapon.hitChanceBonus });
     if (classHitBonus !== 0)
       modifiers.push({ label: "Class", value: classHitBonus });
-    modifiers.push({ label: "Defense", value: -defenderStats.meleeDefense });
-    if (defenderMeleeDefMod !== 0)
-      modifiers.push({ label: "Def Effects", value: -defenderMeleeDefMod });
+    modifiers.push({ label: "Dodge", value: -defenderStats.dodge });
+    if (defenderDodgeMod !== 0)
+      modifiers.push({ label: "Dodge Effects", value: -defenderDodgeMod });
     if (shieldBonus !== 0)
       modifiers.push({ label: shield?.name ?? "Shield", value: -shieldBonus });
     if (terrainDefBonus !== 0)
@@ -377,9 +353,11 @@ export class DamageCalculator {
 
     const rawHit = (attackerStats.meleeSkill + attackerMeleeSkillMod) + weapon.hitChanceBonus
       + classHitBonus
-      - (defenderStats.meleeDefense + defenderMeleeDefMod) - shieldBonus
+      - (defenderStats.dodge + defenderDodgeMod) - shieldBonus
       - terrainDefBonus + elevationMod + surroundBonus;
     const hitChance = clamp(rawHit, 5, 95);
+
+    const critChance = clamp(attackerStats.critChance + weapon.critChanceBonus, 0, 75);
 
     const dmgMult = classDmgBonus > 0 ? (1 + classDmgBonus / 100) : 1;
     return {
@@ -388,9 +366,9 @@ export class DamageCalculator {
       maxDamage: Math.floor(weapon.maxDamage * dmgMult),
       modifiers,
       weaponName: weapon.name,
-      armorIgnorePct: weapon.armorIgnorePct,
-      armorDamageMult: weapon.armorDamageMult,
-      headHitChance: 25,
+      damageType: weapon.damageType,
+      armorPiercing: weapon.armorPiercing,
+      critChance,
     };
   }
 
@@ -413,7 +391,6 @@ export class DamageCalculator {
     const attackerStats = world.getComponent<StatsComponent>(attackerId, "stats");
     const defenderStats = world.getComponent<StatsComponent>(defenderId, "stats");
     const defenderHealth = world.getComponent<HealthComponent>(defenderId, "health");
-    const defenderArmor = world.getComponent<ArmorComponent>(defenderId, "armor");
     const attackerEquip = world.getComponent<EquipmentComponent>(attackerId, "equipment");
     const defenderEquip = world.getComponent<EquipmentComponent>(defenderId, "equipment");
 
@@ -448,9 +425,7 @@ export class DamageCalculator {
       }
     }
 
-    const shieldBonus = isRanged
-      ? (shield?.rangedDefBonus ?? 0)
-      : (shield?.meleeDefBonus ?? 0);
+    const shieldBonus = shield?.dodgeBonus ?? 0;
 
     const defenderTile = defenderPos ? this.grid.get(defenderPos.q, defenderPos.r) : undefined;
     const terrainDefBonus = isRanged
@@ -461,7 +436,6 @@ export class DamageCalculator {
     const defenderElev = defenderPos?.elevation ?? 0;
     const elevationMod = (attackerElev - defenderElev) * 10;
 
-    // No surround bonus for ranged
     const surroundBonus = isRanged ? 0
       : (defenderPos ? this.countSurroundBonus(world, attackerId, defenderId) : 0);
 
@@ -479,8 +453,8 @@ export class DamageCalculator {
     const attackerMeleeSkillMod = this.statusEffects
       ? this.statusEffects.getModifier(world, attackerId, "meleeSkill", attackerStats.meleeSkill)
       : 0;
-    const defenderMeleeDefMod = this.statusEffects
-      ? this.statusEffects.getModifier(world, defenderId, "meleeDefense", defenderStats.meleeDefense)
+    const defenderDodgeMod = this.statusEffects
+      ? this.statusEffects.getModifier(world, defenderId, "dodge", defenderStats.dodge)
       : 0;
 
     const hitChance = clamp(
@@ -488,7 +462,7 @@ export class DamageCalculator {
         + classHitBonus
         + skill.hitChanceModifier
         + rangePenalty
-        - (defenderStats.meleeDefense + defenderMeleeDefMod) - shieldBonus
+        - (defenderStats.dodge + defenderDodgeMod) - shieldBonus
         - terrainDefBonus
         + elevationMod
         + surroundBonus,
@@ -507,39 +481,26 @@ export class DamageCalculator {
     );
     if (classDmgBonus > 0) rawDamage = Math.floor(rawDamage * (1 + classDmgBonus / 100));
 
-    // ── 3. Head hit (25% chance) ──
-    const headHit = this.rng.roll(25);
-
-    // ── 4-5. Armor resolution ──
-    const armorIgnore = skill.armorIgnoreOverride ?? weapon.armorIgnorePct;
-    const armorDmgMult = skill.armorDamageMultOverride ?? weapon.armorDamageMult;
-
-    const armorIgnoreHp = Math.floor(rawDamage * armorIgnore);
-    const armorDurabilityDmg = Math.floor(rawDamage * armorDmgMult);
-
-    const armorSlot = defenderArmor
-      ? (headHit ? defenderArmor.head : defenderArmor.body)
-      : null;
-
-    let armorDamageDealt = 0;
-    let hpDamage: number;
-
-    if (armorSlot && armorSlot.currentDurability > 0) {
-      const absorbed = Math.min(armorDurabilityDmg, armorSlot.currentDurability);
-      armorSlot.currentDurability -= absorbed;
-      armorDamageDealt = absorbed;
-      const overflow = armorDurabilityDmg - absorbed;
-      hpDamage = armorIgnoreHp + overflow;
-    } else {
-      hpDamage = rawDamage;
+    // ── 3. Critical hit ──
+    const critChance = clamp(attackerStats.critChance + weapon.critChanceBonus, 0, 75);
+    const critical = this.rng.roll(critChance);
+    if (critical) {
+      rawDamage = Math.floor(rawDamage * attackerStats.critMultiplier);
     }
 
-    // ── 6. Head hit multiplier ──
-    if (headHit) {
-      hpDamage = Math.floor(hpDamage * 1.5);
-    }
+    // ── 4-6. Armor reduction ──
+    const defenderArmor = world.getComponent<ArmorComponent>(defenderId, "armor");
+    const armorPiercing = skill.armorPiercingOverride ?? weapon.armorPiercing;
+    const armorIgnorePct = skill.armorIgnoreOverride ?? 0;
+    const effectiveDamageType = skill.damageTypeOverride ?? weapon.damageType;
+    const armorReduction = this.calculateArmorReduction(
+      effectiveDamageType, defenderStats, defenderArmor, shield, armorPiercing, armorIgnorePct,
+    );
 
-    // ── 6b. Vulnerability + damage reduction ──
+    // ── 7. HP damage ──
+    let hpDamage = Math.max(1, rawDamage - armorReduction);
+
+    // ── 8. Vulnerability + damage reduction ──
     if (this.statusEffects) {
       const vulnBonus = this.statusEffects.getVulnerabilityBonus(world, defenderId);
       if (vulnBonus > 0) hpDamage = Math.floor(hpDamage * (1 + vulnBonus));
@@ -547,15 +508,14 @@ export class DamageCalculator {
       if (dmgReduce > 0) hpDamage = Math.floor(hpDamage * (1 - dmgReduce));
     }
 
-    // ── 7. Apply HP damage ──
+    // ── 9. Apply HP damage ──
     defenderHealth.current = Math.max(0, defenderHealth.current - hpDamage);
     const targetKilled = defenderHealth.current <= 0;
 
-    // ── 8. Status effects ──
+    // ── 10. Status effects ──
     const appliedEffects: string[] = [];
     if (!targetKilled && this.statusEffects) {
       if (skill.onHit && skill.onHit.length > 0) {
-        // Skill-defined effects
         for (const hit of skill.onHit) {
           if (this.rng.roll(hit.chance)) {
             this.statusEffects.apply(world, defenderId, hit.effect, hit.duration);
@@ -563,7 +523,6 @@ export class DamageCalculator {
           }
         }
       } else if (skill.isBasicAttack) {
-        // Basic attack: weapon family effects (same as resolveMelee)
         this.applyWeaponFamilyEffects(world, defenderId, weapon, appliedEffects);
       }
     }
@@ -572,10 +531,12 @@ export class DamageCalculator {
       hit: true,
       hitChance,
       damage: rawDamage,
-      armorDamage: armorDamageDealt,
+      damageType: effectiveDamageType,
+      critical,
+      armorPiercing,
+      armorReduction,
       hpDamage,
       targetKilled,
-      headHit,
       weaponId: weapon.id,
       appliedEffects,
     };
@@ -590,7 +551,6 @@ export class DamageCalculator {
     defenderId: EntityId,
     skill: SkillDef,
   ): DetailedAttackPreview {
-    // For basic melee attacks, delegate to existing preview
     if (skill.isBasicAttack && skill.rangeType === "melee") {
       return this.previewMeleeDetailed(world, attackerId, defenderId);
     }
@@ -604,7 +564,7 @@ export class DamageCalculator {
       return {
         hitChance: 5, minDamage: 0, maxDamage: 0,
         modifiers: [], weaponName: "Unarmed",
-        armorIgnorePct: 0, armorDamageMult: 0, headHitChance: 25,
+        damageType: "physical", armorPiercing: 0, critChance: 5,
       };
     }
 
@@ -613,7 +573,6 @@ export class DamageCalculator {
     const shield: ShieldDef | undefined = defenderEquip?.offHand
       ? resolveShield(defenderEquip.offHand) : undefined;
 
-    // Class passives
     const attackerCC = world.getComponent<CharacterClassComponent>(attackerId, "characterClass");
     const attackerClassDef = attackerCC ? getClassDef(attackerCC.classId) : undefined;
     const classHitBonus = attackerClassDef ? getClassHitBonus(attackerClassDef, weapon) : 0;
@@ -623,9 +582,7 @@ export class DamageCalculator {
     const defenderPos = world.getComponent<PositionComponent>(defenderId, "position");
 
     const isRanged = skill.rangeType === "ranged";
-    const shieldBonus = isRanged
-      ? (shield?.rangedDefBonus ?? 0)
-      : (shield?.meleeDefBonus ?? 0);
+    const shieldBonus = shield?.dodgeBonus ?? 0;
     const defenderTile = defenderPos ? this.grid.get(defenderPos.q, defenderPos.r) : undefined;
     const terrainDefBonus = isRanged
       ? (defenderTile?.defenseBonusRanged ?? 0)
@@ -636,7 +593,6 @@ export class DamageCalculator {
     const surroundBonus = isRanged ? 0
       : (defenderPos ? this.countSurroundBonus(world, attackerId, defenderId) : 0);
 
-    // Range penalty for ranged: -5 per hex beyond half max range
     let rangePenalty = 0;
     if (isRanged && attackerPos && defenderPos) {
       const dist = hexDistance(attackerPos, defenderPos);
@@ -649,10 +605,9 @@ export class DamageCalculator {
 
     const attackerMeleeSkillMod = this.statusEffects
       ? this.statusEffects.getModifier(world, attackerId, "meleeSkill", attackerStats.meleeSkill) : 0;
-    const defenderMeleeDefMod = this.statusEffects
-      ? this.statusEffects.getModifier(world, defenderId, "meleeDefense", defenderStats.meleeDefense) : 0;
+    const defenderDodgeMod = this.statusEffects
+      ? this.statusEffects.getModifier(world, defenderId, "dodge", defenderStats.dodge) : 0;
 
-    // Build modifier breakdown
     const modifiers: HitChanceModifier[] = [];
     modifiers.push({ label: "Melee Skill", value: attackerStats.meleeSkill });
     if (attackerMeleeSkillMod !== 0)
@@ -665,9 +620,9 @@ export class DamageCalculator {
       modifiers.push({ label: skill.name, value: skill.hitChanceModifier });
     if (rangePenalty !== 0)
       modifiers.push({ label: "Range", value: rangePenalty });
-    modifiers.push({ label: "Defense", value: -defenderStats.meleeDefense });
-    if (defenderMeleeDefMod !== 0)
-      modifiers.push({ label: "Def Effects", value: -defenderMeleeDefMod });
+    modifiers.push({ label: "Dodge", value: -defenderStats.dodge });
+    if (defenderDodgeMod !== 0)
+      modifiers.push({ label: "Dodge Effects", value: -defenderDodgeMod });
     if (shieldBonus !== 0)
       modifiers.push({ label: shield?.name ?? "Shield", value: -shieldBonus });
     if (terrainDefBonus !== 0)
@@ -680,12 +635,12 @@ export class DamageCalculator {
     const rawHit = (attackerStats.meleeSkill + attackerMeleeSkillMod) + weapon.hitChanceBonus
       + classHitBonus
       + skill.hitChanceModifier + rangePenalty
-      - (defenderStats.meleeDefense + defenderMeleeDefMod) - shieldBonus
+      - (defenderStats.dodge + defenderDodgeMod) - shieldBonus
       - terrainDefBonus + elevationMod + surroundBonus;
     const hitChance = clamp(rawHit, 5, 95);
 
-    const armorIgnore = skill.armorIgnoreOverride ?? weapon.armorIgnorePct;
-    const armorDmgMult = skill.armorDamageMultOverride ?? weapon.armorDamageMult;
+    const armorPiercing = skill.armorPiercingOverride ?? weapon.armorPiercing;
+    const critChance = clamp(attackerStats.critChance + weapon.critChanceBonus, 0, 75);
 
     const totalDmgMult = skill.damageMultiplier * (classDmgBonus > 0 ? (1 + classDmgBonus / 100) : 1);
     return {
@@ -694,10 +649,50 @@ export class DamageCalculator {
       maxDamage: Math.floor(weapon.maxDamage * totalDmgMult),
       modifiers,
       weaponName: weapon.name,
-      armorIgnorePct: armorIgnore,
-      armorDamageMult: armorDmgMult,
-      headHitChance: 25,
+      damageType: skill.damageTypeOverride ?? weapon.damageType,
+      armorPiercing,
+      critChance,
     };
+  }
+
+  /**
+   * Calculate armor reduction for a given damage type.
+   * Physical: uses body.armor + head.armor + shield.armor
+   * Magical: uses body.magicResist + head.magicResist + base magicResist
+   * Applies flat armorPiercing first, then % armorIgnore, then soft cap.
+   */
+  private calculateArmorReduction(
+    damageType: DamageType,
+    defenderStats: StatsComponent,
+    defenderArmor: ArmorComponent | undefined,
+    shield: ShieldDef | undefined,
+    armorPiercing: number,
+    armorIgnorePct: number,
+  ): number {
+    let totalArmor: number;
+    if (damageType === "physical") {
+      totalArmor = (defenderArmor?.body?.armor ?? 0)
+        + (defenderArmor?.head?.armor ?? 0)
+        + (shield?.armor ?? 0);
+    } else {
+      // Magical: use magicResist from armor + base stat
+      totalArmor = (defenderArmor?.body?.magicResist ?? 0)
+        + (defenderArmor?.head?.magicResist ?? 0)
+        + defenderStats.magicResist;
+    }
+
+    // Apply flat piercing first
+    let effectiveArmor = Math.max(0, totalArmor - armorPiercing);
+    // Then percentage ignore
+    if (armorIgnorePct > 0) {
+      effectiveArmor = Math.floor(effectiveArmor * (1 - armorIgnorePct));
+    }
+
+    // Soft cap: linear up to SOFT_CAP, diminishing after
+    if (effectiveArmor <= SOFT_CAP) {
+      return effectiveArmor;
+    }
+    return SOFT_CAP + Math.floor((effectiveArmor - SOFT_CAP) * DIMINISH_RATE);
   }
 
   /** Apply weapon family status effects (extracted from resolveMelee). */
@@ -729,7 +724,6 @@ export class DamageCalculator {
   /**
    * Count surrounding bonus: +5 per ally of the attacker adjacent to the defender,
    * beyond the first (the attacker themselves).
-   * Two entities are on the same team if they both have aiBehavior or both lack it.
    */
   private countSurroundBonus(
     world: World,
@@ -748,7 +742,6 @@ export class DamageCalculator {
 
       const occupantIsAI = world.getComponent(tile.occupant, "aiBehavior") !== undefined;
       if (occupantIsAI === attackerIsAI) {
-        // Same team as attacker — counts as surrounding ally
         const health = world.getComponent<HealthComponent>(tile.occupant, "health");
         if (health && health.current > 0) {
           allyCount++;
@@ -756,7 +749,6 @@ export class DamageCalculator {
       }
     }
 
-    // Bonus starts at 2+ allies adjacent (the attacker is one of them)
     return Math.max(0, allyCount - 1) * 5;
   }
 }
@@ -766,10 +758,12 @@ function miss(hitChance: number, weaponId: string): AttackResult {
     hit: false,
     hitChance,
     damage: 0,
-    armorDamage: 0,
+    damageType: "physical",
+    critical: false,
+    armorPiercing: 0,
+    armorReduction: 0,
     hpDamage: 0,
     targetKilled: false,
-    headHit: false,
     weaponId,
     appliedEffects: [],
   };

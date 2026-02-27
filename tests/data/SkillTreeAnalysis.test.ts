@@ -155,8 +155,8 @@ function analyzeTree(tree: SkillTree, themeId: string): TreeAnalysis {
     if (a.isPassive) continue;
     if (a.cost.ap < minAp) minAp = a.cost.ap;
     if (a.cost.ap > maxAp) maxAp = a.cost.ap;
-    if (a.cost.fatigue < minFat) minFat = a.cost.fatigue;
-    if (a.cost.fatigue > maxFat) maxFat = a.cost.fatigue;
+    if (a.cost.stamina < minFat) minFat = a.cost.stamina;
+    if (a.cost.stamina > maxFat) maxFat = a.cost.stamina;
   }
 
   // Branching

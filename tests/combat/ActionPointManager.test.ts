@@ -5,7 +5,7 @@ import {
   tileAPCost,
   tileFatigueCost,
   pathAPCost,
-  pathFatigueCost,
+  pathStaminaCost,
 } from "@combat/ActionPointManager";
 import { HexGrid, TerrainType } from "@hex/HexGrid";
 import type { HexTile } from "@hex/HexGrid";
@@ -167,7 +167,7 @@ describe("tileFatigueCost", () => {
   });
 });
 
-describe("pathAPCost / pathFatigueCost", () => {
+describe("pathAPCost / pathStaminaCost", () => {
   it("calculates total AP for a multi-step path", () => {
     const grid = createTestGrid();
     // Path: (0,0) → (1,0) → (2,0) — all grass
@@ -178,7 +178,7 @@ describe("pathAPCost / pathFatigueCost", () => {
   it("calculates total fatigue for a multi-step path", () => {
     const grid = createTestGrid();
     const path = [{ q: 1, r: 0 }, { q: 2, r: 0 }];
-    expect(pathFatigueCost(grid, path, 0, 0)).toBe(8); // 4 + 4
+    expect(pathStaminaCost(grid, path, 0, 0)).toBe(8); // 4 + 4
   });
 
   it("accounts for terrain variation in path", () => {
@@ -187,6 +187,6 @@ describe("pathAPCost / pathFatigueCost", () => {
     grid.set(1, 0, makeTile({ q: 1, r: 0, terrain: TerrainType.Forest }));
     const path = [{ q: 1, r: 0 }, { q: 2, r: 0 }];
     expect(pathAPCost(grid, path, 0, 0)).toBe(5); // 3 (forest) + 2 (grass)
-    expect(pathFatigueCost(grid, path, 0, 0)).toBe(10); // 6 (forest) + 4 (grass)
+    expect(pathStaminaCost(grid, path, 0, 0)).toBe(10); // 6 (forest) + 4 (grass)
   });
 });

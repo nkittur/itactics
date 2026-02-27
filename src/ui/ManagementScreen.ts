@@ -606,7 +606,8 @@ export class ManagementScreen {
     if (node.isActive && !ability.isPassive) {
       const costParts: string[] = [];
       costParts.push(`${ability.cost.ap} AP`);
-      costParts.push(`${ability.cost.fatigue} Fatigue`);
+      if (ability.cost.stamina > 0) costParts.push(`${ability.cost.stamina} Stamina`);
+      if (ability.cost.mana > 0) costParts.push(`${ability.cost.mana} Mana`);
       if (ability.cost.cooldown > 0) costParts.push(`${ability.cost.cooldown}T CD`);
       if (ability.cost.turnEnding) costParts.push("Turn Ending");
       panel.appendChild(el("div", "node-detail-cost", costParts.join(" | ")));
@@ -859,7 +860,6 @@ export class ManagementScreen {
         if (m.equipment.offHand) {
           this.saveData.stash.push(m.equipment.offHand);
           m.equipment.offHand = null;
-          m.equipment.shieldDurability = null;
         }
         break;
       case "body_armor":
@@ -890,22 +890,19 @@ export class ManagementScreen {
         if (wep.hands === 2 && m.equipment.offHand) {
           this.saveData.stash.push(m.equipment.offHand);
           m.equipment.offHand = null;
-          m.equipment.shieldDurability = null;
         }
         break;
       }
       case "shield": {
         if (m.equipment.offHand) this.saveData.stash.push(m.equipment.offHand);
-        const shield = resolveShield(itemId);
         m.equipment.offHand = itemId;
-        m.equipment.shieldDurability = shield?.durability ?? 0;
         break;
       }
       case "body_armor": {
         if (m.armor.body) this.saveData.stash.push(m.armor.body.id);
         const armorDef = resolveArmor(itemId);
         m.armor.body = armorDef
-          ? { id: itemId, currentDurability: armorDef.durability, maxDurability: armorDef.durability }
+          ? { id: itemId, armor: armorDef.armor, magicResist: armorDef.magicResist }
           : null;
         break;
       }
@@ -913,7 +910,7 @@ export class ManagementScreen {
         if (m.armor.head) this.saveData.stash.push(m.armor.head.id);
         const armorDef = resolveArmor(itemId);
         m.armor.head = armorDef
-          ? { id: itemId, currentDurability: armorDef.durability, maxDurability: armorDef.durability }
+          ? { id: itemId, armor: armorDef.armor, magicResist: armorDef.magicResist }
           : null;
         break;
       }
@@ -1077,24 +1074,26 @@ export class ManagementScreen {
         `(${base.minDamage}-${base.maxDamage})`);
       this.addStatLine(detail, "Hit Bonus", `${resolved.hitChanceBonus}`, resolved.hitChanceBonus > base.hitChanceBonus ? "better" : resolved.hitChanceBonus < base.hitChanceBonus ? "worse" : "same", `(${base.hitChanceBonus})`);
       this.addStatLine(detail, "AP Cost", `${resolved.apCost}`, resolved.apCost < base.apCost ? "better" : resolved.apCost > base.apCost ? "worse" : "same", `(${base.apCost})`);
-      this.addStatLine(detail, "Fatigue", `${resolved.fatigueCost}`, resolved.fatigueCost < base.fatigueCost ? "better" : resolved.fatigueCost > base.fatigueCost ? "worse" : "same", `(${base.fatigueCost})`);
-      this.addStatLine(detail, "Armor Ignore", `${Math.round(resolved.armorIgnorePct * 100)}%`, resolved.armorIgnorePct > base.armorIgnorePct ? "better" : "same", `(${Math.round(base.armorIgnorePct * 100)}%)`);
-      this.addStatLine(detail, "Armor Dmg", `${Math.round(resolved.armorDamageMult * 100)}%`, resolved.armorDamageMult > base.armorDamageMult ? "better" : "same", `(${Math.round(base.armorDamageMult * 100)}%)`);
+      this.addStatLine(detail, "Stamina", `${resolved.staminaCost}`, resolved.staminaCost < base.staminaCost ? "better" : resolved.staminaCost > base.staminaCost ? "worse" : "same", `(${base.staminaCost})`);
+      this.addStatLine(detail, "Armor Pierce", `${resolved.armorPiercing}`, resolved.armorPiercing > base.armorPiercing ? "better" : "same", `(${base.armorPiercing})`);
     } else if (gen.slotType === "shield") {
       const base = resolveShield(gen.baseId);
       const resolved = resolveShield(gen.uid);
       if (base && resolved) {
-        this.addStatLine(detail, "Melee Def", `+${resolved.meleeDefBonus}`, resolved.meleeDefBonus > base.meleeDefBonus ? "better" : "same", `(+${base.meleeDefBonus})`);
-        this.addStatLine(detail, "Ranged Def", `+${resolved.rangedDefBonus}`, resolved.rangedDefBonus > base.rangedDefBonus ? "better" : "same", `(+${base.rangedDefBonus})`);
-        this.addStatLine(detail, "Durability", `${resolved.durability}`, resolved.durability > base.durability ? "better" : "same", `(${base.durability})`);
+        this.addStatLine(detail, "Dodge", `+${resolved.dodgeBonus}`, resolved.dodgeBonus > base.dodgeBonus ? "better" : "same", `(+${base.dodgeBonus})`);
+        this.addStatLine(detail, "Armor", `${resolved.armor}`, resolved.armor > base.armor ? "better" : "same", `(${base.armor})`);
+        this.addStatLine(detail, "Stamina Pen.", `${resolved.staminaPenalty}`, resolved.staminaPenalty < base.staminaPenalty ? "better" : resolved.staminaPenalty > base.staminaPenalty ? "worse" : "same", `(${base.staminaPenalty})`);
+        this.addStatLine(detail, "MP Pen.", `${resolved.mpPenalty}`, resolved.mpPenalty < base.mpPenalty ? "better" : resolved.mpPenalty > base.mpPenalty ? "worse" : "same", `(${base.mpPenalty})`);
       }
     } else if (gen.slotType === "body_armor" || gen.slotType === "head_armor") {
       const base = resolveArmor(gen.baseId);
       const resolved = resolveArmor(gen.uid);
       if (base && resolved) {
-        this.addStatLine(detail, "Durability", `${resolved.durability}`, resolved.durability > base.durability ? "better" : "same", `(${base.durability})`);
-        this.addStatLine(detail, "Fatigue Pen.", `${resolved.fatiguePenalty}`, resolved.fatiguePenalty < base.fatiguePenalty ? "better" : resolved.fatiguePenalty > base.fatiguePenalty ? "worse" : "same", `(${base.fatiguePenalty})`);
+        this.addStatLine(detail, "Armor", `${resolved.armor}`, resolved.armor > base.armor ? "better" : "same", `(${base.armor})`);
+        this.addStatLine(detail, "Magic Resist", `${resolved.magicResist}`, resolved.magicResist > base.magicResist ? "better" : "same", `(${base.magicResist})`);
+        this.addStatLine(detail, "Stamina Pen.", `${resolved.staminaPenalty}`, resolved.staminaPenalty < base.staminaPenalty ? "better" : resolved.staminaPenalty > base.staminaPenalty ? "worse" : "same", `(${base.staminaPenalty})`);
         this.addStatLine(detail, "Init Pen.", `${resolved.initiativePenalty}`, resolved.initiativePenalty < base.initiativePenalty ? "better" : resolved.initiativePenalty > base.initiativePenalty ? "worse" : "same", `(${base.initiativePenalty})`);
+        this.addStatLine(detail, "MP Pen.", `${resolved.mpPenalty}`, resolved.mpPenalty < base.mpPenalty ? "better" : resolved.mpPenalty > base.mpPenalty ? "worse" : "same", `(${base.mpPenalty})`);
       }
     }
 

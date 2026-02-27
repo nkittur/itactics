@@ -222,13 +222,12 @@ function applyLevelUp(member: RosterMember, rng: () => number): boolean {
     const increase = rollStatIncrease(key, stars, rng);
     switch (key) {
       case "hitpoints": member.stats.hitpoints += increase; member.maxHp += increase; break;
-      case "fatigue": member.stats.fatigue += increase; break;
+      case "stamina": member.stats.stamina += increase; break;
       case "resolve": member.stats.resolve += increase; break;
       case "initiative": member.stats.initiative += increase; break;
       case "meleeSkill": member.stats.meleeSkill += increase; break;
       case "rangedSkill": member.stats.rangedSkill += increase; break;
-      case "meleeDefense": member.stats.meleeDefense += increase; break;
-      case "rangedDefense": member.stats.rangedDefense += increase; break;
+      case "dodge": member.stats.dodge += increase; break;
     }
   }
   return true;
@@ -408,15 +407,9 @@ export function runCampaign(config: CampaignConfig, paramsName: string = "defaul
       roster = roster.filter(m => survivorNames.has(m.name));
     }
 
-    // Heal and repair all units (revived or surviving)
+    // Heal all units (revived or surviving)
     for (const member of roster) {
       member.stats.hitpoints = member.maxHp;
-      if (member.armor.body) {
-        member.armor.body.currentDurability = member.armor.body.maxDurability;
-      }
-      if (member.armor.head) {
-        member.armor.head.currentDurability = member.armor.head.maxDurability;
-      }
     }
 
     battles.push({
@@ -474,14 +467,14 @@ function applyPurchases(
       case "bodyArmor": {
         const def = getArmorDef(d.itemId);
         member.armor.body = def
-          ? { id: def.id, currentDurability: def.durability, maxDurability: def.durability }
+          ? { id: def.id, armor: def.armor, magicResist: def.magicResist }
           : null;
         break;
       }
       case "headArmor": {
         const def = getArmorDef(d.itemId);
         member.armor.head = def
-          ? { id: def.id, currentDurability: def.durability, maxDurability: def.durability }
+          ? { id: def.id, armor: def.armor, magicResist: def.magicResist }
           : null;
         break;
       }

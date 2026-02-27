@@ -3,7 +3,7 @@ import type { HexGrid } from "@hex/HexGrid";
 import type { EntityId } from "@entities/Entity";
 import type { PositionComponent } from "@entities/components/Position";
 import type { HealthComponent } from "@entities/components/Health";
-import type { FatigueComponent } from "@entities/components/Fatigue";
+import type { StaminaComponent } from "@entities/components/Stamina";
 import type { EquipmentComponent } from "@entities/components/Equipment";
 import type { AIBehaviorComponent, AIType } from "@entities/components/AIBehavior";
 import { hexDistance, hexNeighbors } from "@hex/HexMath";
@@ -127,9 +127,9 @@ export function decideTacticalAction(
   const basicAPCost = Math.max(1, skillAPCost(basicSkill, weapon) - apDiscount);
   const basicRange = skillRange(basicSkill, weapon);
 
-  // Check if we should recover (fatigue > 70% of max)
-  const fatigue = world.getComponent<FatigueComponent>(entityId, "fatigue");
-  if (fatigue && fatigue.current > fatigue.max * 0.7) {
+  // Check if we should recover (stamina usage > 70% of max)
+  const stamina = world.getComponent<StaminaComponent>(entityId, "stamina");
+  if (stamina && stamina.current > stamina.max * 0.7) {
     const adjacentEnemy = findAdjacentTarget(world, pos, enemyIds, basicRange);
     if (!adjacentEnemy) {
       return { type: "recover" };
@@ -352,7 +352,7 @@ function scoreSkillTarget(
   } else if (skill.id === "split_shield") {
     // Only valuable if target has a shield
     const equip = world.getComponent<EquipmentComponent>(targetId, "equipment");
-    if (equip?.offHand && equip.shieldDurability != null && equip.shieldDurability > 0) {
+    if (equip?.offHand) {
       score += 15; // High priority to remove shield
     } else {
       score -= 50; // Useless without shield
@@ -360,8 +360,8 @@ function scoreSkillTarget(
   } else if (skill.id === "puncture") {
     // Valuable against heavily armored targets
     const armor = world.getComponent<ArmorComponent>(targetId, "armor");
-    const hasArmor = (armor?.body && armor.body.currentDurability > 30) ||
-                     (armor?.head && armor.head.currentDurability > 20);
+    const hasArmor = (armor?.body && armor.body.armor > 5) ||
+                     (armor?.head && armor.head.armor > 3);
     if (hasArmor) {
       score += 12;
     }

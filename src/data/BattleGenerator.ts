@@ -91,7 +91,7 @@ function rosterToUnits(roster: RosterMember[]): ScenarioUnit[] {
       name: m.name,
       stats: {
         melee: m.stats.meleeSkill,
-        defense: m.stats.meleeDefense,
+        defense: m.stats.dodge,
         hp: m.stats.hitpoints,
         initiative: m.stats.initiative,
         mp: m.stats.movementPoints,

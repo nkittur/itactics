@@ -14,8 +14,8 @@ function createUnit(
   world.addComponent(id, { type: "health", current: hp, max: hp, injuries: [] });
   world.addComponent(id, {
     type: "stats",
-    hitpoints: hp, fatigue: 100, resolve, initiative: 100,
-    meleeSkill: 60, rangedSkill: 30, meleeDefense: 10, rangedDefense: 10,
+    hitpoints: hp, stamina: 100, mana: 20, resolve, initiative: 100,
+    meleeSkill: 60, rangedSkill: 30, dodge: 10, magicResist: 0,
     level: 1, experience: 0,
   });
   world.addComponent(id, { type: "morale", current: moraleValue, state: moraleState });

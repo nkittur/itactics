@@ -2,7 +2,7 @@ import type { EntityId } from "@entities/Entity";
 import type { World } from "@entities/World";
 import type { InitiativeComponent } from "@entities/components/Initiative";
 import type { HealthComponent } from "@entities/components/Health";
-import type { FatigueComponent } from "@entities/components/Fatigue";
+import type { StaminaComponent } from "@entities/components/Stamina";
 
 export interface TurnEntry {
   entityId: EntityId;
@@ -33,10 +33,10 @@ export class TurnOrder {
       const init = world.getComponent<InitiativeComponent>(entityId, "initiative");
       if (!init) continue;
 
-      const fatigue = world.getComponent<FatigueComponent>(entityId, "fatigue");
-      const fatiguePenalty = fatigue ? fatigue.current : 0;
+      const stamina = world.getComponent<StaminaComponent>(entityId, "stamina");
+      const staminaPenalty = stamina ? stamina.current : 0;
 
-      const effectiveInitiative = init.base - fatiguePenalty;
+      const effectiveInitiative = init.base - staminaPenalty;
 
       // Update the stored effective value on the component
       init.effective = effectiveInitiative;

@@ -24,13 +24,13 @@ export interface EnemyDetailData {
   /** Morale state label. */
   moraleState?: string;
   moraleCurrent?: number;
-  /** Fatigue current/max. */
-  fatigue?: { current: number; max: number };
+  /** Stamina current/max. */
+  stamina?: { current: number; max: number };
   /** Active status effects (formatted strings). */
   statusEffects?: string[];
   /** Base stats. */
   meleeSkill: number;
-  meleeDefense: number;
+  dodge: number;
   resolve: number;
   initiative: number;
 
@@ -117,7 +117,7 @@ export class EnemyDetailPanel {
     const statsRow = el("div", "edp-stats");
     statsRow.innerHTML =
       `<span>Skill ${data.meleeSkill}</span>` +
-      `<span>Def ${data.meleeDefense}</span>` +
+      `<span>Dodge ${data.dodge}</span>` +
       `<span>Res ${data.resolve}</span>` +
       `<span>Init ${data.initiative}</span>`;
     this.content.appendChild(statsRow);
@@ -209,8 +209,8 @@ export class EnemyDetailPanel {
       }
     }
 
-    // Morale + Fatigue
-    if (data.moraleState || data.fatigue) {
+    // Morale + Stamina
+    if (data.moraleState || data.stamina) {
       this.content.appendChild(el("div", "edp-divider"));
       const stateRow = el("div", "edp-section");
       if (data.moraleState) {
@@ -219,8 +219,8 @@ export class EnemyDetailPanel {
           `${data.moraleState}${data.moraleCurrent != null ? ` (${data.moraleCurrent})` : ""}`));
         stateRow.lastElementChild!.setAttribute("style", `color:${moraleColor}`);
       }
-      if (data.fatigue) {
-        stateRow.appendChild(el("span", "edp-fatigue", `Fat ${data.fatigue.current}/${data.fatigue.max}`));
+      if (data.stamina) {
+        stateRow.appendChild(el("span", "edp-stamina", `Sta ${data.stamina.current}/${data.stamina.max}`));
       }
       this.content.appendChild(stateRow);
     }

@@ -32,8 +32,8 @@ export interface PlayerStrategy {
 
 /** Weapon tier by price for upgrade comparisons. */
 const WEAPON_TIERS: Record<string, number> = {
-  dagger: 1, short_sword: 1, spear: 1,
-  arming_sword: 2, hand_axe: 2, winged_mace: 2,
+  dagger: 1, short_sword: 1, spear: 1, wooden_wand: 1,
+  arming_sword: 2, hand_axe: 2, winged_mace: 2, crystal_wand: 2,
   short_bow: 2, hunting_bow: 2,
   longsword: 3, pike: 3,
 };

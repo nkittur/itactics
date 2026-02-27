@@ -166,8 +166,17 @@ export class AbilityExecutor {
       case "dmg_multihit":
         this.executeDmgMultihit(world, attackerId, targetId, effect, ability, weapon, result);
         break;
+      case "dmg_spell":
+        this.executeDmgSpell(world, attackerId, targetId, effect, ability, weapon, result, exploitBonus);
+        break;
       case "dot_bleed":
         this.executeDotBleed(world, targetId, effect, result);
+        break;
+      case "dot_burn":
+        this.executeDotBurn(world, targetId, effect, result);
+        break;
+      case "dot_poison":
+        this.executeDotPoison(world, targetId, effect, result);
         break;
       case "disp_push":
         this.executeDispPush(world, attackerId, targetId, result);
@@ -222,7 +231,7 @@ export class AbilityExecutor {
       name: ability.name,
       weaponFamilies: [],
       apCost: 0,
-      fatigueExtra: 0,
+      staminaExtra: 0,
       damageMultiplier: mult * (1 + exploitBonus),
       hitChanceModifier: hitMod,
       range: 0,
@@ -255,7 +264,7 @@ export class AbilityExecutor {
 
     const syntheticSkill: SkillDef = {
       id: ability.uid, name: ability.name, weaponFamilies: [],
-      apCost: 0, fatigueExtra: 0, damageMultiplier: executeMult,
+      apCost: 0, staminaExtra: 0, damageMultiplier: executeMult,
       hitChanceModifier: 0, range: 0, targetType: "enemy", rangeType: "melee",
       isBasicAttack: false, isStance: false, description: ability.description,
       ...this.getArmorOverrides(ability),
@@ -280,7 +289,7 @@ export class AbilityExecutor {
 
       const syntheticSkill: SkillDef = {
         id: ability.uid, name: ability.name, weaponFamilies: [],
-        apCost: 0, fatigueExtra: 0, damageMultiplier: multPerHit,
+        apCost: 0, staminaExtra: 0, damageMultiplier: multPerHit,
         hitChanceModifier: 0, range: 0, targetType: "enemy", rangeType: "melee",
         isBasicAttack: false, isStance: false, description: ability.description,
       };
@@ -301,6 +310,64 @@ export class AbilityExecutor {
       modifiers: {}, maxStacks: 5, dmgPerTurn,
     });
     result.appliedEffects.push("bleed");
+  }
+
+  /** Spell damage: uses weapon damage range but forces magical damage type. */
+  private executeDmgSpell(
+    world: World, attackerId: EntityId, targetId: EntityId,
+    effect: EffectPrimitive, ability: GeneratedAbility, weapon: WeaponDef,
+    result: AbilityResult, exploitBonus: number,
+  ): void {
+    const mult = (effect.params.multiplier as number) ?? 1.0;
+    const hitMod = (effect.params.hitChanceMod as number) ?? 0;
+
+    const syntheticSkill: SkillDef = {
+      id: ability.uid,
+      name: ability.name,
+      weaponFamilies: [],
+      apCost: 0,
+      staminaExtra: 0,
+      damageMultiplier: mult * (1 + exploitBonus),
+      hitChanceModifier: hitMod,
+      range: 0,
+      targetType: "enemy",
+      rangeType: "melee",
+      isBasicAttack: false,
+      isStance: false,
+      description: ability.description,
+      damageTypeOverride: "magical",
+      ...this.getArmorOverrides(ability),
+    };
+
+    const attackResult = this.damageCalc.resolveSkillAttack(world, attackerId, targetId, syntheticSkill);
+    result.attackResults.push(attackResult);
+    result.appliedEffects.push(...attackResult.appliedEffects);
+  }
+
+  private executeDotBurn(
+    world: World, targetId: EntityId, effect: EffectPrimitive, result: AbilityResult,
+  ): void {
+    const dmgPerTurn = (effect.params.dmgPerTurn as number) ?? 5;
+    const turns = (effect.params.turns as number) ?? 2;
+    this.statusEffects.applyDynamic(world, targetId, {
+      id: "burn", name: "Burning", duration: turns,
+      modifiers: {}, maxStacks: 3, dmgPerTurn,
+    });
+    result.appliedEffects.push("burn");
+  }
+
+  private executeDotPoison(
+    world: World, targetId: EntityId, effect: EffectPrimitive, result: AbilityResult,
+  ): void {
+    const dmgPerTurn = (effect.params.dmgPerTurn as number) ?? 4;
+    const turns = (effect.params.turns as number) ?? 3;
+    const statReduce = (effect.params.statReduce as number) ?? 0;
+    this.statusEffects.applyDynamic(world, targetId, {
+      id: "poison", name: "Poisoned", duration: turns,
+      modifiers: statReduce > 0 ? { meleeSkill: -statReduce } : {},
+      maxStacks: 3, dmgPerTurn,
+    });
+    result.appliedEffects.push("poison");
   }
 
   private executeDispPush(
@@ -463,14 +530,11 @@ export class AbilityExecutor {
   }
 
   /** Extract armor override modifiers from ability. */
-  private getArmorOverrides(ability: GeneratedAbility): { armorIgnoreOverride?: number; armorDamageMultOverride?: number } {
-    const overrides: { armorIgnoreOverride?: number; armorDamageMultOverride?: number } = {};
+  private getArmorOverrides(ability: GeneratedAbility): { armorIgnoreOverride?: number } {
+    const overrides: { armorIgnoreOverride?: number } = {};
     for (const mod of ability.modifiers) {
       if (mod.type === "mod_armorIgnore") {
         overrides.armorIgnoreOverride = (mod.params.pct as number) ?? 0.5;
-      }
-      if (mod.type === "mod_armorDmg") {
-        overrides.armorDamageMultOverride = (mod.params.mult as number) ?? 1.5;
       }
     }
     return overrides;

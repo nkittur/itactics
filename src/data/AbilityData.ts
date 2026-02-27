@@ -55,7 +55,8 @@ export interface TriggerPrimitive {
 
 export interface AbilityCost {
   ap: number;
-  fatigue: number;
+  stamina: number;
+  mana: number;
   /** 0 = no cooldown. */
   cooldown: number;
   turnEnding: boolean;

@@ -1,31 +1,29 @@
 export type StatKey =
   | "hitpoints"
-  | "fatigue"
+  | "stamina"
   | "resolve"
   | "initiative"
   | "meleeSkill"
   | "rangedSkill"
-  | "meleeDefense"
-  | "rangedDefense";
+  | "dodge";
 
 export const ALL_STAT_KEYS: readonly StatKey[] = [
   "hitpoints",
-  "fatigue",
+  "stamina",
   "resolve",
   "initiative",
   "meleeSkill",
   "rangedSkill",
-  "meleeDefense",
-  "rangedDefense",
+  "dodge",
 ];
 
-/** HP and Fatigue get +1 to all roll values (wider range). */
-const HIGH_RANGE_STATS: ReadonlySet<StatKey> = new Set(["hitpoints", "fatigue"]);
+/** HP and Stamina get +1 to all roll values (wider range). */
+const HIGH_RANGE_STATS: ReadonlySet<StatKey> = new Set(["hitpoints", "stamina"]);
 
 /**
  * Roll ranges by star count.
  * Standard stats: 0★ +1-3, 1★ +2-4, 2★ +3-5, 3★ +4-6
- * HP/FAT:         0★ +2-4, 1★ +3-5, 2★ +4-6, 3★ +5-7
+ * HP/STA:         0★ +2-4, 1★ +3-5, 2★ +4-6, 3★ +5-7
  */
 function rollRange(statKey: StatKey, stars: number): [number, number] {
   const clampedStars = Math.max(0, Math.min(3, stars));
@@ -54,13 +52,12 @@ export function rollStatIncrease(statKey: StatKey, stars: number, rng: () => num
 export function generateTalentStars(rng: () => number): Record<StatKey, number> {
   const stars: Record<StatKey, number> = {
     hitpoints: 0,
-    fatigue: 0,
+    stamina: 0,
     resolve: 0,
     initiative: 0,
     meleeSkill: 0,
     rangedSkill: 0,
-    meleeDefense: 0,
-    rangedDefense: 0,
+    dodge: 0,
   };
 
   // 6-8 total star points (usually 7)
@@ -82,12 +79,11 @@ export function generateTalentStars(rng: () => number): Record<StatKey, number> 
 export function statDisplayName(key: StatKey): string {
   switch (key) {
     case "hitpoints": return "HP";
-    case "fatigue": return "Fatigue";
+    case "stamina": return "Stamina";
     case "resolve": return "Resolve";
     case "initiative": return "Initiative";
     case "meleeSkill": return "Melee Skill";
     case "rangedSkill": return "Ranged Skill";
-    case "meleeDefense": return "Melee Def";
-    case "rangedDefense": return "Ranged Def";
+    case "dodge": return "Dodge";
   }
 }

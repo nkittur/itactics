@@ -3,11 +3,12 @@ import type { HexGrid } from "@hex/HexGrid";
 import type { EntityId } from "@entities/Entity";
 import type { PositionComponent } from "@entities/components/Position";
 import type { HealthComponent } from "@entities/components/Health";
-import type { FatigueComponent } from "@entities/components/Fatigue";
+import type { StaminaComponent } from "@entities/components/Stamina";
+import type { ManaComponent } from "@entities/components/Mana";
 import type { EquipmentComponent } from "@entities/components/Equipment";
 import { TurnOrder } from "./TurnOrder";
 import { DamageCalculator, type AttackResult } from "./DamageCalculator";
-import { ActionPointManager, pathFatigueCost, MAX_AP } from "./ActionPointManager";
+import { ActionPointManager, pathStaminaCost, MAX_AP } from "./ActionPointManager";
 import { MovementPointManager, tileMPCost, getEffectiveMP, DEFAULT_MP } from "./MovementPointManager";
 import { getZoCAttacksForMove, isInEnemyZoC, getZoCBreakCost } from "./ZoneOfControl";
 import type { StatsComponent } from "@entities/components/Stats";
@@ -20,7 +21,7 @@ import { PassiveResolver, type PassiveResult } from "./PassiveResolver";
 import type { ActiveStancesComponent } from "@entities/components/ActiveStances";
 import { UNARMED, type WeaponDef } from "@data/WeaponData";
 import { resolveWeapon, resolveShield } from "@data/ItemResolver";
-import { BASIC_ATTACK, getSkillsForWeapon, skillAPCost, skillFatigueCost, skillRange, type SkillDef } from "@data/SkillData";
+import { BASIC_ATTACK, getSkillsForWeapon, skillAPCost, skillStaminaCost, skillRange, type SkillDef } from "@data/SkillData";
 import type { CombatSkill } from "@data/CombatSkill";
 import { wrapSkillDef, wrapGeneratedAbility } from "@data/CombatSkill";
 import { resolveAbility } from "@data/AbilityResolver";
@@ -47,7 +48,7 @@ interface UndoInfo {
   path: Array<{ q: number; r: number }>;
   apSpent: number;
   mpSpent: number;
-  fatigueSpent: number;
+  staminaSpent: number;
 }
 
 export class CombatManager {
@@ -466,7 +467,7 @@ export class CombatManager {
     // Calculate costs
     const pathMP = pathResult.cost;
     const totalMPSpent = pathMP + zocMPCost;
-    const fatigueCost = pathFatigueCost(this.grid, pathResult.path, pos.q, pos.r);
+    const staminaCost = pathStaminaCost(this.grid, pathResult.path, pos.q, pos.r);
 
     if (!this.mpManager.canAfford(totalMPSpent)) return;
 
@@ -507,15 +508,15 @@ export class CombatManager {
         path: pathResult.path,
         apSpent: 0,
         mpSpent: totalMPSpent,
-        fatigueSpent: fatigueCost,
+        staminaSpent: staminaCost,
       };
     }
 
     this.playerTurnState = "animating";
 
-    // Spend MP (not AP) and fatigue
+    // Spend MP (not AP) and stamina
     this.mpManager.spend(totalMPSpent);
-    this.addFatigue(entityId, fatigueCost);
+    this.addStamina(entityId, staminaCost);
 
     // Update occupancy
     const oldTile = this.grid.get(pos.q, pos.r);
@@ -550,7 +551,7 @@ export class CombatManager {
   private undoMove(): void {
     if (!this.undoInfo) return;
 
-    const { entityId, oldQ, oldR, oldElevation, apSpent, mpSpent, fatigueSpent } = this.undoInfo;
+    const { entityId, oldQ, oldR, oldElevation, apSpent, mpSpent, staminaSpent } = this.undoInfo;
     const pos = this.world.getComponent<PositionComponent>(entityId, "position");
     if (!pos) return;
 
@@ -566,10 +567,10 @@ export class CombatManager {
     pos.r = oldR;
     pos.elevation = oldElevation;
 
-    // Refund MP, AP, and fatigue
+    // Refund MP, AP, and stamina
     this.mpManager.spend(-mpSpent); // negative spend = refund
     this.apManager.spend(-apSpent);
-    this.addFatigue(entityId, -fatigueSpent);
+    this.addStamina(entityId, -staminaSpent);
 
     this.undoInfo = null;
     this.selectedSkill = null;
@@ -595,15 +596,16 @@ export class CombatManager {
 
     const skill = this.getActiveSkill();
     const apCost = this.getEffectiveAPCost(attackerId, skill, weapon);
-    const fatCost = skillFatigueCost(skill, weapon);
+    const fatCost = skillStaminaCost(skill, weapon);
 
     if (!this.apManager.canAfford(apCost)) return;
 
     this.playerTurnState = "animating";
 
-    // Spend AP and fatigue
+    // Spend AP, stamina, and mana
     this.apManager.spend(apCost);
-    this.addFatigue(attackerId, fatCost);
+    this.addStamina(attackerId, fatCost);
+    if (weapon.manaCost > 0) this.spendMana(attackerId, weapon.manaCost);
 
     // Track action for CP
     trackAction(this._actionTracker, attackerId);
@@ -663,7 +665,8 @@ export class CombatManager {
 
     this.playerTurnState = "animating";
     this.apManager.spend(cs.apCost);
-    this.addFatigue(attackerId, cs.fatigueCost);
+    this.addStamina(attackerId, cs.staminaCost);
+    if (cs.manaCost > 0) this.spendMana(attackerId, cs.manaCost);
     this.undoInfo = null;
 
     // Track action for CP
@@ -721,12 +724,12 @@ export class CombatManager {
   private executeStance(entityId: EntityId, skill: SkillDef): void {
     const weapon = this.getWeaponDef(entityId);
     const apCost = this.getEffectiveAPCost(entityId, skill, weapon);
-    const fatCost = skillFatigueCost(skill, weapon);
+    const fatCost = skillStaminaCost(skill, weapon);
 
     if (!this.apManager.canAfford(apCost)) return;
 
     this.apManager.spend(apCost);
-    this.addFatigue(entityId, fatCost);
+    this.addStamina(entityId, fatCost);
     this.undoInfo = null;
 
     if (skill.id === "spearwall") {
@@ -743,10 +746,11 @@ export class CombatManager {
       this.executeStance(entityId, cs.skillDef);
       return;
     }
-    // Generated stance ability — spend AP/fatigue, activate stance
+    // Generated stance ability — spend AP/stamina/mana, activate stance
     if (!this.apManager.canAfford(cs.apCost)) return;
     this.apManager.spend(cs.apCost);
-    this.addFatigue(entityId, cs.fatigueCost);
+    this.addStamina(entityId, cs.staminaCost);
+    if (cs.manaCost > 0) this.spendMana(entityId, cs.manaCost);
     this.undoInfo = null;
     // Generated stances handled by AbilityExecutor (Step 3)
     this.onStanceActivated?.(entityId, cs.id);
@@ -893,14 +897,14 @@ export class CombatManager {
 
   /** End the current player unit's turn and advance. */
   private endPlayerUnitTurn(): void {
-    // Convert remaining AP to stamina recovery (1 AP → 2 fatigue recovered)
+    // Convert remaining AP to stamina recovery (1 AP → 2 stamina recovered)
     if (this.selectedUnit) {
       const leftoverAP = this.apManager.remaining;
       if (leftoverAP > 0) {
-        const fatigue = this.world.getComponent<FatigueComponent>(this.selectedUnit, "fatigue");
-        if (fatigue) {
+        const stamina = this.world.getComponent<StaminaComponent>(this.selectedUnit, "stamina");
+        if (stamina) {
           const recovery = leftoverAP * 2;
-          fatigue.current = Math.max(0, fatigue.current - recovery);
+          stamina.current = Math.max(0, stamina.current - recovery);
         }
       }
     }
@@ -929,8 +933,9 @@ export class CombatManager {
 
     const entityId = entry.entityId;
 
-    // Apply fatigue recovery at turn start
-    this.applyFatigueRecovery(entityId);
+    // Apply stamina/mana recovery at turn start
+    this.applyStaminaRecovery(entityId);
+    this.applyManaRecovery(entityId);
 
     // Clear expired stances
     this.skillExecutor.clearStances(this.world, entityId);
@@ -1002,11 +1007,11 @@ export class CombatManager {
     }
   }
 
-  /** Apply passive fatigue recovery at the start of a unit's turn. */
-  private applyFatigueRecovery(entityId: EntityId): void {
-    const fatigue = this.world.getComponent<FatigueComponent>(entityId, "fatigue");
-    if (fatigue) {
-      fatigue.current = Math.max(0, fatigue.current - fatigue.recoveryPerTurn);
+  /** Apply passive stamina recovery at the start of a unit's turn. */
+  private applyStaminaRecovery(entityId: EntityId): void {
+    const stamina = this.world.getComponent<StaminaComponent>(entityId, "stamina");
+    if (stamina) {
+      stamina.current = Math.max(0, stamina.current - stamina.recoveryPerTurn);
     }
   }
 
@@ -1070,10 +1075,10 @@ export class CombatManager {
       }
 
       case "recover": {
-        const fatigue = this.world.getComponent<FatigueComponent>(entityId, "fatigue");
-        if (fatigue) {
-          const recovery = Math.floor(fatigue.max * 0.5);
-          fatigue.current = Math.max(0, fatigue.current - recovery);
+        const stamina = this.world.getComponent<StaminaComponent>(entityId, "stamina");
+        if (stamina) {
+          const recovery = Math.floor(stamina.max * 0.5);
+          stamina.current = Math.max(0, stamina.current - recovery);
         }
         break;
       }
@@ -1128,8 +1133,8 @@ export class CombatManager {
     }
 
     const dest = path[path.length - 1]!;
-    const fatCost = pathFatigueCost(this.grid, path, pos.q, pos.r);
-    this.addFatigue(entityId, fatCost);
+    const fatCost = pathStaminaCost(this.grid, path, pos.q, pos.r);
+    this.addStamina(entityId, fatCost);
 
     const oldTile = this.grid.get(pos.q, pos.r);
     if (oldTile) oldTile.occupant = null;
@@ -1172,8 +1177,9 @@ export class CombatManager {
 
     const weapon = this.getWeaponDef(entityId);
     const useSkill = skill ?? BASIC_ATTACK;
-    const fatCost = skillFatigueCost(useSkill, weapon);
-    this.addFatigue(entityId, fatCost);
+    const fatCost = skillStaminaCost(useSkill, weapon);
+    this.addStamina(entityId, fatCost);
+    if (weapon.manaCost > 0) this.spendMana(entityId, weapon.manaCost);
 
     let result: AttackResult;
     if (useSkill.id === "split_shield") {
@@ -1208,7 +1214,7 @@ export class CombatManager {
   /** Execute a stance skill for an enemy unit. */
   private executeStanceEnemy(entityId: EntityId, skill: SkillDef): void {
     const weapon = this.getWeaponDef(entityId);
-    this.addFatigue(entityId, skillFatigueCost(skill, weapon));
+    this.addStamina(entityId, skillStaminaCost(skill, weapon));
 
     if (skill.id === "spearwall") {
       this.skillExecutor.activateSpearwall(this.world, entityId);
@@ -1360,10 +1366,10 @@ export class CombatManager {
     return weapon.apCost;
   }
 
-  private getWeaponFatigueCost(entityId: EntityId): number {
+  private getWeaponStaminaCost(entityId: EntityId): number {
     const equip = this.world.getComponent<EquipmentComponent>(entityId, "equipment");
     const weapon = equip?.mainHand ? resolveWeapon(equip.mainHand) : UNARMED;
-    return weapon.fatigueCost;
+    return weapon.staminaCost;
   }
 
   private getWeaponRange(entityId: EntityId): number {
@@ -1372,10 +1378,26 @@ export class CombatManager {
     return weapon.range;
   }
 
-  private addFatigue(entityId: EntityId, amount: number): void {
-    const fatigue = this.world.getComponent<FatigueComponent>(entityId, "fatigue");
-    if (fatigue) {
-      fatigue.current = Math.max(0, Math.min(fatigue.max, fatigue.current + amount));
+  private addStamina(entityId: EntityId, amount: number): void {
+    const stamina = this.world.getComponent<StaminaComponent>(entityId, "stamina");
+    if (stamina) {
+      stamina.current = Math.max(0, Math.min(stamina.max, stamina.current + amount));
+    }
+  }
+
+  /** Spend mana (positive = spend, negative = recover). */
+  private spendMana(entityId: EntityId, amount: number): void {
+    const mana = this.world.getComponent<ManaComponent>(entityId, "mana");
+    if (mana) {
+      mana.current = Math.max(0, Math.min(mana.max, mana.current - amount));
+    }
+  }
+
+  /** Recover mana at turn start. */
+  private applyManaRecovery(entityId: EntityId): void {
+    const mana = this.world.getComponent<ManaComponent>(entityId, "mana");
+    if (mana) {
+      mana.current = Math.min(mana.max, mana.current + mana.recoveryPerTurn);
     }
   }
 
@@ -1582,12 +1604,6 @@ export class CombatManager {
       equip.bag.splice(bagIndex, 1);
     }
 
-    // Update shield durability when swapping shields
-    if (slot === "offHand") {
-      const newShield = resolveShield(bagItemId!);
-      equip.shieldDurability = newShield ? newShield.durability : null;
-    }
-
     this.apManager.spend(CombatManager.EQUIP_AP_COST);
     return true;
   }
@@ -1600,7 +1616,6 @@ export class CombatManager {
 
     equip.bag.push(equip[slot]!);
     equip[slot] = null;
-    if (slot === "offHand") equip.shieldDurability = null;
 
     this.apManager.spend(CombatManager.EQUIP_AP_COST);
     return true;

@@ -10,110 +10,128 @@ export type WeaponFamily =
   | "bow"
   | "crossbow"
   | "throwing"
-  | "staff";
+  | "staff"
+  | "wand";
+
+export type DamageType = "physical" | "magical";
 
 export interface WeaponDef {
   readonly id: string;
   readonly name: string;
   readonly family: WeaponFamily;
+  readonly damageType: DamageType;
   readonly minDamage: number;
   readonly maxDamage: number;
-  /** Multiplier for damage applied to armor durability (e.g. 1.3 = 130%). */
-  readonly armorDamageMult: number;
-  /** Fraction of raw damage that bypasses armor entirely (e.g. 0.2 = 20%). */
-  readonly armorIgnorePct: number;
   readonly apCost: number;
-  readonly fatigueCost: number;
+  readonly staminaCost: number;
+  readonly manaCost: number;
   /** 1 = adjacent melee, 2 = reach weapon, 3+ = ranged. */
   readonly range: number;
   readonly hands: 1 | 2;
   /** Additive bonus to hit chance from weapon family / design. */
   readonly hitChanceBonus: number;
+  /** Bonus crit chance (e.g., daggers +5%). */
+  readonly critChanceBonus: number;
+  /** Flat armor ignored on hit. */
+  readonly armorPiercing: number;
+  readonly level: number;
 }
 
 const WEAPONS: ReadonlyMap<string, WeaponDef> = new Map([
   // ── Swords ──
   ["short_sword", {
-    id: "short_sword", name: "Short Sword", family: "sword",
-    minDamage: 3, maxDamage: 5, armorDamageMult: 0.80, armorIgnorePct: 0.15,
-    apCost: 4, fatigueCost: 10, range: 1, hands: 1, hitChanceBonus: 15,
+    id: "short_sword", name: "Short Sword", family: "sword", damageType: "physical",
+    minDamage: 3, maxDamage: 5, apCost: 4, staminaCost: 10, manaCost: 0,
+    range: 1, hands: 1, hitChanceBonus: 15, critChanceBonus: 0, armorPiercing: 0, level: 1,
   }],
   ["arming_sword", {
-    id: "arming_sword", name: "Arming Sword", family: "sword",
-    minDamage: 4, maxDamage: 6, armorDamageMult: 0.80, armorIgnorePct: 0.20,
-    apCost: 4, fatigueCost: 12, range: 1, hands: 1, hitChanceBonus: 5,
+    id: "arming_sword", name: "Arming Sword", family: "sword", damageType: "physical",
+    minDamage: 4, maxDamage: 6, apCost: 4, staminaCost: 12, manaCost: 0,
+    range: 1, hands: 1, hitChanceBonus: 5, critChanceBonus: 0, armorPiercing: 0, level: 2,
   }],
 
   // ── Axes ──
   ["hand_axe", {
-    id: "hand_axe", name: "Hand Axe", family: "axe",
-    minDamage: 4, maxDamage: 7, armorDamageMult: 1.30, armorIgnorePct: 0.10,
-    apCost: 4, fatigueCost: 14, range: 1, hands: 1, hitChanceBonus: 0,
+    id: "hand_axe", name: "Hand Axe", family: "axe", damageType: "physical",
+    minDamage: 4, maxDamage: 7, apCost: 4, staminaCost: 14, manaCost: 0,
+    range: 1, hands: 1, hitChanceBonus: 0, critChanceBonus: 0, armorPiercing: 1, level: 2,
   }],
 
   // ── Maces ──
   ["winged_mace", {
-    id: "winged_mace", name: "Winged Mace", family: "mace",
-    minDamage: 3, maxDamage: 5, armorDamageMult: 0.80, armorIgnorePct: 0.35,
-    apCost: 4, fatigueCost: 13, range: 1, hands: 1, hitChanceBonus: 0,
+    id: "winged_mace", name: "Winged Mace", family: "mace", damageType: "physical",
+    minDamage: 3, maxDamage: 5, apCost: 4, staminaCost: 13, manaCost: 0,
+    range: 1, hands: 1, hitChanceBonus: 0, critChanceBonus: 0, armorPiercing: 3, level: 2,
   }],
 
   // ── Spears ──
   ["spear", {
-    id: "spear", name: "Spear", family: "spear",
-    minDamage: 3, maxDamage: 5, armorDamageMult: 0.80, armorIgnorePct: 0.15,
-    apCost: 4, fatigueCost: 10, range: 1, hands: 1, hitChanceBonus: 20,
+    id: "spear", name: "Spear", family: "spear", damageType: "physical",
+    minDamage: 3, maxDamage: 5, apCost: 4, staminaCost: 10, manaCost: 0,
+    range: 1, hands: 1, hitChanceBonus: 20, critChanceBonus: 0, armorPiercing: 0, level: 1,
   }],
 
   // ── Daggers ──
   ["dagger", {
-    id: "dagger", name: "Dagger", family: "dagger",
-    minDamage: 2, maxDamage: 3, armorDamageMult: 0.50, armorIgnorePct: 0.35,
-    apCost: 3, fatigueCost: 8, range: 1, hands: 1, hitChanceBonus: 0,
+    id: "dagger", name: "Dagger", family: "dagger", damageType: "physical",
+    minDamage: 2, maxDamage: 3, apCost: 3, staminaCost: 8, manaCost: 0,
+    range: 1, hands: 1, hitChanceBonus: 0, critChanceBonus: 5, armorPiercing: 2, level: 1,
   }],
 
   // ── Two-Handed ──
   ["longsword", {
-    id: "longsword", name: "Longsword", family: "sword",
-    minDamage: 6, maxDamage: 10, armorDamageMult: 0.80, armorIgnorePct: 0.25,
-    apCost: 6, fatigueCost: 20, range: 1, hands: 2, hitChanceBonus: 5,
+    id: "longsword", name: "Longsword", family: "sword", damageType: "physical",
+    minDamage: 6, maxDamage: 10, apCost: 6, staminaCost: 20, manaCost: 0,
+    range: 1, hands: 2, hitChanceBonus: 5, critChanceBonus: 0, armorPiercing: 0, level: 3,
   }],
   ["pike", {
-    id: "pike", name: "Pike", family: "polearm",
-    minDamage: 5, maxDamage: 8, armorDamageMult: 0.60, armorIgnorePct: 0.30,
-    apCost: 6, fatigueCost: 18, range: 2, hands: 2, hitChanceBonus: 0,
+    id: "pike", name: "Pike", family: "polearm", damageType: "physical",
+    minDamage: 5, maxDamage: 8, apCost: 6, staminaCost: 18, manaCost: 0,
+    range: 2, hands: 2, hitChanceBonus: 0, critChanceBonus: 0, armorPiercing: 1, level: 3,
   }],
 
   // ── Staves ──
   ["oak_staff", {
-    id: "oak_staff", name: "Oak Staff", family: "staff",
-    minDamage: 2, maxDamage: 4, armorDamageMult: 0.60, armorIgnorePct: 0.00,
-    apCost: 4, fatigueCost: 8, range: 2, hands: 2, hitChanceBonus: 5,
+    id: "oak_staff", name: "Oak Staff", family: "staff", damageType: "physical",
+    minDamage: 2, maxDamage: 4, apCost: 4, staminaCost: 8, manaCost: 0,
+    range: 2, hands: 2, hitChanceBonus: 5, critChanceBonus: 0, armorPiercing: 0, level: 1,
   }],
   ["iron_staff", {
-    id: "iron_staff", name: "Iron Staff", family: "staff",
-    minDamage: 3, maxDamage: 5, armorDamageMult: 0.80, armorIgnorePct: 0.05,
-    apCost: 4, fatigueCost: 10, range: 2, hands: 2, hitChanceBonus: 5,
+    id: "iron_staff", name: "Iron Staff", family: "staff", damageType: "physical",
+    minDamage: 3, maxDamage: 5, apCost: 4, staminaCost: 10, manaCost: 0,
+    range: 2, hands: 2, hitChanceBonus: 5, critChanceBonus: 0, armorPiercing: 0, level: 2,
   }],
 
   // ── Ranged ──
   ["short_bow", {
-    id: "short_bow", name: "Short Bow", family: "bow",
-    minDamage: 3, maxDamage: 5, armorDamageMult: 0.50, armorIgnorePct: 0.15,
-    apCost: 4, fatigueCost: 10, range: 5, hands: 2, hitChanceBonus: 0,
+    id: "short_bow", name: "Short Bow", family: "bow", damageType: "physical",
+    minDamage: 3, maxDamage: 5, apCost: 4, staminaCost: 10, manaCost: 0,
+    range: 5, hands: 2, hitChanceBonus: 0, critChanceBonus: 0, armorPiercing: 0, level: 1,
   }],
   ["hunting_bow", {
-    id: "hunting_bow", name: "Hunting Bow", family: "bow",
-    minDamage: 4, maxDamage: 7, armorDamageMult: 0.50, armorIgnorePct: 0.20,
-    apCost: 5, fatigueCost: 14, range: 6, hands: 2, hitChanceBonus: -5,
+    id: "hunting_bow", name: "Hunting Bow", family: "bow", damageType: "physical",
+    minDamage: 4, maxDamage: 7, apCost: 5, staminaCost: 14, manaCost: 0,
+    range: 6, hands: 2, hitChanceBonus: -5, critChanceBonus: 0, armorPiercing: 0, level: 2,
+  }],
+
+  // ── Wands ──
+  ["wooden_wand", {
+    id: "wooden_wand", name: "Wooden Wand", family: "wand", damageType: "magical",
+    minDamage: 1, maxDamage: 3, apCost: 4, staminaCost: 0, manaCost: 0,
+    range: 4, hands: 1, hitChanceBonus: 0, critChanceBonus: 0, armorPiercing: 0, level: 1,
+  }],
+  ["crystal_wand", {
+    id: "crystal_wand", name: "Crystal Wand", family: "wand", damageType: "magical",
+    minDamage: 2, maxDamage: 4, apCost: 4, staminaCost: 0, manaCost: 0,
+    range: 4, hands: 1, hitChanceBonus: 5, critChanceBonus: 0, armorPiercing: 0, level: 2,
   }],
 ]);
 
 /** Fallback when a unit has no weapon equipped. */
 export const UNARMED: WeaponDef = {
-  id: "unarmed", name: "Unarmed", family: "dagger",
-  minDamage: 1, maxDamage: 2, armorDamageMult: 0.50, armorIgnorePct: 0.50,
-  apCost: 3, fatigueCost: 5, range: 1, hands: 1, hitChanceBonus: 0,
+  id: "unarmed", name: "Unarmed", family: "dagger", damageType: "physical",
+  minDamage: 1, maxDamage: 2, apCost: 3, staminaCost: 5, manaCost: 0,
+  range: 1, hands: 1, hitChanceBonus: 0, critChanceBonus: 0, armorPiercing: 0, level: 0,
 };
 
 export function getWeapon(id: string): WeaponDef {

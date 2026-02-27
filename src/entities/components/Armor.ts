@@ -2,8 +2,8 @@ import type { Component } from "../Component";
 
 export interface ArmorSlot {
   id: string;
-  currentDurability: number;
-  maxDurability: number;
+  armor: number;
+  magicResist: number;
 }
 
 export interface ArmorComponent extends Component {

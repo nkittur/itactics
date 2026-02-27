@@ -92,41 +92,43 @@ describe("Damage Calculation Math", () => {
     expect(clamp(65, 5, 95)).toBe(65);
   });
 
-  it("armor absorbs damage correctly", () => {
-    const baseDamage = 30;
-    const armorDurability = 40;
-    const armorDamageMult = 1.0;
-    const armorIgnorePct = 0.3;
+  it("flat armor reduction below soft cap", () => {
+    // Armor <= SOFT_CAP (10): reduction = armor
+    const SOFT_CAP = 10;
+    const DIMINISH_RATE = 0.5;
 
-    const damageToArmor = Math.round(baseDamage * armorDamageMult * (1 - armorIgnorePct));
-    const damageIgnoringArmor = Math.round(baseDamage * armorIgnorePct);
+    // 5 armor → reduces 5 damage
+    const armor5 = Math.min(5, SOFT_CAP) + Math.max(0, 5 - SOFT_CAP) * DIMINISH_RATE;
+    expect(armor5).toBe(5);
 
-    const armorAfter = Math.max(0, armorDurability - damageToArmor);
-    const overflow = Math.max(0, damageToArmor - armorDurability);
-
-    const hpDamage = damageIgnoringArmor + overflow;
-
-    expect(damageToArmor).toBe(21);
-    expect(damageIgnoringArmor).toBe(9);
-    expect(armorAfter).toBe(19);
-    expect(overflow).toBe(0);
-    expect(hpDamage).toBe(9);
+    // 10 armor → reduces 10 damage (at soft cap)
+    const armor10 = Math.min(10, SOFT_CAP) + Math.max(0, 10 - SOFT_CAP) * DIMINISH_RATE;
+    expect(armor10).toBe(10);
   });
 
-  it("damage overflows when armor breaks", () => {
-    const baseDamage = 50;
-    const armorDurability = 10;
-    const armorDamageMult = 1.0;
-    const armorIgnorePct = 0.3;
+  it("armor reduction diminishes above soft cap", () => {
+    const SOFT_CAP = 10;
+    const DIMINISH_RATE = 0.5;
 
-    const damageToArmor = Math.round(baseDamage * armorDamageMult * (1 - armorIgnorePct));
-    const damageIgnoringArmor = Math.round(baseDamage * armorIgnorePct);
-    const overflow = Math.max(0, damageToArmor - armorDurability);
-    const hpDamage = damageIgnoringArmor + overflow;
+    // 15 armor → 10 + (15-10)*0.5 = 12.5
+    const armor15 = Math.min(15, SOFT_CAP) + Math.max(0, 15 - SOFT_CAP) * DIMINISH_RATE;
+    expect(armor15).toBe(12.5);
 
-    expect(damageToArmor).toBe(35);
-    expect(overflow).toBe(25);
-    expect(hpDamage).toBe(40);
+    // 20 armor → 10 + (20-10)*0.5 = 15
+    const armor20 = Math.min(20, SOFT_CAP) + Math.max(0, 20 - SOFT_CAP) * DIMINISH_RATE;
+    expect(armor20).toBe(15);
+
+    // 30 armor → 10 + (30-10)*0.5 = 20
+    const armor30 = Math.min(30, SOFT_CAP) + Math.max(0, 30 - SOFT_CAP) * DIMINISH_RATE;
+    expect(armor30).toBe(20);
+  });
+
+  it("minimum 1 HP damage after armor reduction", () => {
+    // Even if armor > raw damage, min 1 HP damage
+    const rawDamage = 5;
+    const reduction = 10; // armor absorbs more than raw
+    const hpDamage = Math.max(1, rawDamage - reduction);
+    expect(hpDamage).toBe(1);
   });
 });
 
@@ -156,8 +158,8 @@ function spawnTestUnit(
     hp?: number;
     weapon?: string | null;
     shield?: string | null;
-    bodyArmorDur?: number;
-    headArmorDur?: number;
+    bodyArmor?: number;
+    headArmor?: number;
     q?: number;
     r?: number;
     elevation?: number;
@@ -169,13 +171,17 @@ function spawnTestUnit(
   world.addComponent(id, {
     type: "stats",
     hitpoints: opts.hp ?? 100,
-    fatigue: 100,
+    stamina: 100,
+    mana: 20,
     resolve: 50,
     initiative: 100,
     meleeSkill: opts.melee ?? 70,
     rangedSkill: 30,
-    meleeDefense: opts.defense ?? 10,
-    rangedDefense: 10,
+    dodge: opts.defense ?? 10,
+    magicResist: 0,
+    critChance: 5,
+    critMultiplier: 1.5,
+    movementPoints: 8,
     level: 1,
     experience: 0,
   });
@@ -197,11 +203,11 @@ function spawnTestUnit(
 
   world.addComponent(id, {
     type: "armor",
-    head: opts.headArmorDur != null
-      ? { id: "test_head", currentDurability: opts.headArmorDur, maxDurability: opts.headArmorDur }
+    head: opts.headArmor != null
+      ? { id: "test_head", armor: opts.headArmor, magicResist: 0 }
       : null,
-    body: opts.bodyArmorDur != null
-      ? { id: "test_body", currentDurability: opts.bodyArmorDur, maxDurability: opts.bodyArmorDur }
+    body: opts.bodyArmor != null
+      ? { id: "test_body", armor: opts.bodyArmor, magicResist: 0 }
       : null,
   });
 
@@ -233,9 +239,9 @@ describe("DamageCalculator (weapon-based)", () => {
     const world = new World();
     const grid = createTestGrid();
 
-    // Arming sword: 30-45 damage
+    // Arming sword: 4-6 damage (crits can push to floor(6*1.5)=9)
     const attacker = spawnTestUnit(world, { melee: 95, weapon: "arming_sword" });
-    const defender = spawnTestUnit(world, { defense: 0, hp: 200, bodyArmorDur: 0 });
+    const defender = spawnTestUnit(world, { defense: 0, hp: 200, bodyArmor: 0 });
 
     const results: AttackResult[] = [];
     for (let seed = 1; seed <= 100; seed++) {
@@ -250,8 +256,14 @@ describe("DamageCalculator (weapon-based)", () => {
 
     expect(results.length).toBeGreaterThan(0);
     for (const r of results) {
-      expect(r.damage).toBeGreaterThanOrEqual(4);
-      expect(r.damage).toBeLessThanOrEqual(6);
+      if (r.critical) {
+        // Crit: damage = floor(raw * 1.5), max = floor(6*1.5) = 9
+        expect(r.damage).toBeGreaterThanOrEqual(Math.floor(4 * 1.5));
+        expect(r.damage).toBeLessThanOrEqual(Math.floor(6 * 1.5));
+      } else {
+        expect(r.damage).toBeGreaterThanOrEqual(4);
+        expect(r.damage).toBeLessThanOrEqual(6);
+      }
       expect(r.weaponId).toBe("arming_sword");
     }
   });
@@ -274,92 +286,21 @@ describe("DamageCalculator (weapon-based)", () => {
     }
   });
 
-  it("applies weapon armor damage multiplier", () => {
+  it("armor reduces HP damage", () => {
     const world = new World();
     const grid = createTestGrid();
 
-    // Hand axe: armorDamageMult = 1.30
-    const attacker = spawnTestUnit(world, { melee: 95, weapon: "hand_axe" });
-    const defender = spawnTestUnit(world, { defense: 0, hp: 200, bodyArmorDur: 500 });
-
-    const results: AttackResult[] = [];
-    for (let seed = 1; seed <= 200; seed++) {
-      const health = world.getComponent<{ type: "health"; current: number; max: number }>(defender, "health")!;
-      health.current = 200;
-      const armor = world.getComponent<{ type: "armor"; body: { currentDurability: number } | null }>(defender, "armor")!;
-      if (armor.body) armor.body.currentDurability = 500;
-
-      const calc = new DamageCalculator(new RNG(seed), grid);
-      const result = calc.resolveMelee(world, attacker, defender);
-      if (result.hit && !result.headHit) results.push(result);
-    }
-
-    expect(results.length).toBeGreaterThan(0);
-    for (const r of results) {
-      // armorDamage should be floor(raw * 1.30)
-      const expectedArmorDmg = Math.floor(r.damage * 1.30);
-      expect(r.armorDamage).toBe(expectedArmorDmg);
-    }
-  });
-
-  it("applies armor ignore percentage to HP", () => {
-    const world = new World();
-    const grid = createTestGrid();
-
-    // Winged mace: armorIgnorePct = 0.35
-    const attacker = spawnTestUnit(world, { melee: 95, weapon: "winged_mace" });
-    const defender = spawnTestUnit(world, { defense: 0, hp: 200, bodyArmorDur: 500 });
-
-    const results: AttackResult[] = [];
-    for (let seed = 1; seed <= 200; seed++) {
-      const health = world.getComponent<{ type: "health"; current: number; max: number }>(defender, "health")!;
-      health.current = 200;
-      const armor = world.getComponent<{ type: "armor"; body: { currentDurability: number } | null }>(defender, "armor")!;
-      if (armor.body) armor.body.currentDurability = 500;
-
-      const calc = new DamageCalculator(new RNG(seed), grid);
-      const result = calc.resolveMelee(world, attacker, defender);
-      if (result.hit && !result.headHit) results.push(result);
-    }
-
-    expect(results.length).toBeGreaterThan(0);
-    for (const r of results) {
-      // With 500 armor durability (never breaks), HP damage = floor(raw * 0.35)
-      const expectedHpDmg = Math.floor(r.damage * 0.35);
-      expect(r.hpDamage).toBe(expectedHpDmg);
-    }
-  });
-
-  it("overflows damage to HP when armor breaks", () => {
-    const world = new World();
-    const grid = createTestGrid();
-
-    // Arming sword: armorDamageMult=0.80, armorIgnorePct=0.20
     const attacker = spawnTestUnit(world, { melee: 95, weapon: "arming_sword" });
-    // Very low armor that will break
-    const defender = spawnTestUnit(world, { defense: 0, hp: 200, bodyArmorDur: 5 });
+    const defender = spawnTestUnit(world, { defense: 0, hp: 200, bodyArmor: 5 });
 
-    const results: AttackResult[] = [];
-    for (let seed = 1; seed <= 200; seed++) {
-      const health = world.getComponent<{ type: "health"; current: number; max: number }>(defender, "health")!;
-      health.current = 200;
-      const armor = world.getComponent<{ type: "armor"; body: { currentDurability: number } | null }>(defender, "armor")!;
-      if (armor.body) armor.body.currentDurability = 5;
+    const calc = new DamageCalculator(new RNG(42), grid);
+    const result = calc.resolveMelee(world, attacker, defender);
 
-      const calc = new DamageCalculator(new RNG(seed), grid);
-      const result = calc.resolveMelee(world, attacker, defender);
-      if (result.hit && !result.headHit) results.push(result);
-    }
-
-    expect(results.length).toBeGreaterThan(0);
-    for (const r of results) {
-      const armorIgnoreHp = Math.floor(r.damage * 0.20);
-      const armorDurDmg = Math.floor(r.damage * 0.80);
-      const overflow = Math.max(0, armorDurDmg - 5);
-      const expectedHp = armorIgnoreHp + overflow;
-      expect(r.hpDamage).toBe(expectedHp);
-      // Armor damage dealt is capped at the durability
-      expect(r.armorDamage).toBe(Math.min(armorDurDmg, 5));
+    if (result.hit) {
+      // With 5 body armor, reduction = 5 (below soft cap)
+      expect(result.armorReduction).toBeGreaterThan(0);
+      expect(result.hpDamage).toBeLessThan(result.damage);
+      expect(result.hpDamage).toBeGreaterThanOrEqual(1);
     }
   });
 
@@ -428,15 +369,15 @@ describe("DamageCalculator (weapon-based)", () => {
     expect(spearHits).toBeGreaterThan(swordHits);
   });
 
-  it("head hit applies 1.5x HP damage", () => {
+  it("critical hits apply multiplied damage", () => {
     const world = new World();
     const grid = createTestGrid();
 
     const attacker = spawnTestUnit(world, { melee: 95, weapon: "arming_sword" });
 
-    // Run many attacks, collect head hits and non-head hits
-    const headHitDamages: { raw: number; hp: number }[] = [];
-    const bodyHitDamages: { raw: number; hp: number }[] = [];
+    // Run many attacks, collect crits and non-crits
+    const critDamages: { raw: number; hp: number }[] = [];
+    const normalDamages: { raw: number; hp: number }[] = [];
 
     for (let seed = 1; seed <= 500; seed++) {
       // No armor so damage pipeline is simple: all damage goes to HP
@@ -446,27 +387,29 @@ describe("DamageCalculator (weapon-based)", () => {
       const result = calc.resolveMelee(world, attacker, defender);
       if (!result.hit) continue;
 
-      if (result.headHit) {
-        headHitDamages.push({ raw: result.damage, hp: result.hpDamage });
+      if (result.critical) {
+        critDamages.push({ raw: result.damage, hp: result.hpDamage });
       } else {
-        bodyHitDamages.push({ raw: result.damage, hp: result.hpDamage });
+        normalDamages.push({ raw: result.damage, hp: result.hpDamage });
       }
 
       world.destroyEntity(defender);
     }
 
-    expect(headHitDamages.length).toBeGreaterThan(0);
-    expect(bodyHitDamages.length).toBeGreaterThan(0);
+    // Should have some crits (base 5% chance)
+    expect(critDamages.length).toBeGreaterThan(0);
+    expect(normalDamages.length).toBeGreaterThan(0);
 
-    // Body hits: HP damage = raw damage (no armor)
-    for (const d of bodyHitDamages) {
+    // Normal hits (no armor): HP damage = raw damage
+    for (const d of normalDamages) {
       expect(d.hp).toBe(d.raw);
     }
 
-    // Head hits: HP damage = floor(raw * 1.5)
-    for (const d of headHitDamages) {
-      expect(d.hp).toBe(Math.floor(d.raw * 1.5));
-    }
+    // Crits should deal more than the normal damage range
+    // (damage field already includes the crit multiplier)
+    const avgCrit = critDamages.reduce((s, d) => s + d.hp, 0) / critDamages.length;
+    const avgNormal = normalDamages.reduce((s, d) => s + d.hp, 0) / normalDamages.length;
+    expect(avgCrit).toBeGreaterThan(avgNormal);
   });
 
   it("no armor means full damage to HP", () => {
@@ -476,15 +419,13 @@ describe("DamageCalculator (weapon-based)", () => {
     const attacker = spawnTestUnit(world, { melee: 95, weapon: "arming_sword" });
     const defender = spawnTestUnit(world, { defense: 0, hp: 200 }); // no armor at all
 
-    // Remove armor component entirely
-    // (spawnTestUnit creates armor with null slots when no dur specified)
     const calc = new DamageCalculator(new RNG(42), grid);
     const result = calc.resolveMelee(world, attacker, defender);
 
-    if (result.hit && !result.headHit) {
-      // All raw damage goes to HP
+    if (result.hit && !result.critical) {
+      // No armor → no reduction → all raw damage goes to HP
       expect(result.hpDamage).toBe(result.damage);
-      expect(result.armorDamage).toBe(0);
+      expect(result.armorReduction).toBe(0);
     }
   });
 

@@ -38,19 +38,20 @@ export function entitiesToRoster(world: World, playerIds: string[]): RosterMembe
       experience: stats.experience,
       stats: {
         hitpoints: stats.hitpoints,
-        fatigue: stats.fatigue,
+        stamina: stats.stamina,
+        mana: stats.mana,
         resolve: stats.resolve,
         initiative: stats.initiative,
         meleeSkill: stats.meleeSkill,
         rangedSkill: stats.rangedSkill,
-        meleeDefense: stats.meleeDefense,
-        rangedDefense: stats.rangedDefense,
+        dodge: stats.dodge,
+        magicResist: stats.magicResist,
         movementPoints: stats.movementPoints,
       },
       maxHp: health.max,
       talentStars: talents?.stars ?? {
-        hitpoints: 0, fatigue: 0, resolve: 0, initiative: 0,
-        meleeSkill: 0, rangedSkill: 0, meleeDefense: 0, rangedDefense: 0,
+        hitpoints: 0, stamina: 0, resolve: 0, initiative: 0,
+        meleeSkill: 0, rangedSkill: 0, dodge: 0,
       },
       perks: {
         unlocked: perks?.unlocked ?? [],
@@ -59,7 +60,6 @@ export function entitiesToRoster(world: World, playerIds: string[]): RosterMembe
       equipment: {
         mainHand: equip?.mainHand ?? null,
         offHand: equip?.offHand ?? null,
-        shieldDurability: equip?.shieldDurability ?? null,
         accessory: equip?.accessory ?? null,
         bag: equip?.bag ?? [],
       },

@@ -23,8 +23,11 @@ export { createEquipment } from "./components/Equipment";
 export type { MoraleComponent, MoraleState } from "./components/Morale";
 export { createMorale } from "./components/Morale";
 
-export type { FatigueComponent } from "./components/Fatigue";
-export { createFatigue } from "./components/Fatigue";
+export type { StaminaComponent } from "./components/Stamina";
+export { createStamina } from "./components/Stamina";
+
+export type { ManaComponent } from "./components/Mana";
+export { createMana } from "./components/Mana";
 
 export type { InitiativeComponent } from "./components/Initiative";
 export { createInitiative } from "./components/Initiative";

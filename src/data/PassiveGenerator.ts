@@ -17,7 +17,7 @@ type PassiveArchetype =
   | "kill_rewarder"         // AP refund or buff on kill
   | "debuff_amplifier"      // AP refund or bonus when applying debuffs
   | "reactive_defender"     // buff stat or reduce damage when hit
-  | "sustained_fighter"     // turn-start buff for high-fatigue builds
+  | "sustained_fighter"     // turn-start buff for high-stamina builds
   | "stack_builder"         // stacking buff on each hit landed
   | "dot_amplifier";        // bonus damage when target has active DoT
 
@@ -195,7 +195,7 @@ function analyzeActiveAbilities(actives: GeneratedAbility[]): ActiveAnalysis {
     if (a.targeting.type === "tgt_aoe_adjacent") analysis.hasAoE = true;
 
     totalAp += a.cost.ap;
-    totalFat += a.cost.fatigue;
+    totalFat += a.cost.stamina;
   }
 
   analysis.avgApCost = actives.length > 0 ? totalAp / actives.length : 4;
@@ -233,7 +233,7 @@ function weightArchetypes(analysis: ActiveAnalysis): ArchetypeWeight[] {
   // Reactive defender: strong for stance builds
   let defWeight = 1;
   if (analysis.hasStance) defWeight += 5;
-  if (analysis.avgFatigue > 20) defWeight += 2; // tanky builds tend to be high fatigue
+  if (analysis.avgFatigue > 20) defWeight += 2; // tanky builds tend to be high stamina
   weights.push({ archetype: "reactive_defender", weight: defWeight });
 
   // Sustained fighter: strong for high-cost actives
@@ -387,7 +387,7 @@ function buildKillRewarder(
     };
   } else {
     // Stat buff on kill (damage or defense)
-    const stats = ["meleeSkill", "meleeDefense", "rangedDefense", "rangedSkill", "initiative", "resolve"];
+    const stats = ["meleeSkill", "dodge", "dodge", "rangedSkill", "initiative", "resolve"];
     const stat = stats[Math.floor(rng() * stats.length)]!;
     const amount = level === "minor" ? 5 : level === "standard" ? 10 : 15;
     return {
@@ -452,7 +452,7 @@ function buildReactiveDefender(
       effects: [],
     };
   } else {
-    const defStats = ["meleeDefense", "rangedDefense", "resolve"];
+    const defStats = ["dodge", "dodge", "resolve"];
     const stat = defStats[Math.floor(rng() * defStats.length)]!;
     const amount = level === "minor" ? 5 : level === "standard" ? 10 : 15;
     return {
@@ -477,7 +477,7 @@ function buildSustainedFighter(
   rng: () => number,
 ): { trigger: TriggerPrimitive; effects: EffectPrimitive[] } {
   // Turn-start stat buff
-  const stats = ["meleeDefense", "meleeSkill", "rangedDefense", "rangedSkill", "initiative", "resolve"];
+  const stats = ["dodge", "meleeSkill", "dodge", "rangedSkill", "initiative", "resolve"];
   const stat = stats[Math.floor(rng() * stats.length)]!;
   const amount = level === "minor" ? 5 : level === "standard" ? 10 : 15;
 
@@ -502,7 +502,7 @@ function buildStackBuilder(
   rng: () => number,
 ): { trigger: TriggerPrimitive; effects: EffectPrimitive[] } {
   // On hit: stacking defense or offense buff
-  const stackStats = ["meleeDefense", "meleeSkill", "rangedSkill", "initiative"];
+  const stackStats = ["dodge", "meleeSkill", "rangedSkill", "initiative"];
   const stat = stackStats[Math.floor(rng() * stackStats.length)]!;
   const amount = level === "minor" ? 5 : level === "standard" ? 5 : 10;
 
@@ -795,7 +795,7 @@ function buildPassive(
     effects,
     modifiers: [],
     triggers: [trigger],
-    cost: { ap: 0, fatigue: 0, cooldown: 0, turnEnding: false },
+    cost: { ap: 0, stamina: 0, mana: 0, cooldown: 0, turnEnding: false },
     powerBudget: trigger.powerAdd + effects.reduce((s, e) => s + e.power, 0),
     weaponReq: [],
     tier,

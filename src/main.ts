@@ -24,7 +24,7 @@ function createStarterUnit(
   weapon: string,
   sprite: string,
   meleeSkill: number,
-  meleeDefense: number,
+  dodge: number,
   hp: number,
 ): RosterMember {
   const bodyArmor = getArmorDef("linen_tunic");
@@ -41,13 +41,14 @@ function createStarterUnit(
     experience: 0,
     stats: {
       hitpoints: hp,
-      fatigue: 100,
+      stamina: 100,
+      mana: 20,
       resolve: 45,
       initiative: 95,
       meleeSkill,
       rangedSkill: 30,
-      meleeDefense,
-      rangedDefense: 3,
+      dodge,
+      magicResist: 0,
       movementPoints: 8,
     },
     maxHp: hp,
@@ -56,16 +57,15 @@ function createStarterUnit(
     equipment: {
       mainHand: weapon,
       offHand: null,
-      shieldDurability: null,
       accessory: null,
       bag: [],
     },
     armor: {
       body: bodyArmor
-        ? { id: bodyArmor.id, currentDurability: bodyArmor.durability, maxDurability: bodyArmor.durability }
+        ? { id: bodyArmor.id, armor: bodyArmor.armor, magicResist: bodyArmor.magicResist }
         : null,
       head: headArmor
-        ? { id: headArmor.id, currentDurability: headArmor.durability, maxDurability: headArmor.durability }
+        ? { id: headArmor.id, armor: headArmor.armor, magicResist: headArmor.magicResist }
         : null,
     },
     spriteType: sprite,

@@ -18,13 +18,14 @@ export interface RosterMember {
   experience: number;
   stats: {
     hitpoints: number;
-    fatigue: number;
+    stamina: number;
+    mana: number;
     resolve: number;
     initiative: number;
     meleeSkill: number;
     rangedSkill: number;
-    meleeDefense: number;
-    rangedDefense: number;
+    dodge: number;
+    magicResist: number;
     movementPoints: number;
   };
   maxHp: number;
@@ -33,13 +34,12 @@ export interface RosterMember {
   equipment: {
     mainHand: string | null;
     offHand: string | null;
-    shieldDurability: number | null;
     accessory: string | null;
     bag: string[];
   };
   armor: {
-    body: { id: string; currentDurability: number; maxDurability: number } | null;
-    head: { id: string; currentDurability: number; maxDurability: number } | null;
+    body: { id: string; armor: number; magicResist: number } | null;
+    head: { id: string; armor: number; magicResist: number } | null;
   };
   spriteType?: string;
   backgroundId?: string;

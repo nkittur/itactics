@@ -40,8 +40,8 @@ function spawnUnit(
   world.addComponent(id, { type: "health", current: hp, max: maxHp, injuries: [] });
   world.addComponent(id, {
     type: "stats",
-    hitpoints: maxHp, fatigue: 100, resolve: 50, initiative: 100,
-    meleeSkill: 60, rangedSkill: 30, meleeDefense: 10, rangedDefense: 10,
+    hitpoints: maxHp, stamina: 100, mana: 20, resolve: 50, initiative: 100,
+    meleeSkill: 60, rangedSkill: 30, dodge: 10, magicResist: 0,
     level: 1, experience: 0,
   });
   world.addComponent(id, {
@@ -49,7 +49,7 @@ function spawnUnit(
     mainHand: "arming_sword", offHand: null, accessory: null, bag: [],
   });
   world.addComponent(id, {
-    type: "fatigue", current: 0, max: 100, recoveryPerTurn: 15,
+    type: "stamina", current: 0, max: 100, recoveryPerTurn: 15,
   });
   if (isEnemy) {
     world.addComponent(id, {
@@ -111,8 +111,8 @@ describe("TacticalAI", () => {
     const player = spawnUnit(world, grid, 1, 3, false); // far away
 
     // Set high fatigue
-    const fatigue = world.getComponent<any>(enemy, "fatigue");
-    fatigue.current = 80; // > 70% of 100
+    const stamina = world.getComponent<any>(enemy, "stamina");
+    stamina.current = 80; // > 70% of 100
 
     const action = decideTacticalAction(world, grid, enemy, [player]);
     expect(action.type).toBe("recover");
@@ -124,8 +124,8 @@ describe("TacticalAI", () => {
     const enemy = spawnUnit(world, grid, 5, 3, true);
     const player = spawnUnit(world, grid, 4, 3, false);
 
-    const fatigue = world.getComponent<any>(enemy, "fatigue");
-    fatigue.current = 80;
+    const stamina = world.getComponent<any>(enemy, "stamina");
+    stamina.current = 80;
 
     const action = decideTacticalAction(world, grid, enemy, [player]);
     // Should attack, not recover

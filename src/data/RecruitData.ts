@@ -65,13 +65,14 @@ function baseStats(rng: () => number): RosterMember["stats"] {
   const vary = () => -2 + Math.floor(rng() * 5); // -2 to +2
   return {
     hitpoints: 10 + vary(),
-    fatigue: 100,
+    stamina: 100,
+    mana: 20,
     resolve: 45 + vary(),
     initiative: 95 + vary(),
     meleeSkill: 45 + vary(),
     rangedSkill: 30 + vary(),
-    meleeDefense: 3 + Math.floor(rng() * 6), // 3-8
-    rangedDefense: 3 + Math.floor(rng() * 6),
+    dodge: 3 + Math.floor(rng() * 6), // 3-8
+    magicResist: 0,
     movementPoints: 8,
   };
 }
@@ -90,41 +91,38 @@ function applyLevelGrowth(
       const increase = rollStatIncrease(key, stars, rng);
       switch (key) {
         case "hitpoints": stats.hitpoints += increase; break;
-        case "fatigue": stats.fatigue += increase; break;
+        case "stamina": stats.stamina += increase; break;
         case "resolve": stats.resolve += increase; break;
         case "initiative": stats.initiative += increase; break;
         case "meleeSkill": stats.meleeSkill += increase; break;
         case "rangedSkill": stats.rangedSkill += increase; break;
-        case "meleeDefense": stats.meleeDefense += increase; break;
-        case "rangedDefense": stats.rangedDefense += increase; break;
+        case "dodge": stats.dodge += increase; break;
       }
     }
   }
 }
 
+function armorSlotFromDef(def: ReturnType<typeof getArmorDef>) {
+  return def ? { id: def.id, armor: def.armor, magicResist: def.magicResist } : null;
+}
+
 function armorForLevel(level: number): RosterMember["armor"] {
   if (level >= 5) {
-    const body = getArmorDef("mail_hauberk");
-    const head = getArmorDef("mail_coif");
     return {
-      body: body ? { id: body.id, currentDurability: body.durability, maxDurability: body.durability } : null,
-      head: head ? { id: head.id, currentDurability: head.durability, maxDurability: head.durability } : null,
+      body: armorSlotFromDef(getArmorDef("mail_hauberk")),
+      head: armorSlotFromDef(getArmorDef("mail_coif")),
     };
   }
   if (level >= 3) {
-    const body = getArmorDef("leather_jerkin");
-    const head = getArmorDef("leather_cap");
     return {
-      body: body ? { id: body.id, currentDurability: body.durability, maxDurability: body.durability } : null,
-      head: head ? { id: head.id, currentDurability: head.durability, maxDurability: head.durability } : null,
+      body: armorSlotFromDef(getArmorDef("leather_jerkin")),
+      head: armorSlotFromDef(getArmorDef("leather_cap")),
     };
   }
   // Level 1-2: basic
-  const body = getArmorDef("linen_tunic");
-  const head = getArmorDef("hood");
   return {
-    body: body ? { id: body.id, currentDurability: body.durability, maxDurability: body.durability } : null,
-    head: head ? { id: head.id, currentDurability: head.durability, maxDurability: head.durability } : null,
+    body: armorSlotFromDef(getArmorDef("linen_tunic")),
+    head: armorSlotFromDef(getArmorDef("hood")),
   };
 }
 
@@ -208,7 +206,6 @@ export function generateRecruits(partyLevel: number, rng: () => number): Recruit
       equipment: {
         mainHand: weapon,
         offHand: is2H ? null : null, // No shield by default for recruits
-        shieldDurability: null,
         accessory: null,
         bag: [],
       },

@@ -12,7 +12,7 @@ import type { HealthComponent } from "@entities/components/Health";
 import type { AIType } from "@entities/components/AIBehavior";
 import type { CharacterClassComponent } from "@entities/components/CharacterClass";
 import { getClassDef } from "@data/ClassData";
-import { resolveWeapon, resolveShield, resolveArmor } from "@data/ItemResolver";
+import { resolveArmor } from "@data/ItemResolver";
 import { createAbilities } from "@entities/components/Abilities";
 import { createAbilityCooldowns } from "@entities/components/AbilityCooldowns";
 import type { ScenarioDef, ScenarioUnit } from "@data/ScenarioData";
@@ -97,13 +97,14 @@ function spawnUnit(
   world.addComponent(id, {
     type: "stats" as const,
     hitpoints: unit.stats.hp,
-    fatigue: 100,
+    stamina: 100,
+    mana: 20,
     resolve: 50,
     initiative: unit.stats.initiative,
     meleeSkill: unit.stats.melee,
     rangedSkill: 30,
-    meleeDefense: unit.stats.defense,
-    rangedDefense: 10,
+    dodge: unit.stats.defense,
+    magicResist: 0,
     movementPoints: baseMP,
     level: 1,
     experience: 0,
@@ -121,26 +122,23 @@ function spawnUnit(
   world.addComponent(id, {
     type: "armor" as const,
     head: headDef
-      ? { id: headDef.id, currentDurability: headDef.durability, maxDurability: headDef.durability }
+      ? { id: headDef.id, armor: headDef.armor, magicResist: headDef.magicResist }
       : null,
     body: bodyDef
-      ? { id: bodyDef.id, currentDurability: bodyDef.durability, maxDurability: bodyDef.durability }
+      ? { id: bodyDef.id, armor: bodyDef.armor, magicResist: bodyDef.magicResist }
       : null,
   });
 
-  const shieldId = unit.shield ?? null;
-  const shieldDef = shieldId ? resolveShield(shieldId) : undefined;
   world.addComponent(id, {
     type: "equipment" as const,
     mainHand: unit.weapon ?? null,
-    offHand: shieldId,
-    shieldDurability: shieldDef ? shieldDef.durability : null,
+    offHand: unit.shield ?? null,
     accessory: null,
     bag: unit.bag ?? [],
   });
 
   world.addComponent(id, {
-    type: "fatigue" as const,
+    type: "stamina" as const,
     current: 0,
     max: 100,
     recoveryPerTurn: 15,

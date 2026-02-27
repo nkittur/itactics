@@ -1,5 +1,5 @@
 import type { WeaponFamily, WeaponDef } from "./WeaponData";
-import type { ArmorTier, ArmorDef } from "./ArmorData";
+import type { ArmorWeight, ArmorDef } from "./ArmorData";
 import type { ShieldDef } from "./ShieldData";
 
 export type CharacterClass = "fighter" | "knight" | "rogue" | "ranger" | "spearman" | "brute";
@@ -18,12 +18,12 @@ export interface ClassDef {
   readonly name: string;
   readonly weaponFamilies: readonly WeaponFamily[];
   readonly shieldAccess: ShieldAccess;
-  readonly maxArmorTier: ArmorTier;
+  readonly maxArmorWeight: ArmorWeight;
   readonly baseMP: number;
   readonly passives: readonly ClassPassive[];
 }
 
-const ARMOR_TIER_ORDER: Record<ArmorTier, number> = {
+const ARMOR_WEIGHT_ORDER: Record<ArmorWeight, number> = {
   light: 0,
   medium: 1,
   heavy: 2,
@@ -35,7 +35,7 @@ const CLASS_DATA: ReadonlyMap<CharacterClass, ClassDef> = new Map([
     name: "Fighter",
     weaponFamilies: ["dagger", "sword", "cleaver", "axe", "mace", "flail", "spear", "polearm", "throwing"],
     shieldAccess: "all",
-    maxArmorTier: "heavy",
+    maxArmorWeight: "heavy",
     baseMP: 8,
     passives: [],
   }],
@@ -44,7 +44,7 @@ const CLASS_DATA: ReadonlyMap<CharacterClass, ClassDef> = new Map([
     name: "Knight",
     weaponFamilies: ["sword", "mace"],
     shieldAccess: "all",
-    maxArmorTier: "heavy",
+    maxArmorWeight: "heavy",
     baseMP: 7,
     passives: [{ type: "armor_mp_reduction", value: 1 }],
   }],
@@ -53,7 +53,7 @@ const CLASS_DATA: ReadonlyMap<CharacterClass, ClassDef> = new Map([
     name: "Rogue",
     weaponFamilies: ["dagger", "sword", "cleaver", "throwing"],
     shieldAccess: "buckler",
-    maxArmorTier: "light",
+    maxArmorWeight: "light",
     baseMP: 10,
     passives: [{ type: "ap_discount", qualifier: "dagger", value: 1 }],
   }],
@@ -62,7 +62,7 @@ const CLASS_DATA: ReadonlyMap<CharacterClass, ClassDef> = new Map([
     name: "Ranger",
     weaponFamilies: ["bow", "crossbow", "throwing", "dagger", "sword"],
     shieldAccess: "buckler",
-    maxArmorTier: "medium",
+    maxArmorWeight: "medium",
     baseMP: 9,
     passives: [{ type: "ap_discount", qualifier: "ranged", value: 1 }],
   }],
@@ -71,7 +71,7 @@ const CLASS_DATA: ReadonlyMap<CharacterClass, ClassDef> = new Map([
     name: "Spearman",
     weaponFamilies: ["spear", "polearm", "sword", "dagger"],
     shieldAccess: "all",
-    maxArmorTier: "heavy",
+    maxArmorWeight: "heavy",
     baseMP: 8,
     passives: [{ type: "hit_bonus", qualifier: "spear", value: 5 }],
   }],
@@ -80,7 +80,7 @@ const CLASS_DATA: ReadonlyMap<CharacterClass, ClassDef> = new Map([
     name: "Brute",
     weaponFamilies: ["sword", "axe", "mace", "cleaver", "flail", "throwing", "dagger"],
     shieldAccess: "none",
-    maxArmorTier: "medium",
+    maxArmorWeight: "medium",
     baseMP: 9,
     passives: [{ type: "damage_bonus", qualifier: "2H", value: 15 }],
   }],
@@ -100,7 +100,7 @@ export function canEquipWeapon(classDef: ClassDef, weaponDef: WeaponDef): boolea
 
 /** Check if a class can equip armor of a given tier. */
 export function canEquipArmor(classDef: ClassDef, armorDef: ArmorDef): boolean {
-  return ARMOR_TIER_ORDER[armorDef.tier] <= ARMOR_TIER_ORDER[classDef.maxArmorTier];
+  return ARMOR_WEIGHT_ORDER[armorDef.weight] <= ARMOR_WEIGHT_ORDER[classDef.maxArmorWeight];
 }
 
 /** Check if a class can equip a shield. */

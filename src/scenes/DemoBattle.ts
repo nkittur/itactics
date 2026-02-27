@@ -57,7 +57,7 @@ import { calculateGoldReward } from "@data/StoreData";
 import { saveGame, loadGame, deleteSave, type SaveData, type BattleState } from "@save/SaveManager";
 import { entitiesToRoster } from "@save/RosterUtils";
 import type { CharacterClassComponent } from "@entities/components/CharacterClass";
-import type { FatigueComponent } from "@entities/components/Fatigue";
+import type { StaminaComponent } from "@entities/components/Stamina";
 import type { EquipmentComponent } from "@entities/components/Equipment";
 import type { ArmorComponent } from "@entities/components/Armor";
 import type { StatsComponent } from "@entities/components/Stats";
@@ -167,13 +167,14 @@ function spawnUnit(
   world.addComponent(id, {
     type: "stats",
     hitpoints: stats.hp,
-    fatigue: 100,
+    stamina: 100,
+    mana: 20,
     resolve: 50,
     initiative: stats.initiative,
     meleeSkill: stats.melee,
     rangedSkill: 30,
-    meleeDefense: stats.defense,
-    rangedDefense: 10,
+    dodge: stats.defense,
+    magicResist: 0,
     movementPoints: stats.mp ?? (classId ? getClassDef(classId).baseMP : 8),
     level: 1,
     experience: 0,
@@ -192,10 +193,10 @@ function spawnUnit(
   world.addComponent(id, {
     type: "armor",
     head: headDef
-      ? { id: headDef.id, currentDurability: headDef.durability, maxDurability: headDef.durability }
+      ? { id: headDef.id, armor: headDef.armor, magicResist: headDef.magicResist }
       : null,
     body: bodyDef
-      ? { id: bodyDef.id, currentDurability: bodyDef.durability, maxDurability: bodyDef.durability }
+      ? { id: bodyDef.id, armor: bodyDef.armor, magicResist: bodyDef.magicResist }
       : null,
   });
 
@@ -205,13 +206,12 @@ function spawnUnit(
     type: "equipment",
     mainHand: equip?.weapon ?? null,
     offHand: shieldId,
-    shieldDurability: shieldDef ? shieldDef.durability : null,
     accessory: null,
     bag: bag ?? [],
   });
 
   world.addComponent(id, {
-    type: "fatigue",
+    type: "stamina",
     current: 0,
     max: 100,
     recoveryPerTurn: 15,
@@ -967,7 +967,7 @@ export class DemoBattle {
     const stats = this.world.getComponent<StatsComponent>(entityId, "stats");
     const equip = this.world.getComponent<EquipmentComponent>(entityId, "equipment");
     const armor = this.world.getComponent<ArmorComponent>(entityId, "armor");
-    const fatigue = this.world.getComponent<FatigueComponent>(entityId, "fatigue");
+    const stamina = this.world.getComponent<StaminaComponent>(entityId, "stamina");
     const morale = this.world.getComponent<MoraleComponent>(entityId, "morale");
     if (!health || !team || !stats) return;
 
@@ -979,11 +979,11 @@ export class DemoBattle {
     let headArmorLabel: string | undefined;
     if (armor?.body) {
       const def = resolveArmor(armor.body.id);
-      bodyArmorLabel = `Body: ${def?.name ?? armor.body.id} ${armor.body.currentDurability}/${armor.body.maxDurability}`;
+      bodyArmorLabel = `Body: ${def?.name ?? armor.body.id} Armor:${armor.body.armor}`;
     }
     if (armor?.head) {
       const def = resolveArmor(armor.head.id);
-      headArmorLabel = `Head: ${def?.name ?? armor.head.id} ${armor.head.currentDurability}/${armor.head.maxDurability}`;
+      headArmorLabel = `Head: ${def?.name ?? armor.head.id} Armor:${armor.head.armor}`;
     }
 
     // Morale state label
@@ -1033,10 +1033,10 @@ export class DemoBattle {
       headArmor: headArmorLabel,
       moraleState: moraleLabel,
       moraleCurrent: morale?.current,
-      fatigue: fatigue ? { current: fatigue.current, max: fatigue.max } : undefined,
+      stamina: stamina ? { current: stamina.current, max: stamina.max } : undefined,
       statusEffects: statusEffects.length > 0 ? statusEffects : undefined,
       meleeSkill: stats.meleeSkill,
-      meleeDefense: stats.meleeDefense,
+      dodge: stats.dodge,
       resolve: stats.resolve,
       initiative: stats.initiative,
       // Interactive fields — only for the active player unit
@@ -1069,7 +1069,7 @@ export class DemoBattle {
     const stats = this.world.getComponent<StatsComponent>(entityId, "stats");
     const equip = this.world.getComponent<EquipmentComponent>(entityId, "equipment");
     const armor = this.world.getComponent<ArmorComponent>(entityId, "armor");
-    const fatigue = this.world.getComponent<FatigueComponent>(entityId, "fatigue");
+    const stamina = this.world.getComponent<StaminaComponent>(entityId, "stamina");
     const morale = this.world.getComponent<MoraleComponent>(entityId, "morale");
     if (!health || !team || !stats) return;
 
@@ -1080,11 +1080,11 @@ export class DemoBattle {
     let headArmorLabel: string | undefined;
     if (armor?.body) {
       const def = resolveArmor(armor.body.id);
-      bodyArmorLabel = `Body: ${def?.name ?? armor.body.id} ${armor.body.currentDurability}/${armor.body.maxDurability}`;
+      bodyArmorLabel = `Body: ${def?.name ?? armor.body.id} Armor:${armor.body.armor}`;
     }
     if (armor?.head) {
       const def = resolveArmor(armor.head.id);
-      headArmorLabel = `Head: ${def?.name ?? armor.head.id} ${armor.head.currentDurability}/${armor.head.maxDurability}`;
+      headArmorLabel = `Head: ${def?.name ?? armor.head.id} Armor:${armor.head.armor}`;
     }
 
     let moraleLabel: string | undefined;
@@ -1131,10 +1131,10 @@ export class DemoBattle {
       headArmor: headArmorLabel,
       moraleState: moraleLabel,
       moraleCurrent: morale?.current,
-      fatigue: fatigue ? { current: fatigue.current, max: fatigue.max } : undefined,
+      stamina: stamina ? { current: stamina.current, max: stamina.max } : undefined,
       statusEffects: statusEffects.length > 0 ? statusEffects : undefined,
       meleeSkill: stats.meleeSkill,
-      meleeDefense: stats.meleeDefense,
+      dodge: stats.dodge,
       resolve: stats.resolve,
       initiative: stats.initiative,
       isActivePlayerUnit: isPlayer && entityId === this.combat.selectedUnit,
@@ -1265,11 +1265,11 @@ export class DemoBattle {
     this.uiManager.root.appendChild(popup);
     popup.addEventListener("animationend", () => popup.remove());
 
-    // Armor damage popup (blue, offset below HP popup)
-    if (result.hit && result.armorDamage > 0) {
+    // Armor reduction popup (blue, offset below HP popup)
+    if (result.hit && result.armorReduction > 0) {
       const armorPopup = document.createElement("div");
       armorPopup.className = "damage-popup armor";
-      armorPopup.textContent = `-${result.armorDamage} armor`;
+      armorPopup.textContent = `-${result.armorReduction} blocked`;
       armorPopup.style.left = `${screenPos.x}px`;
       armorPopup.style.top = `${screenPos.y + 20}px`;
       this.uiManager.root.appendChild(armorPopup);
@@ -1280,17 +1280,15 @@ export class DemoBattle {
   private updateArmorBarForUnit(entityId: EntityId): void {
     const armor = this.world.getComponent<ArmorComponent>(entityId, "armor");
     if (!armor) return;
-    const bodyDur = armor.body?.currentDurability ?? 0;
-    const bodyMax = armor.body?.maxDurability ?? 0;
-    const headDur = armor.head?.currentDurability ?? 0;
-    const headMax = armor.head?.maxDurability ?? 0;
-    this.unitRenderer.updateArmorBar(entityId, bodyDur, bodyMax, headDur, headMax);
+    const bodyArmor = armor.body?.armor ?? 0;
+    const headArmor = armor.head?.armor ?? 0;
+    this.unitRenderer.updateArmorBar(entityId, bodyArmor, bodyArmor, headArmor, headArmor);
   }
 
   private showUnitInfo(entityId: EntityId): void {
     const health = this.world.getComponent<HealthComponent>(entityId, "health");
     const team = this.world.getComponent<TeamComponent>(entityId, "team");
-    const fatigue = this.world.getComponent<FatigueComponent>(entityId, "fatigue");
+    const stamina = this.world.getComponent<StaminaComponent>(entityId, "stamina");
     const equip = this.world.getComponent<EquipmentComponent>(entityId, "equipment");
     if (!health || !team) return;
 
@@ -1315,7 +1313,7 @@ export class DemoBattle {
       isCurrentPlayer ? this.combat.apRemaining : undefined,
       isCurrentPlayer ? this.combat.mpRemaining : undefined,
       isCurrentPlayer ? this.combat.mpMaximum : undefined,
-      fatigue ? { current: fatigue.current, max: fatigue.max } : undefined,
+      stamina ? { current: stamina.current, max: stamina.max } : undefined,
       weapon.name,
       moraleState ?? undefined,
       statusEffects.length > 0 ? statusEffects : undefined,
@@ -1559,13 +1557,12 @@ export class DemoBattle {
         newLevel: stats.level + 1,
         currentStats: {
           hitpoints: stats.hitpoints,
-          fatigue: stats.fatigue,
+          stamina: stats.stamina,
           resolve: stats.resolve,
           initiative: stats.initiative,
           meleeSkill: stats.meleeSkill,
           rangedSkill: stats.rangedSkill,
-          meleeDefense: stats.meleeDefense,
-          rangedDefense: stats.rangedDefense,
+          dodge: stats.dodge,
         },
         talentStars: talents.stars,
       });

@@ -1,5 +1,5 @@
 import type { SkillDef } from "./SkillData";
-import { skillAPCost, skillFatigueCost, skillRange } from "./SkillData";
+import { skillAPCost, skillStaminaCost, skillRange } from "./SkillData";
 import type { GeneratedAbility } from "./AbilityData";
 import type { WeaponDef } from "./WeaponData";
 
@@ -12,7 +12,8 @@ export interface CombatSkill {
   name: string;
   description: string;
   apCost: number;
-  fatigueCost: number;
+  staminaCost: number;
+  manaCost: number;
   range: number;
   targetType: "enemy" | "hex" | "self";
   rangeType: "melee" | "ranged";
@@ -35,7 +36,8 @@ export function wrapSkillDef(skill: SkillDef, weapon: WeaponDef): CombatSkill {
     name: skill.name,
     description: skill.description,
     apCost: skillAPCost(skill, weapon),
-    fatigueCost: skillFatigueCost(skill, weapon),
+    staminaCost: skillStaminaCost(skill, weapon),
+    manaCost: weapon.manaCost,
     range: skillRange(skill, weapon),
     targetType: skill.targetType,
     rangeType: skill.rangeType,
@@ -65,7 +67,8 @@ export function wrapGeneratedAbility(ability: GeneratedAbility, _weapon: WeaponD
     name: ability.name,
     description: ability.description,
     apCost: ability.cost.ap,
-    fatigueCost: ability.cost.fatigue,
+    staminaCost: ability.cost.stamina,
+    manaCost: ability.cost.mana,
     range: ability.targeting.params.range ?? 1,
     targetType,
     rangeType: "melee",

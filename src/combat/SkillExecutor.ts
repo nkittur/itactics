@@ -37,19 +37,11 @@ export class SkillExecutor {
 
     if (result.hit) {
       const defenderEquip = world.getComponent<EquipmentComponent>(defenderId, "equipment");
-      if (defenderEquip?.offHand && defenderEquip.shieldDurability != null) {
-        // Apply skill damage multiplier to shield durability
-        const shieldDmg = Math.floor(result.damage * SPLIT_SHIELD.damageMultiplier);
-        defenderEquip.shieldDurability = Math.max(0, defenderEquip.shieldDurability - shieldDmg);
-
-        if (defenderEquip.shieldDurability <= 0) {
-          // Shield destroyed
-          defenderEquip.offHand = null;
-          defenderEquip.shieldDurability = null;
-          shieldDestroyed = true;
-        }
+      if (defenderEquip?.offHand) {
+        // Split Shield destroys the target's shield on hit
+        defenderEquip.offHand = null;
+        shieldDestroyed = true;
       }
-      // Split Shield still does reduced HP damage (already handled by damageMultiplier in resolveSkillAttack)
     }
 
     return { ...result, shieldDestroyed };

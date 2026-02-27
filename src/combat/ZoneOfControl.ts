@@ -15,7 +15,7 @@ import { hexNeighbors } from "@hex/HexMath";
  *   a free attack from that enemy.
  * - Entering ZoC does NOT trigger a free attack.
  * - Each enemy gets at most one free attack per movement action.
- * - Free attacks cost 0 AP / 0 fatigue.
+ * - Free attacks cost 0 AP / 0 stamina.
  * - Stunned or dead enemies do not exert ZoC.
  */
 

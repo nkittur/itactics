@@ -94,7 +94,7 @@ export function tileFatigueCost(_grid: HexGrid, from: HexTile, to: HexTile): num
   if (elevDiff > 0) {
     fat += elevDiff * 2;
   } else if (elevDiff < 0) {
-    fat = Math.max(2, fat + elevDiff); // downhill saves fatigue
+    fat = Math.max(2, fat + elevDiff); // downhill saves stamina
   }
 
   return fat;
@@ -118,9 +118,9 @@ export function pathAPCost(grid: HexGrid, path: Array<{ q: number; r: number }>,
 }
 
 /**
- * Calculate total fatigue cost for a movement path.
+ * Calculate total stamina cost for a movement path.
  */
-export function pathFatigueCost(grid: HexGrid, path: Array<{ q: number; r: number }>, startQ: number, startR: number): number {
+export function pathStaminaCost(grid: HexGrid, path: Array<{ q: number; r: number }>, startQ: number, startR: number): number {
   let total = 0;
   let prevTile = grid.get(startQ, startR);
   if (!prevTile) return Infinity;

@@ -1,19 +1,19 @@
 import type { Component } from "../Component";
 
-export interface FatigueComponent extends Component {
-  readonly type: "fatigue";
+export interface StaminaComponent extends Component {
+  readonly type: "stamina";
   current: number;
   max: number;
   recoveryPerTurn: number;
 }
 
-export function createFatigue(params: {
+export function createStamina(params: {
   current?: number;
   max: number;
   recoveryPerTurn: number;
-}): FatigueComponent {
+}): StaminaComponent {
   return {
-    type: "fatigue",
+    type: "stamina",
     current: params.current ?? 0,
     max: params.max,
     recoveryPerTurn: params.recoveryPerTurn,

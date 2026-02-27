@@ -1,4 +1,4 @@
-import type { WeaponFamily } from "./WeaponData";
+import type { WeaponFamily, DamageType } from "./WeaponData";
 import { getWeapon, UNARMED, type WeaponDef } from "./WeaponData";
 
 export type TargetType = "enemy" | "hex" | "self";
@@ -17,15 +17,19 @@ export interface SkillDef {
   readonly weaponFamilies: readonly WeaponFamily[];
   /** AP cost override. 0 = use weapon's AP cost. */
   readonly apCost: number;
-  /** Extra fatigue on top of weapon's fatigue cost. */
-  readonly fatigueExtra: number;
+  /** Extra stamina on top of weapon's stamina cost. */
+  readonly staminaExtra: number;
   readonly damageMultiplier: number;
   readonly hitChanceModifier: number;
   readonly range: number;
   readonly targetType: TargetType;
   readonly rangeType: RangeType;
+  /** Flat armor ignored (overrides weapon's armorPiercing). */
+  readonly armorPiercingOverride?: number;
+  /** Fraction of remaining armor to ignore (0.5 = 50%, 1.0 = 100%). */
   readonly armorIgnoreOverride?: number;
-  readonly armorDamageMultOverride?: number;
+  /** Override weapon damage type (e.g., spell abilities force "magical"). */
+  readonly damageTypeOverride?: DamageType;
   readonly isBasicAttack: boolean;
   readonly isStance: boolean;
   readonly onHit?: readonly SkillOnHit[];
@@ -39,7 +43,7 @@ export const BASIC_ATTACK: SkillDef = {
   name: "Attack",
   weaponFamilies: [],
   apCost: 0,
-  fatigueExtra: 0,
+  staminaExtra: 0,
   damageMultiplier: 1.0,
   hitChanceModifier: 0,
   range: 0,
@@ -55,7 +59,7 @@ export const RANGED_ATTACK: SkillDef = {
   name: "Shoot",
   weaponFamilies: ["bow", "crossbow", "throwing"],
   apCost: 0,
-  fatigueExtra: 0,
+  staminaExtra: 0,
   damageMultiplier: 1.0,
   hitChanceModifier: 0,
   range: 0,
@@ -71,7 +75,7 @@ export const PUNCTURE: SkillDef = {
   name: "Puncture",
   weaponFamilies: ["dagger", "sword"],
   apCost: 0,
-  fatigueExtra: 3,
+  staminaExtra: 3,
   damageMultiplier: 0.5,
   hitChanceModifier: 15,
   range: 0,
@@ -88,7 +92,7 @@ export const STUN: SkillDef = {
   name: "Stun",
   weaponFamilies: ["mace", "flail"],
   apCost: 0,
-  fatigueExtra: 5,
+  staminaExtra: 5,
   damageMultiplier: 0.5,
   hitChanceModifier: -15,
   range: 0,
@@ -105,7 +109,7 @@ export const SPLIT_SHIELD: SkillDef = {
   name: "Split Shield",
   weaponFamilies: ["axe", "mace"],
   apCost: 0,
-  fatigueExtra: 5,
+  staminaExtra: 5,
   damageMultiplier: 1.5,
   hitChanceModifier: 0,
   range: 0,
@@ -121,7 +125,7 @@ export const SPEARWALL: SkillDef = {
   name: "Spearwall",
   weaponFamilies: ["spear", "polearm"],
   apCost: 3,
-  fatigueExtra: 5,
+  staminaExtra: 5,
   range: 0,
   damageMultiplier: 1.0,
   hitChanceModifier: 0,
@@ -170,9 +174,9 @@ export function skillAPCost(skill: SkillDef, weapon: WeaponDef): number {
   return skill.apCost > 0 ? skill.apCost : weapon.apCost;
 }
 
-/** Resolve effective fatigue cost: weapon base + skill extra. */
-export function skillFatigueCost(skill: SkillDef, weapon: WeaponDef): number {
-  return weapon.fatigueCost + skill.fatigueExtra;
+/** Resolve effective stamina cost: weapon base + skill extra. */
+export function skillStaminaCost(skill: SkillDef, weapon: WeaponDef): number {
+  return weapon.staminaCost + skill.staminaExtra;
 }
 
 /** Resolve effective range: skill override or weapon default. */

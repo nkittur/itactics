@@ -28,7 +28,7 @@ export const STATUS_EFFECT_DEFS: Record<string, StatusEffectDef> = {
     id: "stun",
     name: "Stunned",
     duration: 1,
-    modifiers: { meleeDefense: -999, rangedDefense: -999 },
+    modifiers: { dodge: -999 },
     maxStacks: 1,
   },
   bleed: {
@@ -49,7 +49,7 @@ export const STATUS_EFFECT_DEFS: Record<string, StatusEffectDef> = {
     id: "fleeing",
     name: "Fleeing",
     duration: 99, // Removed by morale recovery, not duration
-    modifiers: { meleeSkill: -30, meleeDefense: -30 },
+    modifiers: { meleeSkill: -30, dodge: -30 },
     maxStacks: 1,
   },
   root: {
@@ -279,7 +279,7 @@ export class StatusEffectManager {
     for (const effect of comp.effects) {
       if (effect.id === "daze") {
         // Daze applies -25% to melee skill, defense, and initiative
-        if (statName === "meleeSkill" || statName === "meleeDefense" || statName === "initiative") {
+        if (statName === "meleeSkill" || statName === "dodge" || statName === "initiative") {
           total -= Math.floor(baseValue * 0.25);
         }
       } else if (effect.modifiers[statName] !== undefined) {

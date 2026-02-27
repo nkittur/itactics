@@ -2,7 +2,7 @@ export class UnitInfoPanel {
   private container: HTMLDivElement;
   private nameText: HTMLDivElement;
   private hpText: HTMLSpanElement;
-  private fatigueText: HTMLSpanElement;
+  private staminaText: HTMLSpanElement;
   private apText: HTMLSpanElement;
   private mpText: HTMLSpanElement;
   private statusText: HTMLDivElement;
@@ -23,7 +23,7 @@ export class UnitInfoPanel {
     row.className = "uip-stats-row";
     this.container.appendChild(row);
 
-    // Left column: HP / Fatigue
+    // Left column: HP / Stamina
     const left = document.createElement("div");
     left.className = "uip-col";
     row.appendChild(left);
@@ -32,9 +32,9 @@ export class UnitInfoPanel {
     this.hpText.className = "uip-hp";
     left.appendChild(this.hpText);
 
-    this.fatigueText = document.createElement("span");
-    this.fatigueText.className = "uip-fat";
-    left.appendChild(this.fatigueText);
+    this.staminaText = document.createElement("span");
+    this.staminaText.className = "uip-sta";
+    left.appendChild(this.staminaText);
 
     // Right column: AP / MP
     const right = document.createElement("div");
@@ -62,7 +62,7 @@ export class UnitInfoPanel {
     ap?: number,
     mp?: number,
     maxMP?: number,
-    fatigue?: { current: number; max: number },
+    stamina?: { current: number; max: number },
     _weaponName?: string,
     moraleState?: string,
     statusEffects?: string[],
@@ -77,12 +77,12 @@ export class UnitInfoPanel {
     this.hpText.style.color = hpColor;
     this.hpText.style.display = "block";
 
-    // Fatigue
-    if (fatigue) {
-      this.fatigueText.textContent = `Fat ${fatigue.current}/${fatigue.max}`;
-      this.fatigueText.style.display = "block";
+    // Stamina
+    if (stamina) {
+      this.staminaText.textContent = `Sta ${stamina.current}/${stamina.max}`;
+      this.staminaText.style.display = "block";
     } else {
-      this.fatigueText.style.display = "none";
+      this.staminaText.style.display = "none";
     }
 
     // AP

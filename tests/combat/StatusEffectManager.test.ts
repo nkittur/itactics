@@ -8,8 +8,8 @@ function createUnit(world: World, hp = 50): string {
   world.addComponent(id, { type: "health", current: hp, max: hp, injuries: [] });
   world.addComponent(id, {
     type: "stats",
-    hitpoints: hp, fatigue: 100, resolve: 50, initiative: 100,
-    meleeSkill: 60, rangedSkill: 30, meleeDefense: 10, rangedDefense: 10,
+    hitpoints: hp, stamina: 100, mana: 20, resolve: 50, initiative: 100,
+    meleeSkill: 60, rangedSkill: 30, dodge: 10, magicResist: 0,
     level: 1, experience: 0,
   });
   world.addComponent(id, { type: "statusEffects", effects: [] });
@@ -121,7 +121,7 @@ describe("StatusEffectManager", () => {
       const unit = createUnit(world);
 
       sem.apply(world, unit, "stun");
-      const mod = sem.getModifier(world, unit, "meleeDefense", 10);
+      const mod = sem.getModifier(world, unit, "dodge", 10);
       expect(mod).toBe(-999);
     });
 

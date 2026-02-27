@@ -78,18 +78,25 @@ export class AttackPreviewPanel {
     }
     html += `</div>`;
 
-    // Damage range
+    // Damage range + type indicator
+    const dmgColor = ap.damageType === "magical" ? "#88aaff" : "#cccccc";
+    const dmgLabel = ap.damageType === "magical" ? "Magic Dmg" : "Damage";
     html += `<div class="edp-dmg-row">`;
-    html += `<span class="edp-label">Damage</span>`;
-    html += `<span class="edp-value">${ap.minDamage}-${ap.maxDamage}</span>`;
+    html += `<span class="edp-label">${dmgLabel}</span>`;
+    html += `<span class="edp-value" style="color:${dmgColor}">${ap.minDamage}-${ap.maxDamage}</span>`;
     html += `</div>`;
 
+    // Crit chance
+    if (ap.critChance > 0) {
+      html += `<div class="edp-dmg-row">`;
+      html += `<span class="edp-label">Crit</span>`;
+      html += `<span class="edp-value" style="color:#ffcc44">${ap.critChance}%</span>`;
+      html += `</div>`;
+    }
+
     // Armor interaction
-    if (ap.armorIgnorePct > 0 || ap.armorDamageMult > 0) {
-      const parts: string[] = [];
-      if (ap.armorIgnorePct > 0) parts.push(`${Math.round(ap.armorIgnorePct * 100)}% ignore armor`);
-      if (ap.armorDamageMult > 0) parts.push(`${Math.round(ap.armorDamageMult * 100)}% vs armor`);
-      html += `<div class="edp-armor-info">${parts.join(" / ")}</div>`;
+    if (ap.armorPiercing > 0) {
+      html += `<div class="edp-armor-info">${ap.armorPiercing} armor pierce</div>`;
     }
 
     // Confirm hint
@@ -114,10 +121,10 @@ export class AttackPreviewPanel {
       html += `<span class="edp-mod-value" style="color:#ccaa44">${skill.apCost}</span>`;
       html += `</div>`;
     }
-    if (skill.fatigueExtra > 0) {
+    if (skill.staminaExtra > 0) {
       html += `<div class="edp-mod-row">`;
-      html += `<span class="edp-mod-label">Fatigue</span>`;
-      html += `<span class="edp-mod-value" style="color:#cc8844">+${skill.fatigueExtra}</span>`;
+      html += `<span class="edp-mod-label">Stamina</span>`;
+      html += `<span class="edp-mod-value" style="color:#cc8844">+${skill.staminaExtra}</span>`;
       html += `</div>`;
     }
     html += `</div>`;

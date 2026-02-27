@@ -47,13 +47,14 @@ function spawnUnit(
   world.addComponent(id, {
     type: "stats",
     hitpoints: hp,
-    fatigue: 100,
+    stamina: 100,
+    mana: 20,
     resolve: 50,
     initiative: 100,
     meleeSkill: 60,
     rangedSkill: 30,
-    meleeDefense: 10,
-    rangedDefense: 10,
+    dodge: 10,
+    magicResist: 0,
     level: 1,
     experience: 0,
   });

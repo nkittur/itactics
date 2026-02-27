@@ -3,13 +3,16 @@ import type { Component } from "../Component";
 export interface StatsComponent extends Component {
   readonly type: "stats";
   hitpoints: number;
-  fatigue: number;
+  stamina: number;
+  mana: number;
   resolve: number;
   initiative: number;
   meleeSkill: number;
   rangedSkill: number;
-  meleeDefense: number;
-  rangedDefense: number;
+  dodge: number;
+  magicResist: number;
+  critChance: number;
+  critMultiplier: number;
   movementPoints: number;
   level: number;
   experience: number;
@@ -17,13 +20,16 @@ export interface StatsComponent extends Component {
 
 export function createStats(params: {
   hitpoints: number;
-  fatigue: number;
+  stamina: number;
+  mana?: number;
   resolve: number;
   initiative: number;
   meleeSkill: number;
   rangedSkill: number;
-  meleeDefense: number;
-  rangedDefense: number;
+  dodge: number;
+  magicResist?: number;
+  critChance?: number;
+  critMultiplier?: number;
   movementPoints?: number;
   level?: number;
   experience?: number;
@@ -31,13 +37,16 @@ export function createStats(params: {
   return {
     type: "stats",
     hitpoints: params.hitpoints,
-    fatigue: params.fatigue,
+    stamina: params.stamina,
+    mana: params.mana ?? 20,
     resolve: params.resolve,
     initiative: params.initiative,
     meleeSkill: params.meleeSkill,
     rangedSkill: params.rangedSkill,
-    meleeDefense: params.meleeDefense,
-    rangedDefense: params.rangedDefense,
+    dodge: params.dodge,
+    magicResist: params.magicResist ?? 0,
+    critChance: params.critChance ?? 5,
+    critMultiplier: params.critMultiplier ?? 1.5,
     movementPoints: params.movementPoints ?? 8,
     level: params.level ?? 1,
     experience: params.experience ?? 0,

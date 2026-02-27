@@ -6,8 +6,8 @@ import { getItemName } from "./ItemData";
 
 // ── Base item tiers by party level ──
 
-const TIER_1_WEAPONS = ["dagger", "short_sword", "spear", "short_bow"];
-const TIER_2_WEAPONS = ["arming_sword", "hand_axe", "winged_mace", "hunting_bow"];
+const TIER_1_WEAPONS = ["dagger", "short_sword", "spear", "short_bow", "wooden_wand"];
+const TIER_2_WEAPONS = ["arming_sword", "hand_axe", "winged_mace", "hunting_bow", "crystal_wand"];
 const TIER_3_WEAPONS = ["longsword", "pike"];
 
 const TIER_1_SHIELDS = ["buckler"];
@@ -111,23 +111,23 @@ const WEAPON_MODS: ModifierTemplate[] = [
   { stat: "minDamage", min: 1, max: 3, labelFn: d => `+${d} Min Damage` },
   { stat: "maxDamage", min: 1, max: 4, labelFn: d => `+${d} Max Damage` },
   { stat: "hitChanceBonus", min: 3, max: 10, labelFn: d => `+${d} Hit Chance` },
-  { stat: "fatigueCost", min: -4, max: -1, labelFn: d => `${d} Fatigue Cost` },
+  { stat: "staminaCost", min: -4, max: -1, labelFn: d => `${d} Stamina Cost` },
   { stat: "apCost", min: -1, max: -1, labelFn: d => `${d} AP Cost` },
-  { stat: "armorIgnorePct", min: 5, max: 15, labelFn: d => `+${d}% Armor Ignore` },
-  { stat: "armorDamageMult", min: 10, max: 30, labelFn: d => `+${d}% Armor Damage` },
+  { stat: "armorPiercing", min: 1, max: 3, labelFn: d => `+${d} Armor Piercing` },
+  { stat: "critChanceBonus", min: 3, max: 8, labelFn: d => `+${d}% Crit Chance` },
   { stat: "statusEffectChance", min: 5, max: 15, labelFn: d => `+${d}% Status Effect` },
 ];
 
 const ARMOR_MODS: ModifierTemplate[] = [
-  { stat: "durability", min: 2, max: 8, labelFn: d => `+${d} Durability` },
-  { stat: "fatiguePenalty", min: -4, max: -1, labelFn: d => `${d} Fatigue Penalty` },
+  { stat: "armor", min: 1, max: 3, labelFn: d => `+${d} Armor` },
+  { stat: "staminaPenalty", min: -3, max: -1, labelFn: d => `${d} Stamina Penalty` },
   { stat: "initiativePenalty", min: -3, max: -1, labelFn: d => `${d} Initiative Penalty` },
 ];
 
 const SHIELD_MODS: ModifierTemplate[] = [
-  { stat: "meleeDefBonus", min: 2, max: 5, labelFn: d => `+${d} Melee Defense` },
-  { stat: "rangedDefBonus", min: 2, max: 4, labelFn: d => `+${d} Ranged Defense` },
-  { stat: "durability", min: 2, max: 6, labelFn: d => `+${d} Durability` },
+  { stat: "dodgeBonus", min: 2, max: 5, labelFn: d => `+${d} Dodge` },
+  { stat: "armor", min: 1, max: 3, labelFn: d => `+${d} Armor` },
+  { stat: "staminaPenalty", min: -2, max: -1, labelFn: d => `${d} Stamina Penalty` },
 ];
 
 function rollInt(min: number, max: number, rng: () => number): number {
@@ -147,16 +147,8 @@ function rollModifiers(pool: ModifierTemplate[], count: number, rng: () => numbe
     const tmpl = available[idx]!;
     available.splice(idx, 1);
 
-    let delta: number;
-    if (tmpl.stat === "armorIgnorePct" || tmpl.stat === "armorDamageMult") {
-      // These are stored as fractions (0.05-0.15) but template uses percentages for readability
-      const pctVal = rollInt(tmpl.min, tmpl.max, rng);
-      delta = pctVal / 100;
-      result.push({ stat: tmpl.stat, delta, label: tmpl.labelFn(pctVal) });
-    } else {
-      delta = rollInt(tmpl.min, tmpl.max, rng);
-      result.push({ stat: tmpl.stat, delta, label: tmpl.labelFn(delta) });
-    }
+    const delta = rollInt(tmpl.min, tmpl.max, rng);
+    result.push({ stat: tmpl.stat, delta, label: tmpl.labelFn(delta) });
   }
   return result;
 }
@@ -180,8 +172,8 @@ function generateName(baseName: string, itemLevel: number, modCount: number): st
 // ── Pricing ──
 
 const BASE_PRICES: Record<string, number> = {
-  dagger: 50, short_sword: 80, spear: 80, short_bow: 120,
-  arming_sword: 150, hand_axe: 150, winged_mace: 140, hunting_bow: 200,
+  dagger: 50, short_sword: 80, spear: 80, short_bow: 120, wooden_wand: 100,
+  arming_sword: 150, hand_axe: 150, winged_mace: 140, hunting_bow: 200, crystal_wand: 180,
   longsword: 250, pike: 240,
   buckler: 60, wooden_shield: 100, heater_shield: 160,
   linen_tunic: 30, leather_jerkin: 80, mail_hauberk: 200, coat_of_plates: 350,
@@ -206,12 +198,12 @@ function computePrice(baseId: string, itemLevel: number, modifiers: ItemModifier
 
 function isBeneficial(mod: ItemModifier, slotType: ItemSlotType): boolean {
   if (slotType === "weapon") {
-    // Lower fatigueCost/apCost is better (negative delta)
-    if (mod.stat === "fatigueCost" || mod.stat === "apCost") return mod.delta < 0;
+    // Lower staminaCost/apCost is better (negative delta)
+    if (mod.stat === "staminaCost" || mod.stat === "apCost") return mod.delta < 0;
     return mod.delta > 0;
   }
-  // For armor/shield: lower fatiguePenalty/initiativePenalty is better (negative delta)
-  if (mod.stat === "fatiguePenalty" || mod.stat === "initiativePenalty") return mod.delta < 0;
+  // For armor/shield: lower staminaPenalty/initiativePenalty is better (negative delta)
+  if (mod.stat === "staminaPenalty" || mod.stat === "initiativePenalty") return mod.delta < 0;
   return mod.delta > 0;
 }
 

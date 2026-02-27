@@ -84,13 +84,13 @@ function defaultEffectParams(type: EffectType, tier: 1 | 2 | 3, rng: () => numbe
     case "cc_daze":
       return { apLoss: tier >= 3 ? 2 : 1, turns: tier >= 3 ? 2 : 1 };
     case "debuff_stat": {
-      const stats = ["meleeDefense", "rangedDefense", "meleeSkill", "rangedSkill", "initiative", "resolve"];
+      const stats = ["dodge", "meleeSkill", "rangedSkill", "initiative", "resolve"];
       return { stat: stats[Math.floor(rng() * stats.length)]!, amount: snap(tier === 1 ? 10 : 15, 5, 5), turns: 2 };
     }
     case "debuff_vuln":
       return { bonusDmg: snap(20, 10, 10), turns: 2 };
     case "buff_stat": {
-      const bStats = ["meleeDefense", "rangedDefense", "meleeSkill", "rangedSkill", "initiative", "resolve"];
+      const bStats = ["dodge", "meleeSkill", "rangedSkill", "initiative", "resolve"];
       return { stat: bStats[Math.floor(rng() * bStats.length)]!, amount: snap(tier === 1 ? 10 : 15, 5, 5), turns: 2 };
     }
     case "buff_dmgReduce":
@@ -191,22 +191,43 @@ function calculatePowerBudget(
   return Math.round(effectPower * targeting.powerMult + modPower + trgPower);
 }
 
-function deriveCost(power: number, tier: 1 | 2 | 3, rng: () => number): AbilityCost {
+/** Magical effect types that cost mana instead of stamina. */
+const MAGICAL_EFFECTS = new Set(["dmg_spell", "dot_burn", "dot_poison", "heal_pctDmg"]);
+
+/** Check if an ability's effects are primarily magical. */
+function isMagicalAbility(effects: EffectPrimitive[]): boolean {
+  return effects.some(e => MAGICAL_EFFECTS.has(e.type));
+}
+
+function deriveCost(power: number, tier: 1 | 2 | 3, rng: () => number, magical = false): AbilityCost {
   const varyRange = (min: number, max: number) => min + Math.floor(rng() * (max - min + 1));
 
+  let resourceCost: number;
+  let ap: number;
+  let cooldown = 0;
+  let turnEnding = false;
+
   if (power <= 8) {
-    return { ap: 3, fatigue: varyRange(8, 12), cooldown: 0, turnEnding: false };
+    ap = 3; resourceCost = varyRange(8, 12);
   } else if (power <= 14) {
-    return { ap: 4, fatigue: varyRange(12, 18), cooldown: 0, turnEnding: false };
+    ap = 4; resourceCost = varyRange(12, 18);
   } else if (power <= 20) {
-    return { ap: 5, fatigue: varyRange(18, 25), cooldown: 0, turnEnding: false };
+    ap = 5; resourceCost = varyRange(18, 25);
   } else if (power <= 28) {
-    return { ap: 6, fatigue: varyRange(22, 30), cooldown: 2, turnEnding: false };
+    ap = 6; resourceCost = varyRange(22, 30); cooldown = 2;
   } else if (power <= 35) {
-    return { ap: 6, fatigue: varyRange(25, 35), cooldown: 3, turnEnding: false };
+    ap = 6; resourceCost = varyRange(25, 35); cooldown = 3;
   } else {
-    return { ap: tier >= 3 ? 8 : 7, fatigue: varyRange(30, 40), cooldown: rng() < 0.5 ? 3 : 4, turnEnding: true };
+    ap = tier >= 3 ? 8 : 7; resourceCost = varyRange(30, 40);
+    cooldown = rng() < 0.5 ? 3 : 4; turnEnding = true;
   }
+
+  // Magical abilities use mana instead of stamina (mana pools are smaller, so scale down)
+  if (magical) {
+    const manaCost = Math.max(2, Math.round(resourceCost * 0.4));
+    return { ap, stamina: 0, mana: manaCost, cooldown, turnEnding };
+  }
+  return { ap, stamina: resourceCost, mana: 0, cooldown, turnEnding };
 }
 
 // ── Name generation ──
@@ -559,7 +580,7 @@ function addEpicBonus(ability: GeneratedAbility, rng: () => number): void {
     });
   }
   // Fallback always available
-  const stats = ["meleeDefense", "rangedDefense", "meleeSkill", "rangedSkill", "initiative", "resolve"];
+  const stats = ["dodge", "meleeSkill", "rangedSkill", "initiative", "resolve"];
   pool.push({
     label: "Battle Focus",
     apply: () => ability.effects.push({ type: "buff_stat", params: { stat: stats[Math.floor(rng() * stats.length)]!, amount: 15, turns: 2 }, power: EFFECT_POWER.buff_stat }),
@@ -663,9 +684,10 @@ export function generateAbility(
   const power = calculatePowerBudget(effects, targeting, modifiers, triggers);
 
   // Derive cost
+  const magical = isMagicalAbility(effects);
   const cost = isPassive
-    ? { ap: 0, fatigue: 0, cooldown: 0, turnEnding: false }
-    : deriveCost(power, tier, rng);
+    ? { ap: 0, stamina: 0, mana: 0, cooldown: 0, turnEnding: false }
+    : deriveCost(power, tier, rng, magical);
 
   // Generate name and description
   const uid = generateAbilityUID();
@@ -702,7 +724,7 @@ export function generateAbility(
   if (rarity !== "common") {
     ability.powerBudget = calculatePowerBudget(ability.effects, ability.targeting, ability.modifiers, ability.triggers);
     if (!isPassive) {
-      ability.cost = deriveCost(ability.powerBudget, tier, rng);
+      ability.cost = deriveCost(ability.powerBudget, tier, rng, isMagicalAbility(ability.effects));
     }
   }
 
@@ -783,7 +805,7 @@ function buildPassiveTriggerEffect(
         triggeredEffect: {
           type: "buff_stat",
           params: {
-            stat: "meleeDefense",
+            stat: "dodge",
             amount: 10,
           },
           power: 3,

@@ -50,10 +50,9 @@ export function resolveShield(id: string): ShieldDef | undefined {
 
   const result = { ...base, id, name: gen.name } as Record<string, unknown>;
 
-  // Apply item level: +2 meleeDefBonus, +1 rangedDefBonus, +2 durability per level
-  result.meleeDefBonus = (base.meleeDefBonus) + gen.itemLevel * 2;
-  result.rangedDefBonus = (base.rangedDefBonus) + gen.itemLevel * 1;
-  result.durability = (base.durability) + gen.itemLevel * 2;
+  // Apply item level: +2 dodgeBonus, +1 armor per level
+  result.dodgeBonus = (base.dodgeBonus) + gen.itemLevel * 2;
+  result.armor = (base.armor) + gen.itemLevel * 1;
 
   // Apply modifiers
   for (const mod of gen.modifiers) {
@@ -76,8 +75,8 @@ export function resolveArmor(id: string): ArmorDef | undefined {
 
   const result = { ...base, id, name: gen.name } as Record<string, unknown>;
 
-  // Apply item level: +2 durability per level
-  result.durability = (base.durability) + gen.itemLevel * 2;
+  // Apply item level: +1 armor per level
+  result.armor = (base.armor) + gen.itemLevel * 1;
 
   // Apply modifiers
   for (const mod of gen.modifiers) {
