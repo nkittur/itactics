@@ -15,9 +15,12 @@ import { getClassDef } from "@data/ClassData";
 import { resolveArmor } from "@data/ItemResolver";
 import { createAbilities } from "@entities/components/Abilities";
 import { createAbilityCooldowns } from "@entities/components/AbilityCooldowns";
+import { createMana } from "@entities/components/Mana";
 import type { ScenarioDef, ScenarioUnit } from "@data/ScenarioData";
 import type { BattleActionTracker } from "@combat/CPCalculator";
 import { hexNeighbors } from "@hex/HexMath";
+import type { BalanceParams } from "./CampaignSimulator";
+import { DEFAULT_PARAMS } from "./CampaignSimulator";
 
 // ── Types ──
 
@@ -82,6 +85,7 @@ function spawnUnit(
   world: World,
   grid: HexGrid,
   unit: ScenarioUnit,
+  params?: BalanceParams,
 ): EntityId {
   const pos = findFreeHex(grid, unit.q, unit.r);
   const id = world.createEntity();
@@ -94,20 +98,28 @@ function spawnUnit(
   });
 
   const baseMP = unit.stats.mp ?? (unit.classId ? getClassDef(unit.classId).baseMP : 8);
+  const unitLevel = unit.stats.level ?? 1;
+  const p = params ?? DEFAULT_PARAMS;
+  const bonusDamage = Math.floor((unitLevel - 1) * p.bonusDamagePerLevel);
+  const bonusArmor = Math.floor((unitLevel - 1) * p.bonusArmorPerLevel);
   world.addComponent(id, {
     type: "stats" as const,
     hitpoints: unit.stats.hp,
-    stamina: 100,
-    mana: 20,
+    stamina: unit.stats.stamina ?? 100,
+    mana: unit.stats.mana ?? 20,
     resolve: 50,
     initiative: unit.stats.initiative,
     meleeSkill: unit.stats.melee,
-    rangedSkill: 30,
+    rangedSkill: unit.stats.rangedSkill ?? 30,
     dodge: unit.stats.defense,
-    magicResist: 0,
+    magicResist: unit.stats.magicResist ?? 0,
+    critChance: 5,
+    critMultiplier: 1.5,
     movementPoints: baseMP,
-    level: 1,
+    level: unitLevel,
     experience: 0,
+    bonusDamage,
+    bonusArmor,
   });
 
   world.addComponent(id, {
@@ -137,12 +149,16 @@ function spawnUnit(
     bag: unit.bag ?? [],
   });
 
+  const maxStamina = unit.stats.stamina ?? 100;
   world.addComponent(id, {
     type: "stamina" as const,
     current: 0,
-    max: 100,
+    max: maxStamina,
     recoveryPerTurn: 15,
   });
+
+  const maxMana = unit.stats.mana ?? 20;
+  world.addComponent(id, createMana({ max: maxMana, recoveryPerTurn: 5 }));
 
   world.addComponent(id, {
     type: "initiative" as const,
@@ -212,6 +228,7 @@ export function runHeadlessBattle(
   scenario: ScenarioDef,
   rosterAbilities?: Map<number, string[]>,
   seed?: number,
+  params?: BalanceParams,
 ): HeadlessBattleResult {
   const world = new World();
   const grid = createGridFromScenario(scenario);
@@ -221,7 +238,7 @@ export function runHeadlessBattle(
   const enemyIds: EntityId[] = [];
 
   for (const unit of scenario.units) {
-    const id = spawnUnit(world, grid, unit);
+    const id = spawnUnit(world, grid, unit, params);
     if (unit.team === "player") {
       playerIds.push(id);
     } else {

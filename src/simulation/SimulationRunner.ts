@@ -33,6 +33,9 @@ interface BattleDepthStats {
   avgRosterSize: number;
   avgDeaths: number;
   avgTurns: number;
+  avgPartyArmor: number;
+  avgPartyDodge: number;
+  avgHealCost: number;
   sampleSize: number;
 }
 
@@ -73,6 +76,9 @@ function computeComboStats(results: CampaignResult[], maxBattles: number): Combo
   const depthRosterSize = new Map<number, number>();
   const depthDeaths = new Map<number, number>();
   const depthTurns = new Map<number, number>();
+  const depthArmor = new Map<number, number>();
+  const depthDodge = new Map<number, number>();
+  const depthHealCost = new Map<number, number>();
 
   for (const r of results) {
     totalWins += r.totalWins;
@@ -96,6 +102,9 @@ function computeComboStats(results: CampaignResult[], maxBattles: number): Combo
       depthRosterSize.set(d, (depthRosterSize.get(d) ?? 0) + b.partySize);
       depthDeaths.set(d, (depthDeaths.get(d) ?? 0) + b.deaths);
       depthTurns.set(d, (depthTurns.get(d) ?? 0) + b.turnsElapsed);
+      depthArmor.set(d, (depthArmor.get(d) ?? 0) + b.avgPartyArmor);
+      depthDodge.set(d, (depthDodge.get(d) ?? 0) + b.avgPartyDodge);
+      depthHealCost.set(d, (depthHealCost.get(d) ?? 0) + b.goldSpentOnHealing);
     }
   }
 
@@ -110,6 +119,9 @@ function computeComboStats(results: CampaignResult[], maxBattles: number): Combo
       avgRosterSize: (depthRosterSize.get(d) ?? 0) / samples,
       avgDeaths: (depthDeaths.get(d) ?? 0) / samples,
       avgTurns: (depthTurns.get(d) ?? 0) / samples,
+      avgPartyArmor: (depthArmor.get(d) ?? 0) / samples,
+      avgPartyDodge: (depthDodge.get(d) ?? 0) / samples,
+      avgHealCost: (depthHealCost.get(d) ?? 0) / samples,
       sampleSize: samples,
     });
   }
@@ -231,9 +243,12 @@ function printProgressionTable(stats: ComboStats[], maxBattles: number): void {
     pad("AvgGold", 10) +
     pad("Roster", 8) +
     pad("Deaths", 8) +
-    pad("Turns", 8)
+    pad("Turns", 8) +
+    pad("Armor", 8) +
+    pad("Dodge", 8) +
+    pad("Heal$", 8)
   );
-  console.log("-".repeat(86));
+  console.log("-".repeat(110));
 
   for (const s of stats) {
     for (const d of snapPoints) {
@@ -248,7 +263,10 @@ function printProgressionTable(stats: ComboStats[], maxBattles: number): void {
         pad(num(ds.avgGold, 0), 10) +
         pad(num(ds.avgRosterSize), 8) +
         pad(num(ds.avgDeaths), 8) +
-        pad(num(ds.avgTurns, 0), 8)
+        pad(num(ds.avgTurns, 0), 8) +
+        pad(num(ds.avgPartyArmor), 8) +
+        pad(num(ds.avgPartyDodge), 8) +
+        pad(num(ds.avgHealCost, 0), 8)
       );
     }
   }

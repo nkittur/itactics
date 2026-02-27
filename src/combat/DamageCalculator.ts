@@ -160,15 +160,16 @@ export class DamageCalculator {
       return miss(hitChance, weapon.id);
     }
 
-    // ── 2. Roll raw damage (with class bonus) ──
+    // ── 2. Roll raw damage (with class bonus + level bonus) ──
     let rawDamage = this.rng.nextInt(weapon.minDamage, weapon.maxDamage);
     if (classDmgBonus > 0) rawDamage = Math.floor(rawDamage * (1 + classDmgBonus / 100));
+    rawDamage += attackerStats.bonusDamage ?? 0;
 
     // ── 3. Critical hit ──
-    const critChance = clamp(attackerStats.critChance + weapon.critChanceBonus, 0, 75);
+    const critChance = clamp((attackerStats.critChance ?? 5) + weapon.critChanceBonus, 0, 75);
     const critical = this.rng.roll(critChance);
     if (critical) {
-      rawDamage = Math.floor(rawDamage * attackerStats.critMultiplier);
+      rawDamage = Math.floor(rawDamage * (attackerStats.critMultiplier ?? 1.5));
     }
 
     // ── 4-6. Armor reduction ──
@@ -276,10 +277,11 @@ export class DamageCalculator {
     );
 
     const dmgMult = classDmgBonus > 0 ? (1 + classDmgBonus / 100) : 1;
+    const bonus = attackerStats.bonusDamage ?? 0;
     return {
       hitChance,
-      minDamage: Math.floor(weapon.minDamage * dmgMult),
-      maxDamage: Math.floor(weapon.maxDamage * dmgMult),
+      minDamage: Math.floor(weapon.minDamage * dmgMult) + bonus,
+      maxDamage: Math.floor(weapon.maxDamage * dmgMult) + bonus,
     };
   }
 
@@ -357,13 +359,14 @@ export class DamageCalculator {
       - terrainDefBonus + elevationMod + surroundBonus;
     const hitChance = clamp(rawHit, 5, 95);
 
-    const critChance = clamp(attackerStats.critChance + weapon.critChanceBonus, 0, 75);
+    const critChance = clamp((attackerStats.critChance ?? 5) + weapon.critChanceBonus, 0, 75);
 
     const dmgMult = classDmgBonus > 0 ? (1 + classDmgBonus / 100) : 1;
+    const bonus = attackerStats.bonusDamage ?? 0;
     return {
       hitChance,
-      minDamage: Math.floor(weapon.minDamage * dmgMult),
-      maxDamage: Math.floor(weapon.maxDamage * dmgMult),
+      minDamage: Math.floor(weapon.minDamage * dmgMult) + bonus,
+      maxDamage: Math.floor(weapon.maxDamage * dmgMult) + bonus,
       modifiers,
       weaponName: weapon.name,
       damageType: weapon.damageType,
@@ -475,17 +478,18 @@ export class DamageCalculator {
       return miss(hitChance, weapon.id);
     }
 
-    // ── 2. Roll raw damage with skill multiplier (and class bonus) ──
+    // ── 2. Roll raw damage with skill multiplier (and class bonus + level bonus) ──
     let rawDamage = Math.floor(
       this.rng.nextInt(weapon.minDamage, weapon.maxDamage) * skill.damageMultiplier,
     );
     if (classDmgBonus > 0) rawDamage = Math.floor(rawDamage * (1 + classDmgBonus / 100));
+    rawDamage += attackerStats.bonusDamage ?? 0;
 
     // ── 3. Critical hit ──
-    const critChance = clamp(attackerStats.critChance + weapon.critChanceBonus, 0, 75);
+    const critChance = clamp((attackerStats.critChance ?? 5) + weapon.critChanceBonus, 0, 75);
     const critical = this.rng.roll(critChance);
     if (critical) {
-      rawDamage = Math.floor(rawDamage * attackerStats.critMultiplier);
+      rawDamage = Math.floor(rawDamage * (attackerStats.critMultiplier ?? 1.5));
     }
 
     // ── 4-6. Armor reduction ──
@@ -640,13 +644,14 @@ export class DamageCalculator {
     const hitChance = clamp(rawHit, 5, 95);
 
     const armorPiercing = skill.armorPiercingOverride ?? weapon.armorPiercing;
-    const critChance = clamp(attackerStats.critChance + weapon.critChanceBonus, 0, 75);
+    const critChance = clamp((attackerStats.critChance ?? 5) + weapon.critChanceBonus, 0, 75);
 
     const totalDmgMult = skill.damageMultiplier * (classDmgBonus > 0 ? (1 + classDmgBonus / 100) : 1);
+    const bonus = attackerStats.bonusDamage ?? 0;
     return {
       hitChance,
-      minDamage: Math.floor(weapon.minDamage * totalDmgMult),
-      maxDamage: Math.floor(weapon.maxDamage * totalDmgMult),
+      minDamage: Math.floor(weapon.minDamage * totalDmgMult) + bonus,
+      maxDamage: Math.floor(weapon.maxDamage * totalDmgMult) + bonus,
       modifiers,
       weaponName: weapon.name,
       damageType: skill.damageTypeOverride ?? weapon.damageType,
@@ -673,7 +678,8 @@ export class DamageCalculator {
     if (damageType === "physical") {
       totalArmor = (defenderArmor?.body?.armor ?? 0)
         + (defenderArmor?.head?.armor ?? 0)
-        + (shield?.armor ?? 0);
+        + (shield?.armor ?? 0)
+        + (defenderStats.bonusArmor ?? 0);
     } else {
       // Magical: use magicResist from armor + base stat
       totalArmor = (defenderArmor?.body?.magicResist ?? 0)

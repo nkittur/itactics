@@ -34,6 +34,14 @@ export interface EnemyDetailData {
   resolve: number;
   initiative: number;
 
+  // ── Level and bonus fields ──
+  level?: number;
+  bodyArmorValue?: number;
+  headArmorValue?: number;
+  shieldArmorValue?: number;
+  bonusDamage?: number;
+  bonusArmor?: number;
+
   // ── Interactive equipment fields (active player unit only) ──
   /** True if this is the active player unit whose turn it is. */
   isActivePlayerUnit?: boolean;
@@ -90,9 +98,10 @@ export class EnemyDetailPanel {
   private buildContent(data: EnemyDetailData): void {
     this.content.innerHTML = "";
 
-    // Header: name + class
+    // Header: name + level + class
+    const lvlStr = data.level && data.level > 1 ? ` Lv${data.level}` : "";
     const header = el("div", "edp-header",
-      data.className ? `${data.name}  (${data.className})` : data.name);
+      data.className ? `${data.name}${lvlStr}  (${data.className})` : `${data.name}${lvlStr}`);
     this.content.appendChild(header);
 
     // Class passives
@@ -128,8 +137,9 @@ export class EnemyDetailPanel {
 
     const equipSection = el("div", "edp-section");
 
-    // Main hand slot
-    this.buildEquipSlot(equipSection, "Wpn", `${data.weaponName}  ${data.weaponDamage}`,
+    // Main hand slot — show bonus damage
+    const dmgBonusStr = data.bonusDamage && data.bonusDamage > 0 ? ` +${data.bonusDamage}` : "";
+    this.buildEquipSlot(equipSection, "Wpn", `${data.weaponName}  ${data.weaponDamage}${dmgBonusStr}`,
       isInteractive ? "mainHand" : undefined, data, canAct);
 
     // Off hand / shield slot
@@ -138,9 +148,22 @@ export class EnemyDetailPanel {
         isInteractive ? "offHand" : undefined, data, canAct);
     }
 
-    // Armor (read-only, no swapping)
-    if (data.bodyArmor) equipSection.appendChild(el("div", "edp-equip edp-armor", data.bodyArmor));
-    if (data.headArmor) equipSection.appendChild(el("div", "edp-equip edp-armor", data.headArmor));
+    // Armor (read-only, with numeric values)
+    if (data.bodyArmor) {
+      const bodyVal = data.bodyArmorValue != null ? ` [${data.bodyArmorValue}]` : "";
+      equipSection.appendChild(el("div", "edp-equip edp-armor", `${data.bodyArmor}${bodyVal}`));
+    }
+    if (data.headArmor) {
+      const headVal = data.headArmorValue != null ? ` [${data.headArmorValue}]` : "";
+      equipSection.appendChild(el("div", "edp-equip edp-armor", `${data.headArmor}${headVal}`));
+    }
+
+    // Total armor with level bonus
+    const totalArmor = (data.bodyArmorValue ?? 0) + (data.headArmorValue ?? 0) + (data.shieldArmorValue ?? 0);
+    if (totalArmor > 0 || (data.bonusArmor && data.bonusArmor > 0)) {
+      const bonusStr = data.bonusArmor && data.bonusArmor > 0 ? ` +${data.bonusArmor} (level)` : "";
+      equipSection.appendChild(el("div", "edp-bonus", `Total Armor: ${totalArmor}${bonusStr}`));
+    }
 
     this.content.appendChild(equipSection);
 

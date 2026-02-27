@@ -2,14 +2,23 @@
  * Player strategy definitions for campaign simulation.
  * Each strategy implements a distinct playstyle for contract selection,
  * hiring, equipment purchasing, and skill tree unlocking.
+ *
+ * Equipment purchasing is fully data-driven — reads levels from WeaponData,
+ * ArmorData, ShieldData and enforces class restrictions via ClassData.
  */
 
 import type { ContractDef } from "@data/ContractData";
 import type { RecruitDef } from "@data/RecruitData";
 import type { RosterMember } from "@save/SaveManager";
-import { getItemPrice, getStoreInventory, type StoreItem } from "@data/StoreData";
-import { CP_COST_BY_TIER, type SkillTreeNode } from "@data/SkillTreeData";
+import { getItemPrice, getScaledItemPrice, getStoreInventory, type StoreItem } from "@data/StoreData";
+import type { SkillTreeNode } from "@data/SkillTreeData";
 import { getPartyLevel } from "@data/RecruitData";
+import { getWeapon } from "@data/WeaponData";
+import { getArmorDef } from "@data/ArmorData";
+import { getShield } from "@data/ShieldData";
+import { getClassDef, canEquipWeapon, canEquipArmor, canEquipShield } from "@data/ClassData";
+import type { CharacterClass } from "@data/ClassData";
+import type { BalanceParams } from "./CampaignSimulator";
 
 // ── Types ──
 
@@ -24,52 +33,93 @@ export interface PlayerStrategy {
   maxRoster: number;
   pickContract(contracts: ContractDef[], roster: RosterMember[], gold: number): ContractDef;
   shouldHire(recruit: RecruitDef, roster: RosterMember[], gold: number): boolean;
-  buyEquipment(roster: RosterMember[], gold: number): PurchaseDecision[];
+  buyEquipment(roster: RosterMember[], gold: number, partyLevel?: number, params?: BalanceParams): PurchaseDecision[];
   unlockNodes(member: RosterMember): string[];
 }
 
-// ── Helpers ──
+// ── Data-driven helpers ──
 
-/** Weapon tier by price for upgrade comparisons. */
-const WEAPON_TIERS: Record<string, number> = {
-  dagger: 1, short_sword: 1, spear: 1, wooden_wand: 1,
-  arming_sword: 2, hand_axe: 2, winged_mace: 2, crystal_wand: 2,
-  short_bow: 2, hunting_bow: 2,
-  longsword: 3, pike: 3,
-};
-
-const BODY_ARMOR_TIERS: Record<string, number> = {
-  linen_tunic: 1, leather_jerkin: 2, mail_hauberk: 3, coat_of_plates: 4,
-};
-
-const HEAD_ARMOR_TIERS: Record<string, number> = {
-  hood: 1, leather_cap: 2, mail_coif: 3, nasal_helm: 4,
-};
-
-function getTier(itemId: string | null | undefined): number {
+/** Get item level from data catalogs. Returns 0 for unknown/null items. */
+function getItemLevel(itemId: string | null | undefined, category: string): number {
   if (!itemId) return 0;
-  return WEAPON_TIERS[itemId] ?? BODY_ARMOR_TIERS[itemId] ?? HEAD_ARMOR_TIERS[itemId] ?? 0;
+  if (category === "weapon") return getWeapon(itemId).level;
+  if (category === "shield") return getShield(itemId)?.level ?? 0;
+  if (category === "body_armor" || category === "head_armor") return getArmorDef(itemId)?.level ?? 0;
+  return 0;
 }
 
+/**
+ * Data-driven best affordable upgrade.
+ * Respects class restrictions and 2H/shield conflicts.
+ */
 function bestAffordableUpgrade(
-  currentItemId: string | null | undefined,
-  tierMap: Record<string, number>,
-  gold: number,
+  member: RosterMember,
   category: string,
-): string | null {
-  const currentTier = currentItemId ? (tierMap[currentItemId] ?? 0) : 0;
+  gold: number,
+  partyLevel?: number,
+  params?: BalanceParams,
+): { itemId: string; price: number } | null {
+  const classDef = member.classId ? getClassDef(member.classId as CharacterClass) : null;
+
+  let currentLevel: number;
+  if (category === "weapon") {
+    currentLevel = getItemLevel(member.equipment.mainHand, "weapon");
+  } else if (category === "shield") {
+    currentLevel = getItemLevel(member.equipment.offHand, "shield");
+  } else if (category === "body_armor") {
+    currentLevel = getItemLevel(member.armor.body?.id, "body_armor");
+  } else {
+    currentLevel = getItemLevel(member.armor.head?.id, "head_armor");
+  }
+
   const inventory = getStoreInventory().filter(i => i.category === category);
 
   let best: StoreItem | null = null;
+  let bestLevel = currentLevel;
+
   for (const item of inventory) {
-    const tier = tierMap[item.itemId] ?? 0;
-    if (tier > currentTier && item.price <= gold) {
-      if (!best || tier > (tierMap[best.itemId] ?? 0)) {
-        best = item;
+    const scaledPrice = (partyLevel && params)
+      ? getScaledItemPrice(item.itemId, partyLevel, params.priceGrowthPerLevel)
+      : item.price;
+    if (scaledPrice > gold) continue;
+
+    let itemLevel: number;
+    if (category === "weapon") {
+      const wpn = getWeapon(item.itemId);
+      itemLevel = wpn.level;
+      // Class restriction check
+      if (classDef && !canEquipWeapon(classDef, wpn)) continue;
+      // 2H weapon can't be bought if unit has a shield
+      if (wpn.hands === 2 && member.equipment.offHand) continue;
+    } else if (category === "shield") {
+      const shd = getShield(item.itemId);
+      if (!shd) continue;
+      itemLevel = shd.level;
+      if (classDef && !canEquipShield(classDef, shd)) continue;
+      // Can't buy shield if current weapon is 2H
+      if (member.equipment.mainHand) {
+        const wpn = getWeapon(member.equipment.mainHand);
+        if (wpn.hands === 2) continue;
       }
+    } else {
+      const arm = getArmorDef(item.itemId);
+      if (!arm) continue;
+      itemLevel = arm.level;
+      if (classDef && !canEquipArmor(classDef, arm)) continue;
+    }
+
+    if (itemLevel > bestLevel) {
+      best = item;
+      bestLevel = itemLevel;
     }
   }
-  return best?.itemId ?? null;
+
+  const bestPrice = best
+    ? ((partyLevel && params)
+      ? getScaledItemPrice(best.itemId, partyLevel, params.priceGrowthPerLevel)
+      : best.price)
+    : 0;
+  return best ? { itemId: best.itemId, price: bestPrice } : null;
 }
 
 /** Greedy skill tree unlocking: spend CP on cheapest available node, prefer actives. */
@@ -128,6 +178,35 @@ function pickByDifficulty(
   return contracts[0]!;
 }
 
+/** Standard equipment buy loop: weapon → body → head → shield (for 1H users). */
+function buyAllSlots(
+  roster: RosterMember[],
+  gold: number,
+  order: ("weapon" | "body_armor" | "head_armor" | "shield")[],
+  partyLevel?: number,
+  params?: BalanceParams,
+): PurchaseDecision[] {
+  const decisions: PurchaseDecision[] = [];
+  let remaining = gold;
+
+  for (const category of order) {
+    for (let i = 0; i < roster.length; i++) {
+      const m = roster[i]!;
+      const upgrade = bestAffordableUpgrade(m, category, remaining, partyLevel, params);
+      if (upgrade) {
+        const slot: PurchaseDecision["slot"] =
+          category === "weapon" ? "mainHand" :
+          category === "shield" ? "offHand" :
+          category === "body_armor" ? "bodyArmor" : "headArmor";
+        decisions.push({ rosterIndex: i, itemId: upgrade.itemId, slot });
+        remaining -= upgrade.price;
+      }
+    }
+  }
+
+  return decisions;
+}
+
 // ── Strategies ──
 
 export const balanced: PlayerStrategy = {
@@ -136,41 +215,16 @@ export const balanced: PlayerStrategy = {
 
   pickContract(contracts, roster) {
     const partyLevel = getPartyLevel(roster);
-    // Pick hard if strong (avg level > easy enemy level + 2), otherwise normal
     const strong = partyLevel >= 4;
     return pickByDifficulty(contracts, strong ? ["hard", "normal", "easy"] : ["normal", "easy"]);
   },
 
   shouldHire(recruit, roster, gold) {
-    return roster.length < this.maxRoster && gold >= recruit.cost + 100; // keep 100 reserve
+    return roster.length < this.maxRoster && gold >= recruit.cost + 100;
   },
 
-  buyEquipment(roster, gold) {
-    const decisions: PurchaseDecision[] = [];
-    let remaining = gold;
-
-    for (let i = 0; i < roster.length; i++) {
-      const m = roster[i]!;
-      // Weapon upgrade
-      const weapon = bestAffordableUpgrade(m.equipment.mainHand, WEAPON_TIERS, remaining, "weapon");
-      if (weapon) {
-        decisions.push({ rosterIndex: i, itemId: weapon, slot: "mainHand" });
-        remaining -= getItemPrice(weapon);
-      }
-      // Body armor
-      const body = bestAffordableUpgrade(m.armor.body?.id, BODY_ARMOR_TIERS, remaining, "body_armor");
-      if (body) {
-        decisions.push({ rosterIndex: i, itemId: body, slot: "bodyArmor" });
-        remaining -= getItemPrice(body);
-      }
-      // Head armor
-      const head = bestAffordableUpgrade(m.armor.head?.id, HEAD_ARMOR_TIERS, remaining, "head_armor");
-      if (head) {
-        decisions.push({ rosterIndex: i, itemId: head, slot: "headArmor" });
-        remaining -= getItemPrice(head);
-      }
-    }
-    return decisions;
+  buyEquipment(roster, gold, partyLevel, params) {
+    return buyAllSlots(roster, gold, ["weapon", "body_armor", "head_armor", "shield"], partyLevel, params);
   },
 
   unlockNodes: greedyUnlockNodes,
@@ -181,7 +235,6 @@ export const aggressive: PlayerStrategy = {
   maxRoster: 6,
 
   pickContract(contracts) {
-    // Always pick hardest available
     return pickByDifficulty(contracts, ["deadly", "hard", "normal", "easy"]);
   },
 
@@ -189,29 +242,9 @@ export const aggressive: PlayerStrategy = {
     return roster.length < this.maxRoster && gold >= recruit.cost + 50;
   },
 
-  buyEquipment(roster, gold) {
-    const decisions: PurchaseDecision[] = [];
-    let remaining = gold;
-
-    // Weapons first, armor second
-    for (let i = 0; i < roster.length; i++) {
-      const m = roster[i]!;
-      const weapon = bestAffordableUpgrade(m.equipment.mainHand, WEAPON_TIERS, remaining, "weapon");
-      if (weapon) {
-        decisions.push({ rosterIndex: i, itemId: weapon, slot: "mainHand" });
-        remaining -= getItemPrice(weapon);
-      }
-    }
-    // Then armor with what's left
-    for (let i = 0; i < roster.length; i++) {
-      const m = roster[i]!;
-      const body = bestAffordableUpgrade(m.armor.body?.id, BODY_ARMOR_TIERS, remaining, "body_armor");
-      if (body) {
-        decisions.push({ rosterIndex: i, itemId: body, slot: "bodyArmor" });
-        remaining -= getItemPrice(body);
-      }
-    }
-    return decisions;
+  buyEquipment(roster, gold, partyLevel, params) {
+    // Weapons first, then armor
+    return buyAllSlots(roster, gold, ["weapon", "body_armor"], partyLevel, params);
   },
 
   unlockNodes: greedyUnlockNodes,
@@ -226,36 +259,12 @@ export const conservative: PlayerStrategy = {
   },
 
   shouldHire(recruit, roster, gold) {
-    return roster.length < this.maxRoster && gold >= recruit.cost + 200; // big reserve
+    return roster.length < this.maxRoster && gold >= recruit.cost + 200;
   },
 
-  buyEquipment(roster, gold) {
-    const decisions: PurchaseDecision[] = [];
-    let remaining = gold;
-
-    // Armor first (defensive), then weapons
-    for (let i = 0; i < roster.length; i++) {
-      const m = roster[i]!;
-      const body = bestAffordableUpgrade(m.armor.body?.id, BODY_ARMOR_TIERS, remaining, "body_armor");
-      if (body) {
-        decisions.push({ rosterIndex: i, itemId: body, slot: "bodyArmor" });
-        remaining -= getItemPrice(body);
-      }
-      const head = bestAffordableUpgrade(m.armor.head?.id, HEAD_ARMOR_TIERS, remaining, "head_armor");
-      if (head) {
-        decisions.push({ rosterIndex: i, itemId: head, slot: "headArmor" });
-        remaining -= getItemPrice(head);
-      }
-    }
-    for (let i = 0; i < roster.length; i++) {
-      const m = roster[i]!;
-      const weapon = bestAffordableUpgrade(m.equipment.mainHand, WEAPON_TIERS, remaining, "weapon");
-      if (weapon) {
-        decisions.push({ rosterIndex: i, itemId: weapon, slot: "mainHand" });
-        remaining -= getItemPrice(weapon);
-      }
-    }
-    return decisions;
+  buyEquipment(roster, gold, partyLevel, params) {
+    // Armor first (defensive), then weapons, then shields
+    return buyAllSlots(roster, gold, ["body_armor", "head_armor", "shield", "weapon"], partyLevel, params);
   },
 
   unlockNodes: greedyUnlockNodes,
@@ -271,34 +280,12 @@ export const eliteSquad: PlayerStrategy = {
   },
 
   shouldHire(_recruit, roster, _gold) {
-    // Only hire to fill minimum roster
     return roster.length < 4;
   },
 
-  buyEquipment(roster, gold) {
-    const decisions: PurchaseDecision[] = [];
-    let remaining = gold;
-
+  buyEquipment(roster, gold, partyLevel, params) {
     // Max out every slot for each unit
-    for (let i = 0; i < roster.length; i++) {
-      const m = roster[i]!;
-      const weapon = bestAffordableUpgrade(m.equipment.mainHand, WEAPON_TIERS, remaining, "weapon");
-      if (weapon) {
-        decisions.push({ rosterIndex: i, itemId: weapon, slot: "mainHand" });
-        remaining -= getItemPrice(weapon);
-      }
-      const body = bestAffordableUpgrade(m.armor.body?.id, BODY_ARMOR_TIERS, remaining, "body_armor");
-      if (body) {
-        decisions.push({ rosterIndex: i, itemId: body, slot: "bodyArmor" });
-        remaining -= getItemPrice(body);
-      }
-      const head = bestAffordableUpgrade(m.armor.head?.id, HEAD_ARMOR_TIERS, remaining, "head_armor");
-      if (head) {
-        decisions.push({ rosterIndex: i, itemId: head, slot: "headArmor" });
-        remaining -= getItemPrice(head);
-      }
-    }
-    return decisions;
+    return buyAllSlots(roster, gold, ["weapon", "body_armor", "head_armor", "shield"], partyLevel, params);
   },
 
   unlockNodes: greedyUnlockNodes,
@@ -313,31 +300,38 @@ export const zergRush: PlayerStrategy = {
   },
 
   shouldHire(recruit, roster, gold) {
-    // Hire aggressively, keep minimal reserve
     return roster.length < this.maxRoster && gold >= recruit.cost + 20;
   },
 
-  buyEquipment(roster, gold) {
-    // Minimal spending — only buy cheapest upgrades
+  buyEquipment(roster, gold, partyLevel, params) {
+    // Minimal spending — only buy cheapest weapon + body armor for unequipped units
     const decisions: PurchaseDecision[] = [];
     let remaining = gold;
 
+    // Find cheapest weapon and body armor from store (use scaled prices)
+    const inventory = getStoreInventory();
+    const getPrice = (itemId: string) => (partyLevel && params)
+      ? getScaledItemPrice(itemId, partyLevel, params.priceGrowthPerLevel)
+      : getItemPrice(itemId);
+
+    const cheapestWeapon = inventory
+      .filter(i => i.category === "weapon")
+      .sort((a, b) => getPrice(a.itemId) - getPrice(b.itemId))[0];
+    const cheapestBody = inventory
+      .filter(i => i.category === "body_armor")
+      .sort((a, b) => getPrice(a.itemId) - getPrice(b.itemId))[0];
+
     for (let i = 0; i < roster.length; i++) {
       const m = roster[i]!;
-      // Only upgrade from nothing to cheapest tier
-      if (!m.equipment.mainHand || getTier(m.equipment.mainHand) === 0) {
-        const price = getItemPrice("short_sword");
-        if (price <= remaining) {
-          decisions.push({ rosterIndex: i, itemId: "short_sword", slot: "mainHand" });
-          remaining -= price;
-        }
+      const wpnPrice = cheapestWeapon ? getPrice(cheapestWeapon.itemId) : Infinity;
+      if (!m.equipment.mainHand && cheapestWeapon && wpnPrice <= remaining) {
+        decisions.push({ rosterIndex: i, itemId: cheapestWeapon.itemId, slot: "mainHand" });
+        remaining -= wpnPrice;
       }
-      if (!m.armor.body) {
-        const price = getItemPrice("linen_tunic");
-        if (price <= remaining) {
-          decisions.push({ rosterIndex: i, itemId: "linen_tunic", slot: "bodyArmor" });
-          remaining -= price;
-        }
+      const bodyPrice = cheapestBody ? getPrice(cheapestBody.itemId) : Infinity;
+      if (!m.armor.body && cheapestBody && bodyPrice <= remaining) {
+        decisions.push({ rosterIndex: i, itemId: cheapestBody.itemId, slot: "bodyArmor" });
+        remaining -= bodyPrice;
       }
     }
     return decisions;

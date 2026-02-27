@@ -16,6 +16,8 @@ export interface StatsComponent extends Component {
   movementPoints: number;
   level: number;
   experience: number;
+  bonusDamage: number;
+  bonusArmor: number;
 }
 
 export function createStats(params: {
@@ -33,6 +35,8 @@ export function createStats(params: {
   movementPoints?: number;
   level?: number;
   experience?: number;
+  bonusDamage?: number;
+  bonusArmor?: number;
 }): StatsComponent {
   return {
     type: "stats",
@@ -50,5 +54,7 @@ export function createStats(params: {
     movementPoints: params.movementPoints ?? 8,
     level: params.level ?? 1,
     experience: params.experience ?? 0,
+    bonusDamage: params.bonusDamage ?? 0,
+    bonusArmor: params.bonusArmor ?? 0,
   };
 }

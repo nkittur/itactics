@@ -54,6 +54,7 @@ import { calculateBattleCP, type CPAward } from "@combat/CPCalculator";
 import { BattleEndScreen } from "@ui/BattleEndScreen";
 import { LevelUpModal, type LevelUpResult } from "@ui/LevelUpModal";
 import { calculateGoldReward } from "@data/StoreData";
+import { DEFAULT_PARAMS } from "../simulation/CampaignSimulator";
 import { saveGame, loadGame, deleteSave, type SaveData, type BattleState } from "@save/SaveManager";
 import { entitiesToRoster } from "@save/RosterUtils";
 import type { CharacterClassComponent } from "@entities/components/CharacterClass";
@@ -144,7 +145,7 @@ function spawnUnit(
   r: number,
   team: "player" | "enemy",
   name: string,
-  stats: { melee: number; defense: number; hp: number; initiative: number; mp?: number },
+  stats: { melee: number; defense: number; hp: number; initiative: number; mp?: number; level?: number },
   equip?: UnitEquipment,
   aiType?: AIType,
   sprite?: SpriteCharType,
@@ -164,6 +165,9 @@ function spawnUnit(
     facing: 0,
   });
 
+  const unitLevel = stats.level ?? 1;
+  const bonusDamage = Math.floor((unitLevel - 1) * DEFAULT_PARAMS.bonusDamagePerLevel);
+  const bonusArmor = Math.floor((unitLevel - 1) * DEFAULT_PARAMS.bonusArmorPerLevel);
   world.addComponent(id, {
     type: "stats",
     hitpoints: stats.hp,
@@ -175,9 +179,13 @@ function spawnUnit(
     rangedSkill: 30,
     dodge: stats.defense,
     magicResist: 0,
+    critChance: 5,
+    critMultiplier: 1.5,
     movementPoints: stats.mp ?? (classId ? getClassDef(classId).baseMP : 8),
-    level: 1,
+    level: unitLevel,
     experience: 0,
+    bonusDamage,
+    bonusArmor,
   });
 
   world.addComponent(id, {
@@ -1039,6 +1047,13 @@ export class DemoBattle {
       dodge: stats.dodge,
       resolve: stats.resolve,
       initiative: stats.initiative,
+      // Level and bonus fields
+      level: stats.level,
+      bodyArmorValue: armor?.body?.armor,
+      headArmorValue: armor?.head?.armor,
+      shieldArmorValue: shield?.armor,
+      bonusDamage: stats.bonusDamage,
+      bonusArmor: stats.bonusArmor,
       // Interactive fields — only for the active player unit
       isActivePlayerUnit: isPlayer && entityId === this.combat.selectedUnit,
       entityId: isPlayer ? entityId : undefined,
@@ -1137,6 +1152,12 @@ export class DemoBattle {
       dodge: stats.dodge,
       resolve: stats.resolve,
       initiative: stats.initiative,
+      level: stats.level,
+      bodyArmorValue: armor?.body?.armor,
+      headArmorValue: armor?.head?.armor,
+      shieldArmorValue: shield?.armor,
+      bonusDamage: stats.bonusDamage,
+      bonusArmor: stats.bonusArmor,
       isActivePlayerUnit: isPlayer && entityId === this.combat.selectedUnit,
       entityId: isPlayer ? entityId : undefined,
       currentAP: isPlayer ? this.combat.apRemaining : undefined,
@@ -1290,6 +1311,8 @@ export class DemoBattle {
     const team = this.world.getComponent<TeamComponent>(entityId, "team");
     const stamina = this.world.getComponent<StaminaComponent>(entityId, "stamina");
     const equip = this.world.getComponent<EquipmentComponent>(entityId, "equipment");
+    const stats = this.world.getComponent<StatsComponent>(entityId, "stats");
+    const armor = this.world.getComponent<ArmorComponent>(entityId, "armor");
     if (!health || !team) return;
 
     const weapon = equip?.mainHand ? resolveWeapon(equip.mainHand) : UNARMED;
@@ -1306,6 +1329,14 @@ export class DemoBattle {
     const cc = this.world.getComponent<CharacterClassComponent>(entityId, "characterClass");
     const displayName = cc ? `${team.name} (${getClassDef(cc.classId).name})` : team.name;
 
+    // Compute weapon damage range and armor totals for display
+    const bDmg = stats?.bonusDamage ?? 0;
+    const bArm = stats?.bonusArmor ?? 0;
+    const weaponDamage = `${weapon.minDamage}-${weapon.maxDamage}`;
+    const totalArmor = (armor?.body?.armor ?? 0) + (armor?.head?.armor ?? 0);
+    const shield = equip?.offHand ? resolveShield(equip.offHand) : undefined;
+    const totalArmorWithShield = totalArmor + (shield?.armor ?? 0);
+
     this.unitInfoPanel.show(
       displayName,
       health.current,
@@ -1317,6 +1348,10 @@ export class DemoBattle {
       weapon.name,
       moraleState ?? undefined,
       statusEffects.length > 0 ? statusEffects : undefined,
+      weaponDamage,
+      totalArmorWithShield,
+      bDmg,
+      bArm,
     );
   }
 

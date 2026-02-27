@@ -4,6 +4,10 @@ import type { SpriteCharType } from "@rendering/SpriteAnimator";
 import type { ScenarioDef, ScenarioTile, ScenarioUnit } from "./ScenarioData";
 import type { ContractDef } from "./ContractData";
 import type { RosterMember } from "@save/SaveManager";
+import type { BalanceParams } from "../simulation/CampaignSimulator";
+import { getAllWeapons, getWeapon } from "./WeaponData";
+import { getAllArmors } from "./ArmorData";
+import { getAllShields } from "./ShieldData";
 
 const ENEMY_NAMES = [
   "Brigand", "Raider", "Thug", "Marauder", "Sellsword",
@@ -14,35 +18,46 @@ const ENEMY_SPRITES: SpriteCharType[] = [
   "skeleton", "armored-skeleton", "orc", "armored-orc", "elite-orc",
 ];
 
-/** Weapons by tier for enemy scaling. */
-const TIER_WEAPONS: Record<number, string[]> = {
-  1: ["dagger", "short_sword"],
-  2: ["short_sword", "spear"],
-  3: ["arming_sword", "hand_axe"],
-  4: ["arming_sword", "hand_axe", "winged_mace"],
-  5: ["longsword", "pike"],
-};
-
+/** Data-driven: pick a random weapon whose level <= enemyLevel. */
 function getWeaponForLevel(level: number, rng: () => number): string {
-  const tier = Math.min(5, Math.max(1, level));
-  const weapons = TIER_WEAPONS[tier] ?? TIER_WEAPONS[1]!;
-  return weapons[Math.floor(rng() * weapons.length)]!;
+  const eligible: string[] = [];
+  for (const [id, w] of getAllWeapons()) {
+    if (w.level <= level) eligible.push(id);
+  }
+  if (eligible.length === 0) return "dagger";
+  return eligible[Math.floor(rng() * eligible.length)]!;
 }
 
+/** Data-driven: pick body + head armor whose level <= enemyLevel. */
 function getArmorForLevel(level: number, rng: () => number): { body?: string; head?: string } {
-  if (level <= 1) return {};
-  if (level <= 2) return { body: "linen_tunic", head: rng() < 0.5 ? "hood" : undefined };
-  if (level <= 3) return { body: "leather_jerkin", head: "leather_cap" };
-  if (level <= 4) return { body: "mail_hauberk", head: "mail_coif" };
-  return { body: "mail_hauberk", head: "nasal_helm" };
+  const bodies: string[] = [];
+  const heads: string[] = [];
+  for (const [id, a] of getAllArmors()) {
+    if (a.level <= level) {
+      if (a.slot === "body") bodies.push(id);
+      else heads.push(id);
+    }
+  }
+
+  // Level 1 enemies have a chance to have no armor
+  if (level <= 1 && rng() < 0.4) return {};
+
+  const body = bodies.length > 0 ? bodies[Math.floor(rng() * bodies.length)] : undefined;
+  const head = heads.length > 0 && rng() < 0.7
+    ? heads[Math.floor(rng() * heads.length)]
+    : undefined;
+  return { body, head };
 }
 
+/** Data-driven: pick a shield whose level <= enemyLevel. */
 function getShieldForLevel(level: number, rng: () => number): string | undefined {
-  // 2H weapons don't get shields; otherwise 60% chance
   if (rng() > 0.6) return undefined;
-  if (level <= 2) return "buckler";
-  if (level <= 4) return "wooden_shield";
-  return "heater_shield";
+  const eligible: string[] = [];
+  for (const [id, s] of getAllShields()) {
+    if (s.level <= level) eligible.push(id);
+  }
+  if (eligible.length === 0) return undefined;
+  return eligible[Math.floor(rng() * eligible.length)]!;
 }
 
 function pick<T>(arr: readonly T[], rng: () => number): T {
@@ -95,6 +110,11 @@ function rosterToUnits(roster: RosterMember[]): ScenarioUnit[] {
         hp: m.stats.hitpoints,
         initiative: m.stats.initiative,
         mp: m.stats.movementPoints,
+        mana: m.stats.mana,
+        magicResist: m.stats.magicResist,
+        stamina: m.stats.stamina,
+        rangedSkill: m.stats.rangedSkill,
+        level: m.level,
       },
       weapon: m.equipment.mainHand ?? undefined,
       shield: m.equipment.offHand ?? undefined,
@@ -112,13 +132,28 @@ function rosterToUnits(roster: RosterMember[]): ScenarioUnit[] {
 }
 
 /** Generate enemy units for the battle. */
-function generateEnemies(contract: ContractDef, startR: number, rng: () => number): ScenarioUnit[] {
+function generateEnemies(
+  contract: ContractDef,
+  startR: number,
+  rng: () => number,
+  params?: BalanceParams,
+): ScenarioUnit[] {
   const enemies: ScenarioUnit[] = [];
   const rightCol = contract.mapWidth - 2;
 
+  const meleeBase = params?.enemyMeleeBase ?? 38;
+  const meleePerLevel = params?.enemyMeleePerLevel ?? 3;
+  const defensePerLevel = params?.enemyDefensePerLevel ?? 2;
+  const hpBase = params?.enemyHpBase ?? 8;
+  const hpPerLevel = params?.enemyHpPerLevel ?? 2;
+  const magicResistBase = params?.enemyMagicResistBase ?? 0;
+  const magicResistPerLevel = params?.enemyMagicResistPerLevel ?? 0;
+  const manaBase = params?.enemyManaBase ?? 20;
+
   for (let i = 0; i < contract.enemyCount; i++) {
     const weapon = getWeaponForLevel(contract.enemyLevel, rng);
-    const is2H = weapon === "longsword" || weapon === "pike";
+    const weaponDef = getWeapon(weapon);
+    const is2H = weaponDef.hands === 2;
     const shield = is2H ? undefined : getShieldForLevel(contract.enemyLevel, rng);
     const armor = getArmorForLevel(contract.enemyLevel, rng);
     const aiType: AIType = contract.enemyLevel >= 3 && rng() < 0.3 ? "defensive" : "aggressive";
@@ -129,10 +164,13 @@ function generateEnemies(contract: ContractDef, startR: number, rng: () => numbe
       team: "enemy",
       name: pick(ENEMY_NAMES, rng),
       stats: {
-        melee: 38 + contract.enemyLevel * 3,
-        defense: contract.enemyLevel * 2,
-        hp: 8 + contract.enemyLevel * 2,
+        melee: meleeBase + contract.enemyLevel * meleePerLevel,
+        defense: contract.enemyLevel * defensePerLevel,
+        hp: hpBase + contract.enemyLevel * hpPerLevel,
         initiative: 80 + Math.floor(rng() * 30),
+        magicResist: magicResistBase + contract.enemyLevel * magicResistPerLevel,
+        mana: manaBase,
+        level: contract.enemyLevel,
       },
       weapon,
       shield,
@@ -149,7 +187,12 @@ function generateEnemies(contract: ContractDef, startR: number, rng: () => numbe
 /**
  * Generate a full ScenarioDef from a contract and the player's roster.
  */
-export function generateBattle(contract: ContractDef, roster: RosterMember[], rng: () => number): ScenarioDef {
+export function generateBattle(
+  contract: ContractDef,
+  roster: RosterMember[],
+  rng: () => number,
+  params?: BalanceParams,
+): ScenarioDef {
   const tiles = generateTerrain(contract.mapWidth, contract.mapHeight, rng);
 
   const playerUnits = rosterToUnits(roster);
@@ -159,7 +202,7 @@ export function generateBattle(contract: ContractDef, roster: RosterMember[], rn
   }
 
   const enemyStartR = Math.max(0, Math.floor((contract.mapHeight - contract.enemyCount) / 2));
-  const enemyUnits = generateEnemies(contract, enemyStartR, rng);
+  const enemyUnits = generateEnemies(contract, enemyStartR, rng, params);
 
   return {
     id: contract.id,

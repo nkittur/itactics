@@ -5,6 +5,7 @@ export class UnitInfoPanel {
   private staminaText: HTMLSpanElement;
   private apText: HTMLSpanElement;
   private mpText: HTMLSpanElement;
+  private combatText: HTMLDivElement;
   private statusText: HTMLDivElement;
 
   constructor(root: HTMLDivElement) {
@@ -49,6 +50,11 @@ export class UnitInfoPanel {
     this.mpText.className = "uip-mp";
     right.appendChild(this.mpText);
 
+    // Combat stats line (weapon damage + armor)
+    this.combatText = document.createElement("div");
+    this.combatText.className = "uip-combat";
+    this.container.appendChild(this.combatText);
+
     // Status effects (morale + effects on one line)
     this.statusText = document.createElement("div");
     this.statusText.className = "uip-status";
@@ -66,6 +72,10 @@ export class UnitInfoPanel {
     _weaponName?: string,
     moraleState?: string,
     statusEffects?: string[],
+    weaponDamage?: string,
+    totalArmor?: number,
+    bonusDamage?: number,
+    bonusArmor?: number,
   ): void {
     this.container.style.display = "block";
     this.nameText.textContent = name;
@@ -99,6 +109,25 @@ export class UnitInfoPanel {
       this.mpText.style.display = "block";
     } else {
       this.mpText.style.display = "none";
+    }
+
+    // Combat stats: weapon damage + armor
+    if (weaponDamage != null || totalArmor != null) {
+      const parts: string[] = [];
+      if (weaponDamage != null) {
+        let dmgStr = `Dmg ${weaponDamage}`;
+        if (bonusDamage && bonusDamage > 0) dmgStr += `+${bonusDamage}`;
+        parts.push(dmgStr);
+      }
+      if (totalArmor != null) {
+        let armStr = `Arm ${totalArmor}`;
+        if (bonusArmor && bonusArmor > 0) armStr += `+${bonusArmor}`;
+        parts.push(armStr);
+      }
+      this.combatText.textContent = parts.join(" | ");
+      this.combatText.style.display = "block";
+    } else {
+      this.combatText.style.display = "none";
     }
 
     // Status line: morale + effects

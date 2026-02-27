@@ -14,7 +14,8 @@ import { canLevelUp } from "@data/LevelData";
 import { rollStatIncrease, ALL_STAT_KEYS } from "@data/TalentData";
 import { calculateBattleCP } from "@combat/CPCalculator";
 import { getArmorDef } from "@data/ArmorData";
-import { getItemPrice } from "@data/StoreData";
+import { getItemPrice, getScaledItemPrice } from "@data/StoreData";
+import { getWeapon } from "@data/WeaponData";
 import type { RosterMember } from "@save/SaveManager";
 import { setAbilityRegistry } from "@data/AbilityResolver";
 
@@ -46,6 +47,20 @@ export interface BalanceParams {
   cpPerAction: number;
   cpPerKill: number;
   cpVictoryBonus: number;
+
+  // Enemy magic/mana scaling
+  enemyMagicResistBase: number;
+  enemyMagicResistPerLevel: number;
+  enemyManaBase: number;
+
+  // Level-based combat bonuses
+  bonusDamagePerLevel: number;
+  bonusArmorPerLevel: number;
+
+  // Economy scaling
+  priceGrowthPerLevel: number;
+  healCostPerHp: number;
+  recruitCostGrowthPerLevel: number;
 }
 
 export const DEFAULT_PARAMS: BalanceParams = {
@@ -70,6 +85,17 @@ export const DEFAULT_PARAMS: BalanceParams = {
   cpPerAction: 10,
   cpPerKill: 20,
   cpVictoryBonus: 30,
+
+  enemyMagicResistBase: 0,
+  enemyMagicResistPerLevel: 0,
+  enemyManaBase: 20,
+
+  bonusDamagePerLevel: 1.0,
+  bonusArmorPerLevel: 0.5,
+
+  priceGrowthPerLevel: 0.15,
+  healCostPerHp: 2,
+  recruitCostGrowthPerLevel: 10,
 };
 
 // ── Campaign types ──
@@ -99,6 +125,9 @@ export interface BattleSummary {
   cpPerSurvivor: number;
   deaths: number;
   turnsElapsed: number;
+  avgPartyArmor: number;
+  avgPartyDodge: number;
+  goldSpentOnHealing: number;
 }
 
 export interface CampaignResult {
@@ -312,7 +341,7 @@ export function runCampaign(config: CampaignConfig, paramsName: string = "defaul
     // 3. Hire phase
     const recruits = generateRecruits(partyLevel, rng);
     for (const recruit of recruits) {
-      const adjustedCost = params.recruitCostBase + recruit.level * params.recruitCostPerLevel;
+      const adjustedCost = params.recruitCostBase + recruit.level * params.recruitCostPerLevel + partyLevel * params.recruitCostGrowthPerLevel;
       const recruitWithCost = { ...recruit, cost: adjustedCost };
       if (strategy.shouldHire(recruitWithCost, roster, gold)) {
         gold -= adjustedCost;
@@ -321,8 +350,8 @@ export function runCampaign(config: CampaignConfig, paramsName: string = "defaul
     }
 
     // 4. Buy equipment
-    const purchases = strategy.buyEquipment(roster, gold);
-    gold = applyPurchases(roster, purchases, gold);
+    const purchases = strategy.buyEquipment(roster, gold, partyLevel, params);
+    gold = applyPurchases(roster, purchases, gold, partyLevel, params);
 
     // 5. Unlock skill tree nodes
     for (const member of roster) {
@@ -331,7 +360,7 @@ export function runCampaign(config: CampaignConfig, paramsName: string = "defaul
     }
 
     // 6. Build scenario and run battle
-    const scenario = generateBattle(contract, roster, rng);
+    const scenario = generateBattle(contract, roster, rng, params);
 
     // Build ability map for player units
     const abilityMap = new Map<number, string[]>();
@@ -343,7 +372,7 @@ export function runCampaign(config: CampaignConfig, paramsName: string = "defaul
     }
 
     const battleSeed = Math.floor(rng() * 2147483647);
-    const battleResult = runHeadlessBattle(scenario, abilityMap, battleSeed);
+    const battleResult = runHeadlessBattle(scenario, abilityMap, battleSeed, params);
 
     // 7. Process results
     const survivorCount = battleResult.playerSurvivors.length;
@@ -407,10 +436,28 @@ export function runCampaign(config: CampaignConfig, paramsName: string = "defaul
       roster = roster.filter(m => survivorNames.has(m.name));
     }
 
-    // Heal all units (revived or surviving)
+    // Heal all units (revived or surviving) — costs gold
+    let goldSpentOnHealing = 0;
     for (const member of roster) {
+      const hpToHeal = member.maxHp - member.stats.hitpoints;
+      if (hpToHeal > 0) {
+        const healCost = hpToHeal * params.healCostPerHp;
+        const actualCost = Math.min(healCost, gold);
+        goldSpentOnHealing += actualCost;
+        gold -= actualCost;
+      }
       member.stats.hitpoints = member.maxHp;
     }
+
+    // Compute party armor/dodge averages for this battle
+    let totalArmor = 0;
+    let totalDodge = 0;
+    for (const m of roster) {
+      totalArmor += (m.armor.body?.armor ?? 0) + (m.armor.head?.armor ?? 0);
+      totalDodge += m.stats.dodge;
+    }
+    const avgPartyArmor = roster.length > 0 ? totalArmor / roster.length : 0;
+    const avgPartyDodge = roster.length > 0 ? totalDodge / roster.length : 0;
 
     battles.push({
       battleNumber: battleNum,
@@ -426,6 +473,9 @@ export function runCampaign(config: CampaignConfig, paramsName: string = "defaul
       cpPerSurvivor,
       deaths: deadCount,
       turnsElapsed: battleResult.turnsElapsed,
+      avgPartyArmor,
+      avgPartyDodge,
+      goldSpentOnHealing,
     });
   }
 
@@ -445,11 +495,15 @@ function applyPurchases(
   roster: RosterMember[],
   decisions: PurchaseDecision[],
   gold: number,
+  partyLevel?: number,
+  params?: BalanceParams,
 ): number {
   let remaining = gold;
 
   for (const d of decisions) {
-    const price = getItemPrice(d.itemId);
+    const price = (partyLevel && params)
+      ? getScaledItemPrice(d.itemId, partyLevel, params.priceGrowthPerLevel)
+      : getItemPrice(d.itemId);
     if (price > remaining) continue;
 
     const member = roster[d.rosterIndex];
@@ -458,9 +512,15 @@ function applyPurchases(
     remaining -= price;
 
     switch (d.slot) {
-      case "mainHand":
+      case "mainHand": {
         member.equipment.mainHand = d.itemId;
+        // 2H weapons clear offHand
+        const wpn = getWeapon(d.itemId);
+        if (wpn.hands === 2) {
+          member.equipment.offHand = null;
+        }
         break;
+      }
       case "offHand":
         member.equipment.offHand = d.itemId;
         break;
