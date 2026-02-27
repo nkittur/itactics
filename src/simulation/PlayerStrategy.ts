@@ -234,8 +234,12 @@ export const aggressive: PlayerStrategy = {
   name: "aggressive",
   maxRoster: 6,
 
-  pickContract(contracts) {
-    return pickByDifficulty(contracts, ["deadly", "hard", "normal", "easy"]);
+  pickContract(contracts, roster) {
+    const partyLevel = getPartyLevel(roster);
+    // Don't pick deadly until strong enough
+    if (partyLevel >= 5) return pickByDifficulty(contracts, ["deadly", "hard", "normal", "easy"]);
+    if (partyLevel >= 3) return pickByDifficulty(contracts, ["hard", "normal", "easy"]);
+    return pickByDifficulty(contracts, ["normal", "hard", "easy"]);
   },
 
   shouldHire(recruit, roster, gold) {
@@ -243,8 +247,8 @@ export const aggressive: PlayerStrategy = {
   },
 
   buyEquipment(roster, gold, partyLevel, params) {
-    // Weapons first, then armor
-    return buyAllSlots(roster, gold, ["weapon", "body_armor"], partyLevel, params);
+    // Weapons first, then armor (including head)
+    return buyAllSlots(roster, gold, ["weapon", "body_armor", "head_armor"], partyLevel, params);
   },
 
   unlockNodes: greedyUnlockNodes,
@@ -293,7 +297,7 @@ export const eliteSquad: PlayerStrategy = {
 
 export const zergRush: PlayerStrategy = {
   name: "zergRush",
-  maxRoster: 14,
+  maxRoster: 10,
 
   pickContract(contracts) {
     return pickByDifficulty(contracts, ["normal", "hard", "easy"]);

@@ -73,15 +73,15 @@ export const DEFAULT_PARAMS: BalanceParams = {
   enemyCountOffset: { easy: 0, normal: 1, hard: 2, deadly: 3 },
   enemyLevelOffset: { easy: -1, normal: 0, hard: 1, deadly: 2 },
 
-  goldPerKill: 50,
-  baseGoldPerBattle: 100,
+  goldPerKill: 55,
+  baseGoldPerBattle: 120,
   rewardMult: 1.0,
   recruitCostBase: 40,
   recruitCostPerLevel: 25,
 
-  xpPerKill: 50,
+  xpPerKill: 60,
   xpSurvivalBonus: 30,
-  xpVictoryBonus: 100,
+  xpVictoryBonus: 120,
   cpPerAction: 10,
   cpPerKill: 20,
   cpVictoryBonus: 30,
@@ -90,10 +90,10 @@ export const DEFAULT_PARAMS: BalanceParams = {
   enemyMagicResistPerLevel: 0,
   enemyManaBase: 20,
 
-  bonusDamagePerLevel: 1.0,
+  bonusDamagePerLevel: 1.5,
   bonusArmorPerLevel: 0.5,
 
-  priceGrowthPerLevel: 0.15,
+  priceGrowthPerLevel: 0.12,
   healCostPerHp: 2,
   recruitCostGrowthPerLevel: 10,
 };
@@ -434,6 +434,18 @@ export function runCampaign(config: CampaignConfig, paramsName: string = "defaul
     // Ironman: permanently remove dead units
     if (config.ironman && deadCount > 0) {
       roster = roster.filter(m => survivorNames.has(m.name));
+    }
+
+    // Sync battle damage to roster members (headless battle doesn't modify roster directly)
+    const survivorHpMap = new Map(battleResult.playerSurvivors.map(s => [s.name, s.hpRemaining]));
+    for (const member of roster) {
+      if (survivorHpMap.has(member.name)) {
+        // Survivor: set HP to what they ended the battle with
+        member.stats.hitpoints = survivorHpMap.get(member.name)!;
+      } else {
+        // Dead: needs full heal
+        member.stats.hitpoints = 0;
+      }
     }
 
     // Heal all units (revived or surviving) — costs gold

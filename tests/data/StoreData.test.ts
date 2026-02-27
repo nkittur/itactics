@@ -66,8 +66,8 @@ describe("StoreData", () => {
 
     it("includes expected number of items", () => {
       const inv = getStoreInventory();
-      // 10 weapons + 3 shields + 4 body + 4 head + 1 consumable = 22
-      expect(inv.length).toBe(22);
+      // 14 weapons + 4 shields + 8 body + 5 head + 1 consumable = 32
+      expect(inv.length).toBe(32);
     });
   });
 });
