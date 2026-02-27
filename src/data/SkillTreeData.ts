@@ -134,11 +134,22 @@ export function generateRandomTopology(rng: () => number): {
     shuffled[i]!.isActive = true;
   }
 
-  // 4. Wire edges: each non-root node connects to 1-2 parents from tier above
+  // 4. Wire edges: each non-root node connects to 1-2 nearby parents from tier above
   const nodesByTier: Record<number, TopologyNode[]> = { 1: [], 2: [], 3: [], 4: [] };
   for (const n of allNodes) nodesByTier[n.tier]!.push(n);
 
   const edges: [string, string][] = [];
+
+  // Helper: find parents within ±1 column of a child's normalized position
+  function nearbyParents(parents: TopologyNode[], childCol: number, childCount: number, parentCount: number): TopologyNode[] {
+    // Map child col to parent column space (handles different tier widths)
+    const childPos = parentCount <= 1 ? 0 : (childCol / Math.max(1, childCount - 1)) * (parentCount - 1);
+    return parents
+      .map(p => ({ p, dist: Math.abs(p.col - childPos) }))
+      .sort((a, b) => a.dist - b.dist)
+      .filter(x => x.dist <= 1.5) // within ~1 column
+      .map(x => x.p);
+  }
 
   for (const tier of [2, 3, 4] as const) {
     const parentTier = (tier - 1) as 1 | 2 | 3;
@@ -149,10 +160,13 @@ export function generateRandomTopology(rng: () => number): {
     const parentHasChild = new Set<string>();
 
     for (const child of children) {
-      // 1 or 2 parents
+      // 1 or 2 parents, preferring nearby columns
       const numParents = rng() < 0.3 ? 2 : 1;
-      const shuffledParents = shuffle(parents, rng);
-      const chosen = shuffledParents.slice(0, Math.min(numParents, parents.length));
+      let nearby = nearbyParents(parents, child.col, children.length, parents.length);
+      // Fallback: if no nearby parents, use all (shouldn't happen with normal counts)
+      if (nearby.length === 0) nearby = [...parents];
+      const shuffledNearby = shuffle(nearby, rng);
+      const chosen = shuffledNearby.slice(0, Math.min(numParents, shuffledNearby.length));
 
       for (const p of chosen) {
         child.prerequisites.push(p.nodeId);
@@ -163,12 +177,15 @@ export function generateRandomTopology(rng: () => number): {
       child.dualParent = child.prerequisites.length >= 2;
     }
 
-    // Ensure every parent in non-leaf tiers has at least 1 child
+    // Ensure every parent in non-leaf tiers has at least 1 child (prefer nearby)
     if (tier <= 4) {
       for (const parent of parents) {
         if (!parentHasChild.has(parent.nodeId)) {
-          // Connect to a random child
-          const child = pick(children, rng);
+          // Pick the closest child that doesn't already have this parent
+          const sorted = [...children]
+            .map(c => ({ c, dist: Math.abs(c.col / Math.max(1, children.length - 1) * (parents.length - 1) - parent.col) }))
+            .sort((a, b) => a.dist - b.dist);
+          const child = sorted.find(x => !x.c.prerequisites.includes(parent.nodeId))?.c ?? pick(children, rng);
           if (!child.prerequisites.includes(parent.nodeId)) {
             child.prerequisites.push(parent.nodeId);
             edges.push([parent.nodeId, child.nodeId]);
@@ -177,6 +194,25 @@ export function generateRandomTopology(rng: () => number): {
           parentHasChild.add(parent.nodeId);
         }
       }
+    }
+
+    // Barycentric reordering: sort children by average parent column to minimize crossings
+    const barycenter = new Map<string, number>();
+    for (const child of children) {
+      const parentCols = child.prerequisites
+        .map(pid => parents.find(p => p.nodeId === pid))
+        .filter(Boolean)
+        .map(p => p!.col);
+      if (parentCols.length > 0) {
+        barycenter.set(child.nodeId, parentCols.reduce((a, b) => a + b, 0) / parentCols.length);
+      } else {
+        barycenter.set(child.nodeId, child.col);
+      }
+    }
+    children.sort((a, b) => barycenter.get(a.nodeId)! - barycenter.get(b.nodeId)!);
+    // Reassign columns after sorting
+    for (let i = 0; i < children.length; i++) {
+      children[i]!.col = i;
     }
   }
 

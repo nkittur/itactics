@@ -171,10 +171,16 @@ export class ManagementScreen {
     sprite.style.width = `${size}px`;
     sprite.style.height = `${size}px`;
     sprite.style.imageRendering = "pixelated";
-    sprite.style.backgroundSize = "600% 100%";
-    sprite.style.backgroundPosition = "0 0";
+    // 3x zoom on the sprite frame to fill the container with the character art
+    const zoom = 3;
+    sprite.style.backgroundSize = `${zoom * 600}% ${zoom * 100}%`;
+    // Center on character art (approx 45% x, 40% y within each frame)
+    const frameSize = size * zoom;
+    const offsetX = Math.round(-(0.45 * frameSize - size / 2));
+    const offsetY = Math.round(-(0.40 * frameSize - size / 2));
+    sprite.style.backgroundPosition = `${offsetX}px ${offsetY}px`;
     sprite.style.borderRadius = size > 64 ? "6px" : "4px";
-    sprite.style.backgroundColor = "#141428";
+    sprite.style.backgroundColor = "transparent";
     sprite.style.backgroundImage = `url(sprites/${spriteType}/Idle.png)`;
     return sprite;
   }

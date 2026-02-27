@@ -576,6 +576,8 @@ function generatePassiveDesc(
         parts.push(`When applying debuff: refund ${eff.params["amount"]} AP`);
       } else if (eff.type === "buff_stat") {
         parts.push(`On hit: +${eff.params["amount"]} ${formatStat(eff.params["stat"] as string)} (stacks)`);
+      } else if (eff.type === "dmg_weapon" && eff.params["bonusPercent"]) {
+        parts.push(`On hit: +${eff.params["bonusPercent"]}% bonus damage vs bleeding/burning/poisoned targets`);
       }
       break;
     case "trg_turnStart":

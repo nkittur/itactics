@@ -420,6 +420,10 @@ function generatePassiveDescription(ability: GeneratedAbility): string {
         const eff = trigger.triggeredEffect;
         if (eff?.type === "res_apRefund") {
           parts.push(`When applying debuff: refund ${eff.params["amount"]} AP`);
+        } else if (eff?.type === "dmg_weapon" && eff.params["bonusPercent"]) {
+          parts.push(`On hit: +${eff.params["bonusPercent"]}% bonus damage vs DoT targets`);
+        } else if (eff?.type === "buff_stat") {
+          parts.push(`On hit: +${eff.params["amount"]} ${eff.params["stat"]} (stacks)`);
         }
         break;
       }
