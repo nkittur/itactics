@@ -9,7 +9,7 @@ import type { RecruitDef } from "@data/RecruitData";
 import { generateRecruits, getPartyLevel } from "@data/RecruitData";
 import { resolveWeapon, resolveShield, resolveArmor, resolveItemName, setItemRegistry } from "@data/ItemResolver";
 import { isGeneratedItemId } from "@data/GeneratedItemData";
-import { generateShopInventory, shopRefreshCost, qualityColor } from "@data/ItemGenerator";
+import { generateShopInventory, shopRefreshCost, qualityColor, qualityLabel } from "@data/ItemGenerator";
 import { resolveAbility, getAbilityRegistry, setAbilityRegistry } from "@data/AbilityResolver";
 import { THEMES } from "@data/ThemeData";
 import { detectUnitSynergies, detectTeamSynergies } from "@data/SynergyDetector";
@@ -705,7 +705,12 @@ export class ManagementScreen {
       const left = el("div");
       left.appendChild(el("div", "equip-slot-label", slot.label));
       if (slot.itemId) {
-        left.appendChild(el("div", "equip-slot-name", resolveItemName(slot.itemId)));
+        const nameEl = el("div", "equip-slot-name", resolveItemName(slot.itemId));
+        if (isGeneratedItemId(slot.itemId)) {
+          const gen = this.saveData.itemRegistry?.[slot.itemId];
+          if (gen) nameEl.style.color = qualityColor(gen.itemLevel);
+        }
+        left.appendChild(nameEl);
       } else {
         left.appendChild(el("div", "equip-slot-empty", "Empty"));
       }
@@ -1001,8 +1006,17 @@ export class ManagementScreen {
 
       const row = el("div", "mgmt-shop-item");
 
+      // Rarity tag
+      const rarityTag = el("span", "mgmt-rarity-tag", qualityLabel(gen.itemLevel));
+      rarityTag.style.color = qualityColor(gen.itemLevel);
+      row.appendChild(rarityTag);
+
       const nameSpan = el("span", "mgmt-item-name", gen.name);
       nameSpan.style.color = qualityColor(gen.itemLevel);
+      // Show modifier count if any
+      if (gen.modifiers.length > 0) {
+        nameSpan.textContent = `${gen.name} [+${gen.modifiers.length}]`;
+      }
       row.appendChild(nameSpan);
 
       row.appendChild(el("span", "mgmt-item-price", `${gen.buyPrice}g`));

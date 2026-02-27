@@ -29,19 +29,20 @@ function getBasePools(partyLevel: number): {
   headArmor: string[];
 } {
   if (partyLevel <= 2) {
-    return {
-      weapons: TIER_1_WEAPONS,
-      shields: TIER_1_SHIELDS,
-      bodyArmor: TIER_1_BODY,
-      headArmor: TIER_1_HEAD,
-    };
-  }
-  if (partyLevel <= 4) {
+    // Mix in some tier 2 items for variety even at low levels
     return {
       weapons: [...TIER_1_WEAPONS, ...TIER_2_WEAPONS],
       shields: [...TIER_1_SHIELDS, ...TIER_2_SHIELDS],
       bodyArmor: [...TIER_1_BODY, ...TIER_2_BODY],
       headArmor: [...TIER_1_HEAD, ...TIER_2_HEAD],
+    };
+  }
+  if (partyLevel <= 4) {
+    return {
+      weapons: [...TIER_1_WEAPONS, ...TIER_2_WEAPONS, ...TIER_3_WEAPONS],
+      shields: [...TIER_1_SHIELDS, ...TIER_2_SHIELDS, ...TIER_3_SHIELDS],
+      bodyArmor: [...TIER_1_BODY, ...TIER_2_BODY, ...TIER_3_BODY],
+      headArmor: [...TIER_1_HEAD, ...TIER_2_HEAD, ...TIER_3_HEAD],
     };
   }
   return {
@@ -56,23 +57,29 @@ function getBasePools(partyLevel: number): {
 
 function rollItemLevel(partyLevel: number, rng: () => number): number {
   const r = rng();
-  if (partyLevel <= 2) return 0;
-  if (partyLevel <= 4) {
-    if (r < 0.60) return 0;
-    if (r < 0.90) return 1;
-    return 2;
+  if (partyLevel <= 2) {
+    // Mostly base, small chance of Fine
+    if (r < 0.85) return 0;
+    return 1;
   }
-  if (partyLevel <= 6) {
-    if (r < 0.40) return 0;
-    if (r < 0.75) return 1;
-    if (r < 0.95) return 2;
+  if (partyLevel <= 4) {
+    if (r < 0.50) return 0;
+    if (r < 0.85) return 1;
+    if (r < 0.97) return 2;
     return 3;
   }
+  if (partyLevel <= 6) {
+    if (r < 0.30) return 0;
+    if (r < 0.65) return 1;
+    if (r < 0.90) return 2;
+    if (r < 0.98) return 3;
+    return 4;
+  }
   // Level 7+
-  if (r < 0.25) return 0;
-  if (r < 0.60) return 1;
-  if (r < 0.85) return 2;
-  if (r < 0.97) return 3;
+  if (r < 0.15) return 0;
+  if (r < 0.45) return 1;
+  if (r < 0.75) return 2;
+  if (r < 0.93) return 3;
   return 4;
 }
 
@@ -156,16 +163,14 @@ function rollModifiers(pool: ModifierTemplate[], count: number, rng: () => numbe
 // ── Naming ──
 
 const LEVEL_PREFIXES: Record<number, string> = {
-  0: "Crafted",
   1: "Fine",
   2: "Superior",
   3: "Masterwork",
   4: "Legendary",
 };
 
-function generateName(baseName: string, itemLevel: number, modCount: number): string {
-  if (itemLevel === 0 && modCount === 0) return baseName;
-  if (itemLevel === 0) return `Crafted ${baseName}`;
+function generateName(baseName: string, itemLevel: number, _modCount: number): string {
+  if (itemLevel === 0) return baseName;
   return `${LEVEL_PREFIXES[itemLevel] ?? "Legendary"} ${baseName}`;
 }
 
@@ -251,8 +256,8 @@ export function generateShopInventory(
   const pools = getBasePools(partyLevel);
   const uids: string[] = [];
 
-  // 2-3 weapons
-  const weaponCount = rollInt(2, 3, rng);
+  // 3-5 weapons
+  const weaponCount = rollInt(3, 5, rng);
   for (let i = 0; i < weaponCount; i++) {
     const baseId = pickRandom(pools.weapons, rng);
     const item = generateRandomItem(baseId, "weapon", partyLevel, rng);
@@ -260,8 +265,8 @@ export function generateShopInventory(
     uids.push(item.uid);
   }
 
-  // 1-2 body armor
-  const bodyCount = rollInt(1, 2, rng);
+  // 2-3 body armor
+  const bodyCount = rollInt(2, 3, rng);
   for (let i = 0; i < bodyCount; i++) {
     const baseId = pickRandom(pools.bodyArmor, rng);
     const item = generateRandomItem(baseId, "body_armor", partyLevel, rng);
@@ -269,8 +274,8 @@ export function generateShopInventory(
     uids.push(item.uid);
   }
 
-  // 0-1 head armor
-  const headCount = rollInt(0, 1, rng);
+  // 1-2 head armor
+  const headCount = rollInt(1, 2, rng);
   for (let i = 0; i < headCount; i++) {
     const baseId = pickRandom(pools.headArmor, rng);
     const item = generateRandomItem(baseId, "head_armor", partyLevel, rng);
@@ -278,8 +283,8 @@ export function generateShopInventory(
     uids.push(item.uid);
   }
 
-  // 0-1 shields
-  const shieldCount = rollInt(0, 1, rng);
+  // 1-2 shields
+  const shieldCount = rollInt(1, 2, rng);
   for (let i = 0; i < shieldCount; i++) {
     const baseId = pickRandom(pools.shields, rng);
     const item = generateRandomItem(baseId, "shield", partyLevel, rng);
@@ -287,12 +292,10 @@ export function generateShopInventory(
     uids.push(item.uid);
   }
 
-  // 0-1 consumables
-  if (rng() < 0.5) {
-    const item = generateRandomItem("health_potion", "consumable", partyLevel, rng);
-    registry[item.uid] = item;
-    uids.push(item.uid);
-  }
+  // 1 consumable always
+  const potionItem = generateRandomItem("health_potion", "consumable", partyLevel, rng);
+  registry[potionItem.uid] = potionItem;
+  uids.push(potionItem.uid);
 
   return uids;
 }
@@ -303,15 +306,26 @@ export function shopRefreshCost(partyLevel: number, refreshCount: number): numbe
   return (10 + (partyLevel - 1) * 5) + refreshCount * 5;
 }
 
-// ── Quality color ──
+// ── Quality color + label ──
 
 export function qualityColor(itemLevel: number): string {
   switch (itemLevel) {
-    case 0: return "#ffffff";
+    case 0: return "#cccccc";
     case 1: return "#44cc44";
     case 2: return "#4488ff";
     case 3: return "#aa44ff";
     case 4: return "#ffaa22";
-    default: return "#ffffff";
+    default: return "#cccccc";
+  }
+}
+
+export function qualityLabel(itemLevel: number): string {
+  switch (itemLevel) {
+    case 0: return "Common";
+    case 1: return "Fine";
+    case 2: return "Superior";
+    case 3: return "Masterwork";
+    case 4: return "Legendary";
+    default: return "Common";
   }
 }
