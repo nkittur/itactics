@@ -24,9 +24,6 @@ function createStarterUnit(
   classId: string,
   weapon: string,
   sprite: string,
-  meleeSkill: number,
-  dodge: number,
-  hp: number,
 ): RosterMember {
   const bodyArmor = getArmorDef("linen_tunic");
   const headArmor = getArmorDef("hood");
@@ -45,18 +42,18 @@ function createStarterUnit(
     level: 1,
     experience: 0,
     stats: {
-      hitpoints: hp,
+      hitpoints: base.hitpoints,
       stamina: base.stamina,
       mana: base.mana,
       resolve: base.resolve,
       initiative: base.initiative,
-      meleeSkill,
+      meleeSkill: base.meleeSkill,
       rangedSkill: base.rangedSkill,
-      dodge,
+      dodge: base.dodge,
       magicResist: base.magicResist,
       movementPoints: base.movementPoints,
     },
-    maxHp: hp,
+    maxHp: base.hitpoints,
     talentStars: generateTalentStars(simpleRng),
     perks: { unlocked: [], availablePoints: 0 },
     equipment: {
@@ -92,9 +89,9 @@ function createNewGame(): SaveData {
   return {
     version: 1,
     roster: [
-      createStarterUnit("Aldric", "fighter", "short_sword", "swordsman", 48, 4, 12),
-      createStarterUnit("Gunnar", "spearman", "spear", "knight-templar", 45, 5, 10),
-      createStarterUnit("Erik", "rogue", "dagger", "soldier", 42, 3, 9),
+      createStarterUnit("Aldric", "fighter", "short_sword", "swordsman"),
+      createStarterUnit("Gunnar", "spearman", "spear", "knight-templar"),
+      createStarterUnit("Erik", "rogue", "dagger", "soldier"),
     ],
     currentScenarioIndex: 0,
     gold: 200,
