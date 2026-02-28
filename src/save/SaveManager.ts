@@ -5,7 +5,6 @@ import type { RecruitDef } from "@data/RecruitData";
 import type { GeneratedItem } from "@data/GeneratedItemData";
 import type { GeneratedAbility } from "@data/AbilityData";
 import type { SkillTree } from "@data/SkillTreeData";
-import { generateArchetypeTree } from "@data/SkillTreeData";
 import { setAbilityRegistry } from "@data/AbilityResolver";
 
 const SAVE_KEY = "itactics-save";
@@ -117,16 +116,14 @@ export async function loadGame(): Promise<SaveData | null> {
     if (!data.itemRegistry) data.itemRegistry = {};
     if (!data.abilityRegistry) data.abilityRegistry = {};
 
-    // Set ability registry before migration so new abilities are registered into save data
-    setAbilityRegistry(data.abilityRegistry);
-
-    // Migrate to archetype skill tree (covers both old level-based and old theme-based trees)
-    for (const member of data.roster) {
-      if (!member.skillTree || !member.archetypeId) {
-        migrateToSkillTree(member);
-      }
+    // If any roster member lacks archetypeId, this is a pre-archetype save — discard it
+    const needsFreshStart = data.roster.some(m => !m.archetypeId);
+    if (needsFreshStart) {
+      await del(SAVE_KEY);
+      return null;
     }
 
+    setAbilityRegistry(data.abilityRegistry);
     return data;
   }
   return null;
@@ -165,44 +162,4 @@ export function pruneItemRegistry(save: SaveData): void {
       delete registry[uid];
     }
   }
-}
-
-/** Migrate a roster member from level-based unlock to skill tree. */
-function migrateToSkillTree(member: RosterMember): void {
-  // Deterministic RNG seeded from name
-  let seed = 0;
-  for (let i = 0; i < member.name.length; i++) {
-    seed = (seed * 31 + member.name.charCodeAt(i)) >>> 0;
-  }
-  const rng = () => {
-    seed = (seed * 1664525 + 1013904223) >>> 0;
-    return seed / 4294967296;
-  };
-
-  const classId = member.classId ?? "fighter";
-  const result = generateArchetypeTree(classId, null, rng);
-  const skillTree = result.tree;
-
-  member.skillTree = skillTree;
-  member.skillTheme = result.themeId;
-  member.secondarySkillTheme = result.secondaryThemeId ?? undefined;
-  member.archetypeId = result.archetypeId;
-  member.classPoints = 0;
-  member.unlockedNodes = [];
-  member.nodeStacks = {};
-
-  // Auto-unlock nodes proportional to level
-  const sorted = [...skillTree.nodes].sort((a, b) => a.tier - b.tier);
-  let freeUnlocks = 0;
-  if (member.level >= 8) freeUnlocks = 6;
-  else if (member.level >= 6) freeUnlocks = 4;
-  else if (member.level >= 4) freeUnlocks = 3;
-  else if (member.level >= 2) freeUnlocks = 1;
-
-  for (let i = 0; i < freeUnlocks && i < sorted.length; i++) {
-    member.unlockedNodes.push(sorted[i]!.nodeId);
-  }
-
-  // Populate abilities list from tree for backward compat
-  member.abilities = skillTree.nodes.map(n => n.abilityUid);
 }
