@@ -483,7 +483,9 @@ export function generateArchetypeTree(
     };
   }
 
-  // Pick archetype
+  // Pick archetype — burn a few RNG calls first so small sequential seeds
+  // don't always land on the same index (LCG first-call bias)
+  rng(); rng(); rng();
   const archIdx = archetypeIndex ?? Math.floor(rng() * classDef.archetypes.length);
   const archetype = classDef.archetypes[archIdx]!;
 
