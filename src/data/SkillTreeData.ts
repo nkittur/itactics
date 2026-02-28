@@ -8,7 +8,7 @@ import type { ArchetypeDef } from "./ClassDefinition";
 import { generatePassiveSuite, type PowerLevel } from "./PassiveGenerator";
 import { generateAbility, rollRarity } from "./AbilityGenerator";
 import { DOC_CLASSES, type DocAbility } from "./parsed/SkillTreeContent";
-import { isDocTypePassive } from "./AbilityTypeMapping";
+import { isDocTypePassive, getDocTypeHints, getDocTypeConditions } from "./AbilityTypeMapping";
 
 // Re-export for convenience
 export type { PowerLevel };
@@ -596,19 +596,37 @@ export function generateArchetypeTree(
       weaponReq = shared.length > 0 ? shared : primaryTheme.weaponAffinity;
     }
 
-    // Score progression slots using bucket profile + decay
-    const slotScores = useTheme.progression.map(slot =>
-      scoreSlot(slot, useTheme.bucketProfile, bucketCounts),
-    );
-    const totalScore = slotScores.reduce((s, v) => s + v, 0);
-    let roll = rng() * totalScore;
-    let slotIndex = 0;
-    for (let si = 0; si < slotScores.length; si++) {
-      roll -= slotScores[si]!;
-      if (roll <= 0) { slotIndex = si; break; }
+    // Check if this node has a design-doc ability — if so, use doc type hints
+    const docAbility = nodeDocAbilityMap.get(node.nodeId);
+    let slot: ThemeProgressionSlot;
+
+    if (docAbility) {
+      // Build synthetic slot from doc type hints instead of random theme slot
+      const hints = getDocTypeHints(docAbility.type);
+      const conditions = getDocTypeConditions(docAbility.type);
+      slot = {
+        role: "setup",
+        effects: [...hints.effects],
+        conditions: { creates: [...conditions.creates], exploits: [...conditions.exploits] },
+        targetingConstraint: hints.targeting,
+        isPassive: false,
+        powerRange: [6, 20],
+      };
+    } else {
+      // Fallback: score progression slots using bucket profile + decay
+      const slotScores = useTheme.progression.map(s =>
+        scoreSlot(s, useTheme.bucketProfile, bucketCounts),
+      );
+      const totalScore = slotScores.reduce((s, v) => s + v, 0);
+      let roll = rng() * totalScore;
+      let slotIndex = 0;
+      for (let si = 0; si < slotScores.length; si++) {
+        roll -= slotScores[si]!;
+        if (roll <= 0) { slotIndex = si; break; }
+      }
+      slot = useTheme.progression[slotIndex]!;
     }
 
-    const slot = useTheme.progression[slotIndex]!;
     const ability = generateAbility(
       { ...slot, isPassive: false },
       tier,

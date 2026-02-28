@@ -62,3 +62,36 @@ export function getDocTypeHints(docType: string): AbilityTypeHints {
 export function isDocTypePassive(docType: string): boolean {
   return getDocTypeHints(docType).isPassive;
 }
+
+/**
+ * Synergy conditions (creates/exploits) appropriate for each doc type.
+ * Used when building synthetic ThemeProgressionSlots from doc type hints.
+ */
+export const DOC_TYPE_CONDITIONS: Record<string, { creates: string[]; exploits: string[] }> = {
+  Attack:    { creates: ["debuffed"],   exploits: [] },
+  Active:    { creates: ["debuffed"],   exploits: [] },
+  AoE:       { creates: ["debuffed"],   exploits: [] },
+  Debuff:    { creates: ["debuffed"],   exploits: [] },
+  CC:        { creates: ["stunned"],    exploits: [] },
+  Buff:      { creates: [],             exploits: [] },
+  Heal:      { creates: [],             exploits: [] },
+  Stance:    { creates: ["in_stance"],  exploits: [] },
+  Movement:  { creates: [],             exploits: [] },
+  Summon:    { creates: [],             exploits: [] },
+  Channel:   { creates: ["debuffed"],   exploits: [] },
+  Ultimate:  { creates: ["debuffed"],   exploits: [] },
+  Toggle:    { creates: ["in_stance"],  exploits: [] },
+  Cleanse:   { creates: [],             exploits: [] },
+  Stealth:   { creates: [],             exploits: [] },
+  Transform: { creates: ["in_stance"],  exploits: [] },
+  Utility:   { creates: [],             exploits: [] },
+  Passive:   { creates: [],             exploits: [] },
+  Reactive:  { creates: [],             exploits: [] },
+  Aura:      { creates: [],             exploits: [] },
+};
+
+/** Get synergy conditions for a doc type. Falls back to empty. */
+export function getDocTypeConditions(docType: string): { creates: string[]; exploits: string[] } {
+  const normalized = normalizeDocType(docType);
+  return DOC_TYPE_CONDITIONS[normalized] ?? { creates: [], exploits: [] };
+}
