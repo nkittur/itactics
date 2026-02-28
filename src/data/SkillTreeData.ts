@@ -7,6 +7,8 @@ import { getClassDefNew } from "./ClassDefinition";
 import type { ArchetypeDef } from "./ClassDefinition";
 import { generatePassiveSuite, type PowerLevel } from "./PassiveGenerator";
 import { generateAbility, rollRarity } from "./AbilityGenerator";
+import { DOC_CLASSES, type DocAbility } from "./parsed/SkillTreeContent";
+import { isDocTypePassive } from "./AbilityTypeMapping";
 
 // Re-export for convenience
 export type { PowerLevel };
@@ -511,19 +513,41 @@ export function generateArchetypeTree(
     }
   }
 
-  // Assign ~1/3 as active, rest passive
-  const total = allNodes.length;
-  const activeCount = Math.max(1, Math.ceil(total / 3));
+  // Build nodeId → DocAbility mapping for design-doc skinning
+  const docClass = DOC_CLASSES.find(c => c.id === classId);
+  const docArch = docClass?.archetypes[archIdx];
+  const nodeDocAbilityMap = new Map<string, DocAbility>();
+  if (docArch) {
+    for (let i = 0; i < docArch.abilities.length; i++) {
+      const nodeId = `${docArch.id}_${i}`;
+      nodeDocAbilityMap.set(nodeId, docArch.abilities[i]!);
+    }
+  }
 
-  // Tier 1 first node is always active
-  const tier1Nodes = allNodes.filter(n => n.tier === 1);
-  if (tier1Nodes.length > 0) tier1Nodes[0]!.isActive = true;
-  let activeRemaining = activeCount - 1;
-
-  const candidates = allNodes.filter(n => !(n.tier === 1 && n === tier1Nodes[0]));
-  const shuffled = shuffle(candidates, rng);
-  for (let i = 0; i < activeRemaining && i < shuffled.length; i++) {
-    shuffled[i]!.isActive = true;
+  // Assign active/passive from design-doc types when available, else ~1/3 random
+  if (nodeDocAbilityMap.size > 0) {
+    for (const node of allNodes) {
+      const docAbility = nodeDocAbilityMap.get(node.nodeId);
+      if (docAbility) {
+        node.isActive = !isDocTypePassive(docAbility.type);
+      }
+    }
+    // Ensure at least 1 active
+    if (!allNodes.some(n => n.isActive) && allNodes.length > 0) {
+      allNodes[0]!.isActive = true;
+    }
+  } else {
+    // Fallback: random 1/3 active
+    const total = allNodes.length;
+    const activeCount = Math.max(1, Math.ceil(total / 3));
+    const tier1Nodes = allNodes.filter(n => n.tier === 1);
+    if (tier1Nodes.length > 0) tier1Nodes[0]!.isActive = true;
+    let activeRemaining = activeCount - 1;
+    const candidates = allNodes.filter(n => !(n.tier === 1 && n === tier1Nodes[0]));
+    const shuffled2 = shuffle(candidates, rng);
+    for (let i = 0; i < activeRemaining && i < shuffled2.length; i++) {
+      shuffled2[i]!.isActive = true;
+    }
   }
 
   // Mark 20-40% of passives as stackable
@@ -608,37 +632,6 @@ export function generateArchetypeTree(
   const passiveRarities = passiveNodeList.map(() => rollRarity(rng));
   const passives = generatePassiveSuite(actives, passivePowerLevels, rng, true, passiveRarities);
 
-  // Deduplicate names
-  const DEDUP_ADJECTIVES = [
-    "Greater", "Lesser", "Improved", "Swift", "Brutal", "Fierce", "Savage", "Keen",
-  ];
-  const usedNames = new Set<string>();
-  const allAbilities = [...actives, ...passives];
-  for (const ability of allAbilities) {
-    if (usedNames.has(ability.name)) {
-      let deduped = false;
-      for (let i = 0; i < DEDUP_ADJECTIVES.length; i++) {
-        const idx = Math.floor(rng() * DEDUP_ADJECTIVES.length);
-        const newName = `${DEDUP_ADJECTIVES[idx]} ${ability.name}`;
-        if (!usedNames.has(newName)) {
-          ability.name = newName;
-          deduped = true;
-          break;
-        }
-      }
-      if (!deduped) {
-        for (const suffix of ["II", "III", "IV"]) {
-          const newName = `${ability.name} ${suffix}`;
-          if (!usedNames.has(newName)) {
-            ability.name = newName;
-            break;
-          }
-        }
-      }
-    }
-    usedNames.add(ability.name);
-  }
-
   // Wire abilities onto archetype nodes
   const skillNodes: SkillTreeNode[] = [];
   let activeIdx = 0;
@@ -661,6 +654,52 @@ export function generateArchetypeTree(
       stackable: topo.stackable,
       maxStacks: topo.maxStacks,
     });
+  }
+
+  // Skin abilities with design-doc names and descriptions
+  if (nodeDocAbilityMap.size > 0) {
+    const allAbilities = [...actives, ...passives];
+    const abilityByUid = new Map(allAbilities.map(a => [a.uid, a]));
+
+    for (const node of skillNodes) {
+      const docAbility = nodeDocAbilityMap.get(node.nodeId);
+      const ability = abilityByUid.get(node.abilityUid);
+      if (docAbility && ability) {
+        ability.name = docAbility.name;
+        ability.description = docAbility.description;
+      }
+    }
+  } else {
+    // No design doc — deduplicate procedural names
+    const DEDUP_ADJECTIVES = [
+      "Greater", "Lesser", "Improved", "Swift", "Brutal", "Fierce", "Savage", "Keen",
+    ];
+    const usedNames = new Set<string>();
+    const allAbilities = [...actives, ...passives];
+    for (const ability of allAbilities) {
+      if (usedNames.has(ability.name)) {
+        let deduped = false;
+        for (let i = 0; i < DEDUP_ADJECTIVES.length; i++) {
+          const idx = Math.floor(rng() * DEDUP_ADJECTIVES.length);
+          const newName = `${DEDUP_ADJECTIVES[idx]} ${ability.name}`;
+          if (!usedNames.has(newName)) {
+            ability.name = newName;
+            deduped = true;
+            break;
+          }
+        }
+        if (!deduped) {
+          for (const suffix of ["II", "III", "IV"]) {
+            const newName = `${ability.name} ${suffix}`;
+            if (!usedNames.has(newName)) {
+              ability.name = newName;
+              break;
+            }
+          }
+        }
+      }
+      usedNames.add(ability.name);
+    }
   }
 
   return {

@@ -16,7 +16,8 @@ import { RNG } from "@utils/RNG";
 import { clamp } from "@utils/MathUtils";
 import type { StatusEffectManager } from "./StatusEffectManager";
 import type { CharacterClassComponent } from "@entities/components/CharacterClass";
-import { getClassDef, getClassHitBonus, getClassDamageBonus } from "@data/ClassData";
+import { getClassHitBonus, getClassDamageBonus } from "@data/ClassData";
+import { getClassDefNew } from "@data/ClassDefinition";
 
 /** Armor values above this threshold get diminishing returns. */
 const SOFT_CAP = 10;
@@ -132,7 +133,7 @@ export class DamageCalculator {
 
     // Class passives
     const attackerCC = world.getComponent<CharacterClassComponent>(attackerId, "characterClass");
-    const attackerClassDef = attackerCC ? getClassDef(attackerCC.classId) : undefined;
+    const attackerClassDef = attackerCC ? getClassDefNew(attackerCC.classId) : undefined;
     const classHitBonus = attackerClassDef ? getClassHitBonus(attackerClassDef, weapon) : 0;
     const classDmgBonus = attackerClassDef ? getClassDamageBonus(attackerClassDef, weapon) : 0;
 
@@ -241,7 +242,7 @@ export class DamageCalculator {
 
     // Class passives
     const attackerCC = world.getComponent<CharacterClassComponent>(attackerId, "characterClass");
-    const attackerClassDef = attackerCC ? getClassDef(attackerCC.classId) : undefined;
+    const attackerClassDef = attackerCC ? getClassDefNew(attackerCC.classId) : undefined;
     const classHitBonus = attackerClassDef ? getClassHitBonus(attackerClassDef, weapon) : 0;
     const classDmgBonus = attackerClassDef ? getClassDamageBonus(attackerClassDef, weapon) : 0;
 
@@ -311,7 +312,7 @@ export class DamageCalculator {
 
     // Class passives
     const attackerCC = world.getComponent<CharacterClassComponent>(attackerId, "characterClass");
-    const attackerClassDef = attackerCC ? getClassDef(attackerCC.classId) : undefined;
+    const attackerClassDef = attackerCC ? getClassDefNew(attackerCC.classId) : undefined;
     const classHitBonus = attackerClassDef ? getClassHitBonus(attackerClassDef, weapon) : 0;
     const classDmgBonus = attackerClassDef ? getClassDamageBonus(attackerClassDef, weapon) : 0;
 
@@ -411,7 +412,7 @@ export class DamageCalculator {
 
     // Class passives
     const attackerCC = world.getComponent<CharacterClassComponent>(attackerId, "characterClass");
-    const attackerClassDef = attackerCC ? getClassDef(attackerCC.classId) : undefined;
+    const attackerClassDef = attackerCC ? getClassDefNew(attackerCC.classId) : undefined;
     const classHitBonus = attackerClassDef ? getClassHitBonus(attackerClassDef, weapon) : 0;
     const classDmgBonus = attackerClassDef ? getClassDamageBonus(attackerClassDef, weapon) : 0;
 
@@ -578,7 +579,7 @@ export class DamageCalculator {
       ? resolveShield(defenderEquip.offHand) : undefined;
 
     const attackerCC = world.getComponent<CharacterClassComponent>(attackerId, "characterClass");
-    const attackerClassDef = attackerCC ? getClassDef(attackerCC.classId) : undefined;
+    const attackerClassDef = attackerCC ? getClassDefNew(attackerCC.classId) : undefined;
     const classHitBonus = attackerClassDef ? getClassHitBonus(attackerClassDef, weapon) : 0;
     const classDmgBonus = attackerClassDef ? getClassDamageBonus(attackerClassDef, weapon) : 0;
 

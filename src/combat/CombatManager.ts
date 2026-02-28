@@ -28,7 +28,8 @@ import { resolveAbility } from "@data/AbilityResolver";
 import type { AbilitiesComponent } from "@entities/components/Abilities";
 import type { AbilityCooldownsComponent } from "@entities/components/AbilityCooldowns";
 import type { CharacterClassComponent } from "@entities/components/CharacterClass";
-import { getClassDef, getClassAPDiscount, getClassArmorMPReduction, canEquipWeapon, canEquipShield } from "@data/ClassData";
+import { getClassAPDiscount, getClassArmorMPReduction, canEquipWeapon, canEquipShield } from "@data/ClassData";
+import { getClassDefNew } from "@data/ClassDefinition";
 import { getConsumable } from "@data/ItemData";
 import { decideTacticalAction, type TacticalAction } from "./TacticalAI";
 import { hasLineOfSight } from "@hex/HexLineOfSight";
@@ -1267,7 +1268,7 @@ export class CombatManager {
       const equip = this.world.getComponent<EquipmentComponent>(entityId, "equipment");
       const armor = this.world.getComponent<ArmorComponent>(entityId, "armor");
       const cc = this.world.getComponent<CharacterClassComponent>(entityId, "characterClass");
-      const fleeClassDef = cc ? getClassDef(cc.classId) : undefined;
+      const fleeClassDef = cc ? getClassDefNew(cc.classId) : undefined;
       const fleeArmorReduction = fleeClassDef ? getClassArmorMPReduction(fleeClassDef) : 0;
       const fleeMP = getEffectiveMP(stats?.movementPoints ?? DEFAULT_MP, armor?.body?.id, armor?.head?.id, equip?.offHand ?? undefined, fleeArmorReduction);
       const enemies = isEnemy ? this.getPlayerUnits() : this.getEnemyUnits();
@@ -1334,7 +1335,7 @@ export class CombatManager {
     const equip = this.world.getComponent<EquipmentComponent>(entityId, "equipment");
     const armor = this.world.getComponent<ArmorComponent>(entityId, "armor");
     const cc = this.world.getComponent<CharacterClassComponent>(entityId, "characterClass");
-    const classDef = cc ? getClassDef(cc.classId) : undefined;
+    const classDef = cc ? getClassDefNew(cc.classId) : undefined;
     const armorMPReduction = classDef ? getClassArmorMPReduction(classDef) : 0;
     const baseMP = stats?.movementPoints ?? DEFAULT_MP;
     const effectiveMP = getEffectiveMP(baseMP, armor?.body?.id, armor?.head?.id, equip?.offHand ?? undefined, armorMPReduction);
@@ -1351,7 +1352,8 @@ export class CombatManager {
     const base = skillAPCost(skill, weapon);
     const cc = this.world.getComponent<CharacterClassComponent>(entityId, "characterClass");
     if (!cc) return base;
-    const classDef = getClassDef(cc.classId);
+    const classDef = getClassDefNew(cc.classId);
+    if (!classDef) return base;
     const discount = getClassAPDiscount(classDef, weapon, skill.rangeType);
     return Math.max(1, base - discount);
   }
@@ -1594,15 +1596,17 @@ export class CombatManager {
     // Validate class restrictions
     const cc = this.world.getComponent<CharacterClassComponent>(entityId, "characterClass");
     if (cc) {
-      const classDef = getClassDef(cc.classId);
-      if (slot === "mainHand") {
-        try {
-          const weaponDef = resolveWeapon(bagItemId);
-          if (!canEquipWeapon(classDef, weaponDef)) return false;
-        } catch { /* not a weapon — skip */ }
-      } else if (slot === "offHand") {
-        const shieldDef = resolveShield(bagItemId);
-        if (shieldDef && !canEquipShield(classDef, shieldDef)) return false;
+      const classDef = getClassDefNew(cc.classId);
+      if (classDef) {
+        if (slot === "mainHand") {
+          try {
+            const weaponDef = resolveWeapon(bagItemId);
+            if (!canEquipWeapon(classDef, weaponDef)) return false;
+          } catch { /* not a weapon — skip */ }
+        } else if (slot === "offHand") {
+          const shieldDef = resolveShield(bagItemId);
+          if (shieldDef && !canEquipShield(classDef, shieldDef)) return false;
+        }
       }
     }
 

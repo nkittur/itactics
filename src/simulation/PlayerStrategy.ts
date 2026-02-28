@@ -16,7 +16,8 @@ import { getPartyLevel } from "@data/RecruitData";
 import { getWeapon } from "@data/WeaponData";
 import { getArmorDef } from "@data/ArmorData";
 import { getShield } from "@data/ShieldData";
-import { getClassDef, canEquipWeapon, canEquipArmor, canEquipShield } from "@data/ClassData";
+import { canEquipWeapon, canEquipArmor, canEquipShield } from "@data/ClassData";
+import { getClassDefNew } from "@data/ClassDefinition";
 import type { BalanceParams } from "./CampaignSimulator";
 
 // ── Types ──
@@ -58,7 +59,7 @@ function bestAffordableUpgrade(
   partyLevel?: number,
   params?: BalanceParams,
 ): { itemId: string; price: number } | null {
-  const classDef = member.classId ? getClassDef(member.classId) : null;
+  const classDef = member.classId ? getClassDefNew(member.classId) ?? null : null;
 
   let currentLevel: number;
   if (category === "weapon") {

@@ -3,7 +3,7 @@
  * Run with: npm test -- tests/simulation/Simulation.test.ts
  */
 import { describe, it, expect } from "vitest";
-import "@data/classes/ClassRegistry";
+import "@data/classes/DesignDocClasses";
 import { runSimulation } from "../../src/simulation/SimulationRunner";
 import { DEFAULT_PARAMS } from "../../src/simulation/CampaignSimulator";
 import {

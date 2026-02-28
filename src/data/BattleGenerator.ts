@@ -15,7 +15,7 @@ const ENEMY_NAMES = [
 ];
 
 const ENEMY_CLASSES = [
-  "fighter", "brute", "spearman", "berserker", "knight", "rogue",
+  "berserker", "ironbloom_warden", "hexblade", "bladesinger", "echo_dancer", "monk",
 ];
 
 const ENEMY_SPRITES: SpriteCharType[] = [

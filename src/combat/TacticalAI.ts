@@ -16,7 +16,8 @@ import { resolveWeapon } from "@data/ItemResolver";
 import { getSkillsForWeapon, skillAPCost, skillRange, BASIC_ATTACK, type SkillDef } from "@data/SkillData";
 import type { ArmorComponent } from "@entities/components/Armor";
 import type { CharacterClassComponent } from "@entities/components/CharacterClass";
-import { getClassDef, getClassAPDiscount, getClassArmorMPReduction } from "@data/ClassData";
+import { getClassAPDiscount, getClassArmorMPReduction } from "@data/ClassData";
+import { getClassDefNew } from "@data/ClassDefinition";
 import type { AbilitiesComponent } from "@entities/components/Abilities";
 import type { AbilityCooldownsComponent } from "@entities/components/AbilityCooldowns";
 import { resolveAbility } from "@data/AbilityResolver";
@@ -117,7 +118,7 @@ export function decideTacticalAction(
 
   // Class passives
   const cc = world.getComponent<CharacterClassComponent>(entityId, "characterClass");
-  const classDef = cc ? getClassDef(cc.classId) : undefined;
+  const classDef = cc ? getClassDefNew(cc.classId) : undefined;
   const armorMPReduction = classDef ? getClassArmorMPReduction(classDef) : 0;
 
   // Get available skills for this weapon

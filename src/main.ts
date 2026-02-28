@@ -12,7 +12,7 @@ import { setItemRegistry } from "@data/ItemResolver";
 import { setAbilityRegistry } from "@data/AbilityResolver";
 import { generateArchetypeTree } from "@data/SkillTreeData";
 import { getClassDef } from "@data/ClassData";
-import "@data/classes/ClassRegistry";
+import "@data/classes/DesignDocClasses";
 
 function simpleRng(): number {
   return Math.random();
@@ -88,9 +88,9 @@ function createNewGame(): SaveData {
   return {
     version: 1,
     roster: [
-      createStarterUnit("Aldric", "fighter", "short_sword", "swordsman"),
-      createStarterUnit("Gunnar", "spearman", "spear", "knight-templar"),
-      createStarterUnit("Erik", "rogue", "dagger", "soldier"),
+      createStarterUnit("Aldric", "bladesinger", "short_sword", "swordsman"),
+      createStarterUnit("Gunnar", "berserker", "axe", "knight-templar"),
+      createStarterUnit("Erik", "echo_dancer", "dagger", "soldier"),
     ],
     currentScenarioIndex: 0,
     gold: 200,

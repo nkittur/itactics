@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import "../src/data/classes/ClassRegistry";
+import "../src/data/classes/DesignDocClasses";
 import { generateArchetypeTree } from "../src/data/SkillTreeData";
 import { getClassDefNew, getAllClassDefs } from "../src/data/ClassDefinition";
 import { resolveAbility, setAbilityRegistry } from "../src/data/AbilityResolver";
@@ -13,9 +13,9 @@ function makeRng(seed: number): () => number {
 }
 
 describe("generateArchetypeTree", () => {
-  it("produces valid archetype trees for all 18 classes", () => {
+  it("produces valid archetype trees for all enabled classes", () => {
     const allClasses = getAllClassDefs();
-    expect(allClasses.length).toBe(18);
+    expect(allClasses.length).toBe(10);
 
     for (const classDef of allClasses) {
       const registry: Record<string, GeneratedAbility> = {};
@@ -82,14 +82,11 @@ describe("generateArchetypeTree", () => {
     const seen = new Set<string>();
     for (let seed = 0; seed < 100; seed++) {
       const rng = makeRng(seed);
-      const result = generateArchetypeTree("fighter", null, rng);
+      const result = generateArchetypeTree("bladesinger", null, rng);
       seen.add(result.archetypeId);
     }
     expect(seen.size).toBe(3);
-    expect(seen.has("fighter_weapon_master")).toBe(true);
-    expect(seen.has("fighter_vanguard")).toBe(true);
-    expect(seen.has("fighter_duelist")).toBe(true);
-    console.log(`  Fighter archetypes seen: ${[...seen].join(", ")}`);
+    console.log(`  Bladesinger archetypes seen: ${[...seen].join(", ")}`);
   });
 
   it("generates different tree structures for different archetypes of same class", () => {
@@ -98,7 +95,7 @@ describe("generateArchetypeTree", () => {
       const registry: Record<string, GeneratedAbility> = {};
       setAbilityRegistry(registry);
       const rng = makeRng(42);
-      const result = generateArchetypeTree("fighter", i, rng);
+      const result = generateArchetypeTree("bladesinger", i, rng);
       trees.push({ id: result.archetypeId, nodeIds: result.tree.nodes.map(n => n.nodeId) });
     }
     // All 3 archetypes should have different IDs and different node IDs
@@ -108,5 +105,23 @@ describe("generateArchetypeTree", () => {
     console.log(`  Archetype 0: ${trees[0]!.id} → ${trees[0]!.nodeIds.length} nodes: ${trees[0]!.nodeIds.slice(0, 4).join(", ")}...`);
     console.log(`  Archetype 1: ${trees[1]!.id} → ${trees[1]!.nodeIds.length} nodes: ${trees[1]!.nodeIds.slice(0, 4).join(", ")}...`);
     console.log(`  Archetype 2: ${trees[2]!.id} → ${trees[2]!.nodeIds.length} nodes: ${trees[2]!.nodeIds.slice(0, 4).join(", ")}...`);
+  });
+
+  it("abilities have design-doc names from skill_trees.txt", () => {
+    const registry: Record<string, GeneratedAbility> = {};
+    setAbilityRegistry(registry);
+
+    const rng = makeRng(42);
+    const result = generateArchetypeTree("chronoweaver", 0, rng);
+
+    // Chronoweaver Accelerant archetype should have design-doc ability names
+    const abilityNames = result.tree.nodes.map(n => resolveAbility(n.abilityUid)!.name);
+    console.log(`  Chronoweaver Accelerant abilities: ${abilityNames.join(", ")}`);
+
+    // These exact names come from skill_trees.txt
+    expect(abilityNames).toContain("Quicken");
+    expect(abilityNames).toContain("Tempo Tap");
+    expect(abilityNames).toContain("Blink Step");
+    expect(abilityNames).toContain("Infinite Loop");
   });
 });

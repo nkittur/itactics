@@ -49,25 +49,20 @@ function getRecruitClasses(): string[] {
 }
 
 const CLASS_SPRITES: Record<string, SpriteCharType[]> = {
-  fighter: ["soldier", "swordsman", "armored-axeman"],
-  knight: ["knight-templar", "knight"],
-  spearman: ["knight-templar", "lancer", "soldier"],
-  rogue: ["swordsman", "soldier"],
-  ranger: ["archer", "soldier"],
-  brute: ["armored-axeman", "knight"],
-  occultist: ["wizard"],
-  priest: ["priest"],
-  pyromancer: ["wizard"],
-  necromancer: ["wizard"],
-  shadow_knight: ["knight", "swordsman"],
-  monk: ["soldier", "swordsman"],
-  bard: ["swordsman", "soldier"],
+  // Design-doc classes — mapped to available sprite types
+  chronoweaver: ["wizard"],
+  ironbloom_warden: ["knight-templar", "knight"],
+  echo_dancer: ["swordsman", "soldier"],
+  bladesinger: ["swordsman", "soldier"],
+  blood_alchemist: ["wizard"],
+  hexblade: ["swordsman", "knight"],
   berserker: ["armored-axeman", "knight"],
-  paladin: ["knight-templar", "knight"],
-  elementalist: ["wizard"],
-  assassin: ["swordsman", "soldier"],
-  warden: ["knight-templar", "soldier", "knight"],
+  monk: ["soldier", "swordsman"],
+  ranger: ["archer", "soldier"],
+  necrosurgeon: ["wizard"],
 };
+
+const DEFAULT_SPRITES: SpriteCharType[] = ["soldier", "swordsman"];
 
 /** Map weapon family to a starter weapon ID. */
 const FAMILY_STARTER_WEAPON: Record<string, string> = {
@@ -236,7 +231,7 @@ export function generateRecruits(partyLevel: number, rng: () => number): Recruit
       applyLevelGrowth(stats, talentStars, 1, level, rng);
     }
 
-    const sprites = CLASS_SPRITES[classId] ?? ["soldier"];
+    const sprites = CLASS_SPRITES[classId] ?? DEFAULT_SPRITES;
     const sprite = pick(sprites, rng);
     const weapons = getStarterWeapons(classId);
     const weapon = pick(weapons, rng);
