@@ -35,6 +35,97 @@ interface DocClass {
   archetypes: DocArchetype[];
 }
 
+// ── Convert real-time descriptions to turn-based ──
+
+function convertToTurnBased(desc: string): string {
+  let d = desc;
+
+  const secToTurns = (sec: number): number => {
+    if (sec <= 3) return 1;
+    if (sec <= 6) return 2;
+    if (sec <= 10) return 3;
+    if (sec <= 15) return 4;
+    if (sec <= 20) return 5;
+    if (sec <= 30) return 6;
+    if (sec <= 60) return 8;
+    if (sec <= 120) return 10;
+    return 15;
+  };
+
+  const mToHex = (m: number): number => {
+    if (m <= 3) return 1;
+    if (m <= 6) return 2;
+    if (m <= 10) return 3;
+    if (m <= 15) return 4;
+    if (m <= 20) return 5;
+    if (m <= 30) return 6;
+    return 8;
+  };
+
+  const turnPlural = (n: number) => n === 1 ? "1 turn" : `${n} turns`;
+  const hexPlural = (n: number) => n === 1 ? "1 hex" : `${n} hexes`;
+
+  // ORDER MATTERS: specific patterns before generic ones
+
+  // 1. Speed: Xm/s → hexes/turn
+  d = d.replace(/(\d+(?:\.\d+)?)m\/s/g, (_, n) => {
+    const hexes = mToHex(parseFloat(n));
+    return `${hexPlural(hexes)}/turn`;
+  });
+
+  // 2. Rate: per second / /s → per turn
+  d = d.replace(/per second/gi, "per turn");
+  d = d.replace(/(\d+(?:\.\d+)?(?:%)?)\s*\/s\b/g, "$1/turn");
+
+  // 3. Cooldown: Xs cooldown
+  d = d.replace(/(\d+(?:\.\d+)?)s cooldown/g, (_, n) => {
+    return `${turnPlural(secToTurns(parseFloat(n)))} cooldown`;
+  });
+
+  // 4-11. Duration patterns: for Xs, lasts Xs, Xs duration, over Xs, within Xs, after Xs, every Xs, from Xs ago
+  d = d.replace(/for (\d+(?:\.\d+)?)s\b/gi, (_, n) => `for ${turnPlural(secToTurns(parseFloat(n)))}`);
+  d = d.replace(/lasts (\d+(?:\.\d+)?)s\b/gi, (_, n) => `lasts ${turnPlural(secToTurns(parseFloat(n)))}`);
+  d = d.replace(/(\d+(?:\.\d+)?)s duration/gi, (_, n) => `${turnPlural(secToTurns(parseFloat(n)))} duration`);
+  d = d.replace(/over (\d+(?:\.\d+)?)s\b/gi, (_, n) => `over ${turnPlural(secToTurns(parseFloat(n)))}`);
+  d = d.replace(/within (\d+(?:\.\d+)?)s\b/gi, (_, n) => `within ${turnPlural(secToTurns(parseFloat(n)))}`);
+  d = d.replace(/after (\d+(?:\.\d+)?)s\b/gi, (_, n) => `after ${turnPlural(secToTurns(parseFloat(n)))}`);
+  d = d.replace(/every (\d+(?:\.\d+)?)s\b/gi, (_, n) => `every ${turnPlural(secToTurns(parseFloat(n)))}`);
+  d = d.replace(/from (\d+(?:\.\d+)?)s ago/gi, (_, n) => `from ${turnPlural(secToTurns(parseFloat(n)))} ago`);
+
+  // 12. Channel / self-stun
+  d = d.replace(/(\d+(?:\.\d+)?)s channel\b/gi, (_, n) => `${turnPlural(secToTurns(parseFloat(n)))} channel`);
+  d = d.replace(/(\d+(?:\.\d+)?)s self-stun/gi, (_, n) => `${turnPlural(secToTurns(parseFloat(n)))} self-stun`);
+
+  // 13. CC bare: stunned 1.5s, rooted 4s, etc.
+  d = d.replace(/(stun(?:ned|s)?|silence[d]?|root(?:ed|s)?|daze[d]?|sleep|freeze|frozen|suspend(?:ed)?|immobilize[d]?)\s+(\d+(?:\.\d+)?)s\b/gi,
+    (_, word, n) => `${word} ${turnPlural(secToTurns(parseFloat(n)))}`);
+
+  // 14 (generic). Any remaining bare \d+s — in ability descriptions this is always seconds
+  d = d.replace(/(\d+(?:\.\d+)?)s\b/g, (_, n) => `${turnPlural(secToTurns(parseFloat(n)))}`);
+
+  // 14. Range: within Xm, in Xm (before generic)
+  d = d.replace(/within (\d+(?:\.\d+)?)m\b/g, (_, n) => `within ${hexPlural(mToHex(parseFloat(n)))}`);
+  d = d.replace(/\bin (\d+(?:\.\d+)?)m\b/g, (_, n) => `in ${hexPlural(mToHex(parseFloat(n)))}`);
+
+  // 15. Range: parenthetical (Xm)
+  d = d.replace(/\((\d+(?:\.\d+)?)m\)/g, (_, n) => `(${hexPlural(mToHex(parseFloat(n)))})`);
+  d = d.replace(/\((\d+(?:\.\d+)?)m,/g, (_, n) => `(${hexPlural(mToHex(parseFloat(n)))},`);
+
+  // 16. Arrow chains: Xm ->
+  d = d.replace(/(\d+(?:\.\d+)?)m(\s*->)/g, (_, n, arrow) => `${hexPlural(mToHex(parseFloat(n)))}${arrow}`);
+
+  // 17. Generic Xm fallback — in this dataset every \d+m is a distance
+  d = d.replace(/(\d+(?:\.\d+)?)m\b/g, (_, n) => `${hexPlural(mToHex(parseFloat(n)))}`);
+
+  // 18. Speed terms
+  d = d.replace(/\battack speed\b/gi, "attack rate");
+  d = d.replace(/\bcast speed\b/gi, "cast rate");
+  d = d.replace(/\bmovement speed\b/gi, "movement");
+  d = d.replace(/\baction speed\b/gi, "action rate");
+
+  return d;
+}
+
 function toId(name: string): string {
   return name
     .toLowerCase()
@@ -221,6 +312,17 @@ const outputPath = path.resolve(__dirname, "../src/data/parsed/SkillTreeContent.
 
 const text = fs.readFileSync(inputPath, "utf-8");
 const classes = parseSkillTrees(text);
+
+// Convert real-time descriptions to turn-based
+for (const cls of classes) {
+  cls.fantasy = convertToTurnBased(cls.fantasy);
+  for (const arch of cls.archetypes) {
+    arch.identity = convertToTurnBased(arch.identity);
+    for (const ability of arch.abilities) {
+      ability.description = convertToTurnBased(ability.description);
+    }
+  }
+}
 
 // Validate
 let totalAbilities = 0;

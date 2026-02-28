@@ -16,6 +16,7 @@ import { detectUnitSynergies, detectTeamSynergies } from "@data/SynergyDetector"
 import { ALL_STAT_KEYS, statDisplayName, type StatKey } from "@data/TalentData";
 import type { SkillTree, SkillTreeNode } from "@data/SkillTreeData";
 import { getClassDefNew } from "@data/ClassDefinition";
+import { formatAbilityEffects } from "@data/AbilityFormatter";
 
 type Tab = "roster" | "shop" | "recruit" | "contracts";
 const MAX_BAG = 2;
@@ -620,6 +621,9 @@ export class ManagementScreen {
 
     // Description
     panel.appendChild(el("div", "node-detail-desc", ability.description));
+
+    // Debug: mechanical effect representation
+    panel.appendChild(el("div", "node-detail-debug", formatAbilityEffects(ability)));
 
     // Cost info for active abilities
     if (node.isActive && !ability.isPassive) {
