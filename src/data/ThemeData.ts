@@ -583,6 +583,7 @@ export const CLASS_THEME_WEIGHTS: Record<string, Record<string, number>> = {
   ranger:    { opportunist: 2, executioner: 2, bleeder: 2, skirmisher: 2, venomancer: 1, crusher: 1, sentinel: 1, reaper: 1 },
   brute:     { reaper: 3, crusher: 3, skirmisher: 2, pyromaniac: 2, warden: 1, bleeder: 1, executioner: 1, sentinel: 1, opportunist: 1 },
   occultist: { arcanist: 3, hexcurser: 3, venomancer: 2, pyromaniac: 2, opportunist: 1, bleeder: 1 },
+  priest:    { sentinel: 3, arcanist: 2, hexcurser: 1, warden: 2, opportunist: 1, pyromaniac: 1 },
 };
 
 /** Find themes compatible with the primary theme (shared weapons + conditions). */

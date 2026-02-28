@@ -4,6 +4,7 @@ import { generateTalentStars, rollStatIncrease, ALL_STAT_KEYS } from "./TalentDa
 import type { SpriteCharType } from "@rendering/SpriteAnimator";
 import type { RosterMember } from "@save/SaveManager";
 import { getArmorDef } from "./ArmorData";
+import { getWeapon } from "./WeaponData";
 import { pickTheme, pickSecondaryTheme } from "./ThemeData";
 import { generateRecruitSkills } from "./AbilityGenerator";
 import { generateSkillTree } from "./SkillTreeData";
@@ -40,7 +41,7 @@ const NAMES = [
   "Werner", "Konrad", "Fritz", "Otto",
 ];
 
-const RECRUIT_CLASSES: CharacterClass[] = ["fighter", "spearman", "rogue", "ranger", "brute"];
+const RECRUIT_CLASSES: CharacterClass[] = ["fighter", "spearman", "rogue", "ranger", "brute", "occultist", "priest"];
 
 const CLASS_SPRITES: Record<string, SpriteCharType[]> = {
   fighter: ["soldier", "swordsman", "armored-axeman"],
@@ -48,6 +49,8 @@ const CLASS_SPRITES: Record<string, SpriteCharType[]> = {
   rogue: ["swordsman", "soldier"],
   ranger: ["archer", "soldier"],
   brute: ["armored-axeman", "knight"],
+  occultist: ["wizard"],
+  priest: ["priest"],
 };
 
 const CLASS_STARTER_WEAPONS: Record<string, string[]> = {
@@ -56,6 +59,8 @@ const CLASS_STARTER_WEAPONS: Record<string, string[]> = {
   rogue: ["dagger", "short_sword"],
   ranger: ["short_bow"],
   brute: ["hand_axe", "winged_mace"],
+  occultist: ["wooden_wand"],
+  priest: ["oak_staff"],
 };
 
 function pick<T>(arr: readonly T[], rng: () => number): T {
@@ -181,7 +186,7 @@ export function generateRecruits(partyLevel: number, rng: () => number): Recruit
     const weapons = CLASS_STARTER_WEAPONS[classId] ?? ["short_sword"];
     const weapon = pick(weapons, rng);
 
-    const is2H = weapon === "longsword" || weapon === "pike" || weapon === "short_bow" || weapon === "hunting_bow";
+    const is2H = getWeapon(weapon).hands === 2;
 
     // Generate skill theme and skill tree
     const theme = pickTheme(classId, rng);

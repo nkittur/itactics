@@ -2,7 +2,7 @@ import type { WeaponFamily, WeaponDef } from "./WeaponData";
 import type { ArmorWeight, ArmorDef } from "./ArmorData";
 import type { ShieldDef } from "./ShieldData";
 
-export type CharacterClass = "fighter" | "knight" | "rogue" | "ranger" | "spearman" | "brute";
+export type CharacterClass = "fighter" | "knight" | "rogue" | "ranger" | "spearman" | "brute" | "occultist" | "priest";
 
 export type ShieldAccess = "none" | "buckler" | "all";
 
@@ -84,6 +84,24 @@ const CLASS_DATA: ReadonlyMap<CharacterClass, ClassDef> = new Map([
     baseMP: 9,
     passives: [{ type: "damage_bonus", qualifier: "2H", value: 15 }],
   }],
+  ["occultist", {
+    id: "occultist",
+    name: "Occultist",
+    weaponFamilies: ["wand", "staff", "dagger"],
+    shieldAccess: "none",
+    maxArmorWeight: "light",
+    baseMP: 9,
+    passives: [{ type: "damage_bonus", qualifier: "magical", value: 15 }],
+  }],
+  ["priest", {
+    id: "priest",
+    name: "Priest",
+    weaponFamilies: ["staff", "mace", "wand"],
+    shieldAccess: "buckler",
+    maxArmorWeight: "medium",
+    baseMP: 8,
+    passives: [{ type: "ap_discount", qualifier: "staff", value: 1 }],
+  }],
 ]);
 
 export function getClassDef(classId: CharacterClass): ClassDef {
@@ -128,6 +146,7 @@ export function getClassDamageBonus(classDef: ClassDef, weapon: WeaponDef): numb
   for (const p of classDef.passives) {
     if (p.type !== "damage_bonus") continue;
     if (p.qualifier === "2H" && weapon.hands === 2) bonus += p.value;
+    if (p.qualifier === "magical" && weapon.damageType === "magical") bonus += p.value;
   }
   return bonus;
 }
@@ -140,6 +159,40 @@ export function getClassHitBonus(classDef: ClassDef, weapon: WeaponDef): number 
     if (p.qualifier === weapon.family) bonus += p.value;
   }
   return bonus;
+}
+
+// ── Equipment icon language ──
+
+export const WEAPON_FAMILY_ICON: Record<WeaponFamily, string> = {
+  sword: "Swd", axe: "Axe", mace: "Mce", flail: "Fll",
+  cleaver: "Clv", spear: "Spr", polearm: "Pol", dagger: "Dgr",
+  bow: "Bow", crossbow: "Xbw", throwing: "Thr", staff: "Stf", wand: "Wnd",
+};
+
+export const ARMOR_WEIGHT_ICON: Record<ArmorWeight, string> = {
+  light: "Lt", medium: "Med", heavy: "Hvy",
+};
+
+export const SHIELD_ACCESS_ICON: Record<ShieldAccess, string> = {
+  none: "", buckler: "Bkl", all: "Shd",
+};
+
+/** Get all equipment icon abbreviations for a class. */
+export function getClassEquipIcons(classDef: ClassDef): string[] {
+  const icons: string[] = [];
+  for (const fam of classDef.weaponFamilies) icons.push(WEAPON_FAMILY_ICON[fam]);
+  icons.push(ARMOR_WEIGHT_ICON[classDef.maxArmorWeight]);
+  if (classDef.shieldAccess !== "none") icons.push(SHIELD_ACCESS_ICON[classDef.shieldAccess]);
+  return icons;
+}
+
+/** Get short class name abbreviation. */
+export function getClassAbbrev(classId: CharacterClass): string {
+  const abbrevs: Record<CharacterClass, string> = {
+    fighter: "Fig", knight: "Kni", rogue: "Rog", ranger: "Rng",
+    spearman: "Spr", brute: "Brt", occultist: "Occ", priest: "Pri",
+  };
+  return abbrevs[classId];
 }
 
 /** Get armor MP reduction from class passives (Knight: reduces armor MP penalty). */

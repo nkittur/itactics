@@ -19,7 +19,9 @@ type PassiveArchetype =
   | "reactive_defender"     // buff stat or reduce damage when hit
   | "sustained_fighter"     // turn-start buff for high-stamina builds
   | "stack_builder"         // stacking buff on each hit landed
-  | "dot_amplifier";        // bonus damage when target has active DoT
+  | "dot_amplifier"         // bonus damage when target has active DoT
+  | "damage_booster"        // flat +X bonus damage
+  | "stat_scaler";          // damage scaling from a stat
 
 interface ArchetypeWeight {
   archetype: PassiveArchetype;
@@ -127,6 +129,18 @@ const PASSIVE_NAME_POOL: Record<PassiveArchetype, string[]> = {
     "Deep Corruption", "Compounding Pain", "Prolonged Torment",
     "Erosion Expert", "Slow Death", "Deterioration Master",
     "Infectious Fury", "Accelerated Rot", "Burning Vendetta",
+  ],
+  damage_booster: [
+    "Deadly Focus", "Sharpened Edge", "Heavy Hands",
+    "Brute Force", "Keen Strike", "Crushing Momentum",
+    "Lethal Precision", "Battle Hardened", "Iron Fists",
+    "Empowered Strikes", "Raw Power", "Trained Killer",
+  ],
+  stat_scaler: [
+    "Strength of Arms", "Battle Wisdom", "Cunning Strike",
+    "Resolve's Edge", "Swift Precision", "Willpower Strike",
+    "Stat Mastery", "Inner Power", "Disciplined Force",
+    "Focused Might", "Trained Reflexes", "Adaptive Fighting",
   ],
 };
 
@@ -255,6 +269,16 @@ function weightArchetypes(analysis: ActiveAnalysis): ArchetypeWeight[] {
   if (analysis.hasBurn) dotWeight += 4;
   if (analysis.hasPoison) dotWeight += 4;
   weights.push({ archetype: "dot_amplifier", weight: dotWeight });
+
+  // Damage booster: universally useful flat damage
+  let dmgBoostWeight = 3;
+  if (analysis.highDamage) dmgBoostWeight += 2;
+  weights.push({ archetype: "damage_booster", weight: dmgBoostWeight });
+
+  // Stat scaler: damage scales from a stat, great for spell casters
+  let scalerWeight = 2;
+  if (analysis.hasSpell) scalerWeight += 3;
+  weights.push({ archetype: "stat_scaler", weight: scalerWeight });
 
   return weights;
 }
@@ -543,6 +567,50 @@ function buildDotAmplifier(
   };
 }
 
+function buildDamageBooster(
+  _analysis: ActiveAnalysis,
+  level: PowerLevel,
+  _rng: () => number,
+): { trigger: TriggerPrimitive; effects: EffectPrimitive[] } {
+  const amount = level === "minor" ? 1 : level === "standard" ? 2 : 3;
+  return {
+    trigger: {
+      type: "trg_turnStart",
+      params: {},
+      powerAdd: level === "minor" ? 2 : level === "standard" ? 3 : 5,
+      triggeredEffect: {
+        type: "buff_stat",
+        params: { stat: "bonusDamage", amount },
+        power: level === "minor" ? 2 : 3,
+      },
+    },
+    effects: [],
+  };
+}
+
+function buildStatScaler(
+  _analysis: ActiveAnalysis,
+  level: PowerLevel,
+  rng: () => number,
+): { trigger: TriggerPrimitive; effects: EffectPrimitive[] } {
+  const stats = ["meleeSkill", "resolve", "initiative", "dodge"];
+  const stat = stats[Math.floor(rng() * stats.length)]!;
+  const pct = level === "minor" ? 10 : level === "standard" ? 15 : 20;
+  return {
+    trigger: {
+      type: "trg_turnStart",
+      params: {},
+      powerAdd: level === "minor" ? 2 : level === "standard" ? 4 : 6,
+      triggeredEffect: {
+        type: "buff_stat",
+        params: { stat: "bonusDamage", amount: 0, scalingStat: stat, scalingPct: pct },
+        power: level === "minor" ? 3 : level === "standard" ? 4 : 6,
+      },
+    },
+    effects: [],
+  };
+}
+
 // ── Description for generated passives ──
 
 function generatePassiveDesc(
@@ -584,7 +652,16 @@ function generatePassiveDesc(
       break;
     case "trg_turnStart":
       if (eff.type === "buff_stat") {
-        parts.push(`Start of turn: +${eff.params["amount"]} ${formatStat(eff.params["stat"] as string)}`);
+        const stat = eff.params["stat"] as string;
+        const scalingStat = eff.params["scalingStat"] as string | undefined;
+        const scalingPct = eff.params["scalingPct"] as number | undefined;
+        if (stat === "bonusDamage" && scalingStat && scalingPct) {
+          parts.push(`Start of turn: +damage equal to ${scalingPct}% of ${formatStat(scalingStat)}`);
+        } else if (stat === "bonusDamage") {
+          parts.push(`Start of turn: +${eff.params["amount"]} damage`);
+        } else {
+          parts.push(`Start of turn: +${eff.params["amount"]} ${formatStat(stat)}`);
+        }
       }
       break;
     case "trg_onTakeDamage":
@@ -756,6 +833,18 @@ function buildPassive(
     }
     case "dot_amplifier": {
       const result = buildDotAmplifier(analysis, level, rng);
+      trigger = result.trigger;
+      effects = result.effects;
+      break;
+    }
+    case "damage_booster": {
+      const result = buildDamageBooster(analysis, level, rng);
+      trigger = result.trigger;
+      effects = result.effects;
+      break;
+    }
+    case "stat_scaler": {
+      const result = buildStatScaler(analysis, level, rng);
       trigger = result.trigger;
       effects = result.effects;
       break;

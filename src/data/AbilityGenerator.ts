@@ -65,8 +65,15 @@ function defaultEffectParams(type: EffectType, tier: 1 | 2 | 3, rng: () => numbe
         hpThreshold: tier >= 3 ? 30 : 20,
         bonusMult: snap(tier === 1 ? 40 : tier === 2 ? 60 : 80, 20, 20) / 100,
       };
-    case "dmg_multihit":
-      return { hits: tier >= 3 ? 3 : 2, multPerHit: snap(60, 20, 40) / 100 };
+    case "dmg_multihit": {
+      const mhOptions = tier >= 3
+        ? [{ hits: 3, mult: 60 }, { hits: 4, mult: 40 }, { hits: 5, mult: 30 }]
+        : tier >= 2
+        ? [{ hits: 2, mult: 60 }, { hits: 3, mult: 40 }, { hits: 4, mult: 30 }]
+        : [{ hits: 2, mult: 60 }, { hits: 3, mult: 40 }];
+      const mhPick = mhOptions[Math.floor(rng() * mhOptions.length)]!;
+      return { hits: mhPick.hits, multPerHit: snap(mhPick.mult, 20, 20) / 100 };
+    }
     case "dmg_spell":
       return { multiplier: snap(tier === 1 ? 120 : tier === 2 ? 140 : 180, 20, 120) / 100 };
     case "dot_bleed":

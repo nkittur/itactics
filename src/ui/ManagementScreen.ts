@@ -2,7 +2,7 @@ import type { RosterMember, SaveData } from "@save/SaveManager";
 import { saveGame, pruneItemRegistry } from "@save/SaveManager";
 import { getItemPrice, type StoreCategory } from "@data/StoreData";
 import { UNARMED } from "@data/WeaponData";
-import { getClassDef, canEquipWeapon, canEquipShield, canEquipArmor, type CharacterClass } from "@data/ClassData";
+import { getClassDef, canEquipWeapon, canEquipShield, canEquipArmor, getClassEquipIcons, getClassAbbrev, type CharacterClass } from "@data/ClassData";
 import type { ContractDef } from "@data/ContractData";
 import { generateContracts } from "@data/ContractData";
 import type { RecruitDef } from "@data/RecruitData";
@@ -746,6 +746,17 @@ export class ManagementScreen {
       container.appendChild(bagCard);
     }
 
+    // Class equipment icons
+    const classDef = getClassDef(unit.classId as CharacterClass);
+    if (classDef) {
+      const badgeRow = el("div", "equip-badge-row");
+      badgeRow.appendChild(el("span", "equip-badge-label", "Can equip: "));
+      for (const icon of getClassEquipIcons(classDef)) {
+        badgeRow.appendChild(el("span", "equip-badge", icon));
+      }
+      container.appendChild(badgeRow);
+    }
+
     // Equip from stash (roster only)
     if (isRoster && this.saveData.stash.length > 0) {
       const m = this.saveData.roster[rosterIdx];
@@ -965,6 +976,24 @@ export class ManagementScreen {
     }
   }
 
+  private getCompatibleClasses(gen: import("@data/GeneratedItemData").GeneratedItem): string[] {
+    const ALL_CLASSES: CharacterClass[] = ["fighter", "knight", "rogue", "ranger", "spearman", "brute", "occultist", "priest"];
+    const result: string[] = [];
+    for (const classId of ALL_CLASSES) {
+      const classDef = getClassDef(classId);
+      let canEquip = false;
+      switch (gen.slotType) {
+        case "weapon": canEquip = canEquipWeapon(classDef, resolveWeapon(gen.uid)); break;
+        case "shield": { const s = resolveShield(gen.uid); canEquip = s ? canEquipShield(classDef, s) : false; break; }
+        case "body_armor":
+        case "head_armor": { const a = resolveArmor(gen.uid); canEquip = a ? canEquipArmor(classDef, a) : false; break; }
+        default: canEquip = true;
+      }
+      if (canEquip) result.push(getClassAbbrev(classId));
+    }
+    return result;
+  }
+
   private categorizeItem(itemId: string): StoreCategory | null {
     if (isGeneratedItemId(itemId)) {
       const gen = this.saveData.itemRegistry?.[itemId];
@@ -1026,6 +1055,16 @@ export class ManagementScreen {
         nameSpan.textContent = `${gen.name} [+${gen.modifiers.length}]`;
       }
       row.appendChild(nameSpan);
+
+      // Class compatibility badges
+      const compatClasses = this.getCompatibleClasses(gen);
+      if (compatClasses.length > 0 && compatClasses.length < 8) {
+        const badgeSpan = el("span", "equip-compat-badges");
+        for (const abbrev of compatClasses) {
+          badgeSpan.appendChild(el("span", "equip-badge", abbrev));
+        }
+        row.appendChild(badgeSpan);
+      }
 
       row.appendChild(el("span", "mgmt-item-price", `${gen.buyPrice}g`));
 

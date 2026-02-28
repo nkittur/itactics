@@ -4,6 +4,7 @@ import type { GeneratedAbility, TriggerType } from "@data/AbilityData";
 import { resolveAbility } from "@data/AbilityResolver";
 import type { AbilitiesComponent } from "@entities/components/Abilities";
 import type { HealthComponent } from "@entities/components/Health";
+import type { StatsComponent } from "@entities/components/Stats";
 import type { StatusEffectManager } from "./StatusEffectManager";
 import type { ActionPointManager } from "./ActionPointManager";
 
@@ -37,7 +38,19 @@ export class PassiveResolver {
 
       if (triggered.type === "buff_stat") {
         const stat = triggered.params["stat"] as string;
-        const amount = (triggered.params["amount"] as number) ?? 0;
+        let amount = (triggered.params["amount"] as number) ?? 0;
+
+        // Stat-scaling passives: compute bonus damage from a source stat
+        const scalingStat = triggered.params["scalingStat"] as string | undefined;
+        const scalingPct = triggered.params["scalingPct"] as number | undefined;
+        if (scalingStat && scalingPct && stat === "bonusDamage") {
+          const stats = world.getComponent<StatsComponent>(entityId, "stats");
+          if (stats) {
+            const statValue = (stats as unknown as Record<string, number>)[scalingStat] ?? 0;
+            amount = Math.floor(statValue * scalingPct / 100);
+          }
+        }
+
         if (stat && amount > 0) {
           this.statusEffects.applyDynamic(world, entityId, {
             id: `buff_${stat}`,
