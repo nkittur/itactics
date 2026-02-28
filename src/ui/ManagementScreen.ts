@@ -101,8 +101,8 @@ export class ManagementScreen {
       this.saveData.availableRecruits = generateRecruits(partyLevel, simpleRng);
       this.saveData.abilityRegistry = getAbilityRegistry();
     } else {
-      // Regenerate recruits if cached from before skill tree system
-      const needsRegen = this.saveData.availableRecruits.some(r => !r.skillTree);
+      // Regenerate recruits if cached from before archetype system
+      const needsRegen = this.saveData.availableRecruits.some(r => !r.skillTree || !r.archetypeId);
       if (needsRegen) {
         this.saveData.availableRecruits = generateRecruits(partyLevel, simpleRng);
         this.saveData.abilityRegistry = getAbilityRegistry();

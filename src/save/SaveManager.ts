@@ -120,9 +120,9 @@ export async function loadGame(): Promise<SaveData | null> {
     // Set ability registry before migration so new abilities are registered into save data
     setAbilityRegistry(data.abilityRegistry);
 
-    // Migrate level-based abilities → skill tree
+    // Migrate to archetype skill tree (covers both old level-based and old theme-based trees)
     for (const member of data.roster) {
-      if (!member.skillTree) {
+      if (!member.skillTree || !member.archetypeId) {
         migrateToSkillTree(member);
       }
     }
