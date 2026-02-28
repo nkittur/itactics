@@ -29,6 +29,7 @@ interface DetailUnit {
   spriteType: string;
   abilities: { uid: string; unlockLevel: number }[];
   skillTheme: string;
+  secondarySkillTheme: string | null;
   equipment: RosterMember["equipment"];
   armor: RosterMember["armor"];
   isRecruit: boolean;
@@ -220,6 +221,7 @@ export class ManagementScreen {
         spriteType: m.spriteType ?? "soldier",
         abilities,
         skillTheme: m.skillTheme ?? "",
+        secondarySkillTheme: m.secondarySkillTheme ?? null,
         equipment: m.equipment,
         armor: m.armor,
         isRecruit: false,
@@ -241,6 +243,7 @@ export class ManagementScreen {
         spriteType: r.sprite,
         abilities: r.uniqueSkills.map(sk => ({ uid: sk.uid, unlockLevel: sk.unlockLevel })),
         skillTheme: r.skillTheme,
+        secondarySkillTheme: r.secondarySkillTheme ?? null,
         equipment: r.equipment,
         armor: r.armor,
         isRecruit: true,
@@ -319,8 +322,12 @@ export class ManagementScreen {
     const className = getClassDef(unit.classId as CharacterClass).name;
     info.appendChild(el("div", "detail-class", `${className} Lv${unit.level}`));
     if (unit.skillTheme) {
-      const themeName = THEMES[unit.skillTheme]?.name ?? unit.skillTheme;
-      info.appendChild(el("span", "detail-theme-badge", themeName));
+      const primaryName = THEMES[unit.skillTheme]?.name ?? unit.skillTheme;
+      const secondaryName = unit.secondarySkillTheme
+        ? (THEMES[unit.secondarySkillTheme]?.name ?? unit.secondarySkillTheme)
+        : null;
+      const themeLabel = secondaryName ? `${primaryName} / ${secondaryName}` : primaryName;
+      info.appendChild(el("span", "detail-theme-badge", themeLabel));
     }
     header.appendChild(info);
     overlay.appendChild(header);
@@ -836,6 +843,7 @@ export class ManagementScreen {
       },
       spriteType: r.sprite,
       skillTheme: r.skillTheme,
+      secondarySkillTheme: r.secondarySkillTheme ?? undefined,
       abilities: r.skillTree.nodes.map(n => n.abilityUid),
       skillTree: r.skillTree,
       unlockedNodes: [],

@@ -322,7 +322,7 @@ function generateParties(count: number, baseSeed: number): PartyAnalysis[] {
     for (let j = 0; j < partyThemes.length; j++) {
       const treeRng = makeRng(baseSeed + i * 2971 + j * 7919);
       const theme = THEMES[partyThemes[j]!]!;
-      const tree = generateSkillTree(theme, treeRng);
+      const tree = generateSkillTree(theme, null, treeRng);
       profiles.push(buildTreeProfile(tree, partyThemes[j]!));
     }
 

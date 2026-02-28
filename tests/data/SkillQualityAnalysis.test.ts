@@ -169,7 +169,7 @@ describe("Skill Quality Analysis", () => {
       const rng = makeRng(42 + i * 1337);
       const themeId = themeIds[i % themeIds.length]!;
       const theme = THEMES[themeId]!;
-      const tree = generateSkillTree(theme, rng);
+      const tree = generateSkillTree(theme, null, rng);
 
       const quality: TreeQuality = {
         themeId,

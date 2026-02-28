@@ -6,7 +6,7 @@ import type { GeneratedItem } from "@data/GeneratedItemData";
 import type { GeneratedAbility } from "@data/AbilityData";
 import type { SkillTree } from "@data/SkillTreeData";
 import { generateSkillTree } from "@data/SkillTreeData";
-import { THEMES } from "@data/ThemeData";
+import { THEMES, pickSecondaryTheme } from "@data/ThemeData";
 import { setAbilityRegistry } from "@data/AbilityResolver";
 
 const SAVE_KEY = "itactics-save";
@@ -48,6 +48,8 @@ export interface RosterMember {
   abilities?: string[];
   /** Recruit theme ID (e.g., "bleeder", "crusher"). */
   skillTheme?: string;
+  /** Secondary skill theme ID for bucket diversity. */
+  secondarySkillTheme?: string;
   /** Maps ability UID → level at which it unlocks. @deprecated Use skillTree. */
   abilityUnlockLevels?: Record<string, number>;
   /** Procedurally generated skill tree for this unit. */
@@ -178,7 +180,13 @@ function migrateToSkillTree(member: RosterMember): void {
 
   const themeId = member.skillTheme ?? "bleeder";
   const theme = THEMES[themeId] ?? THEMES["bleeder"]!;
-  const skillTree = generateSkillTree(theme, rng);
+  const secondaryTheme = member.secondarySkillTheme
+    ? (THEMES[member.secondarySkillTheme] ?? null)
+    : pickSecondaryTheme(theme, rng);
+  const skillTree = generateSkillTree(theme, secondaryTheme, rng);
+  if (secondaryTheme && !member.secondarySkillTheme) {
+    member.secondarySkillTheme = secondaryTheme.id;
+  }
 
   member.skillTree = skillTree;
   member.classPoints = 0;

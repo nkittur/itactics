@@ -4,7 +4,7 @@ import { generateTalentStars, rollStatIncrease, ALL_STAT_KEYS } from "./TalentDa
 import type { SpriteCharType } from "@rendering/SpriteAnimator";
 import type { RosterMember } from "@save/SaveManager";
 import { getArmorDef } from "./ArmorData";
-import { pickTheme } from "./ThemeData";
+import { pickTheme, pickSecondaryTheme } from "./ThemeData";
 import { generateRecruitSkills } from "./AbilityGenerator";
 import { generateSkillTree } from "./SkillTreeData";
 import type { SkillTree } from "./SkillTreeData";
@@ -22,6 +22,8 @@ export interface RecruitDef {
   armor: RosterMember["armor"];
   /** Skill theme ID (e.g., "bleeder", "crusher"). */
   skillTheme: string;
+  /** Secondary skill theme ID for bucket diversity. */
+  secondarySkillTheme: string | null;
   /** @deprecated Use skillTree. Kept for backward compat. */
   uniqueSkills: { uid: string; unlockLevel: number }[];
   /** Procedurally generated skill tree. */
@@ -183,7 +185,8 @@ export function generateRecruits(partyLevel: number, rng: () => number): Recruit
 
     // Generate skill theme and skill tree
     const theme = pickTheme(classId, rng);
-    const skillTree = generateSkillTree(theme, rng);
+    const secondaryTheme = pickSecondaryTheme(theme, rng);
+    const skillTree = generateSkillTree(theme, secondaryTheme, rng);
 
     // Backward-compat: derive uniqueSkills from tree nodes
     const uniqueSkills = skillTree.nodes.map(n => ({
@@ -211,6 +214,7 @@ export function generateRecruits(partyLevel: number, rng: () => number): Recruit
       },
       armor: armorForLevel(level),
       skillTheme: theme.id,
+      secondarySkillTheme: secondaryTheme?.id ?? null,
       uniqueSkills,
       skillTree,
       classPoints: startingCP,

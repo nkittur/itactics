@@ -1,8 +1,8 @@
 import type { GeneratedAbility } from "./AbilityData";
 import { generateAbilityUID } from "./AbilityData";
 import { registerAbility } from "./AbilityResolver";
-import type { Theme, ThemeProgressionSlot } from "./ThemeData";
-import { THEMES } from "./ThemeData";
+import type { Theme, ThemeProgressionSlot, FunctionalBucket } from "./ThemeData";
+import { THEMES, EFFECT_TO_BUCKET, ALL_BUCKETS } from "./ThemeData";
 import { generatePassiveSuite, type PowerLevel } from "./PassiveGenerator";
 import { generateAbility, rollRarity } from "./AbilityGenerator";
 
@@ -267,68 +267,95 @@ function activeTierForTreeTier(tier: 1 | 2 | 3 | 4, dualParent: boolean): 1 | 2 
   }
 }
 
-// ── Off-theme mixing ──
+// ── Bucket classification ──
 
-const OFF_THEME_CHANCE = 0.40;
-
-function findCompatibleThemes(primary: Theme): { theme: Theme; weight: number }[] {
-  const results: { theme: Theme; weight: number }[] = [];
-  const primaryConds = new Set(
-    primary.progression.flatMap(s => [...s.conditions.creates, ...s.conditions.exploits]),
-  );
-  for (const theme of Object.values(THEMES)) {
-    if (theme.id === primary.id) continue;
-    const sharedWeapons = theme.weaponAffinity.filter(w => primary.weaponAffinity.includes(w));
-    if (sharedWeapons.length === 0) continue;
-    let weight = sharedWeapons.length * 3;
-    const themeConds = new Set(
-      theme.progression.flatMap(s => [...s.conditions.creates, ...s.conditions.exploits]),
-    );
-    for (const c of themeConds) if (primaryConds.has(c)) weight += 2;
-    results.push({ theme, weight });
+/** Classify a slot's effects into the set of functional buckets they cover. */
+function classifySlotBuckets(slot: ThemeProgressionSlot): Set<FunctionalBucket> {
+  const buckets = new Set<FunctionalBucket>();
+  for (const effect of slot.effects) {
+    const bucket = EFFECT_TO_BUCKET[effect];
+    if (bucket) buckets.add(bucket);
   }
-  return results;
+  return buckets;
+}
+
+/** Score a progression slot against the theme's bucket profile with decay. */
+function scoreSlot(
+  slot: ThemeProgressionSlot,
+  profile: Record<FunctionalBucket, number>,
+  bucketCounts: Map<FunctionalBucket, number>,
+): number {
+  const buckets = classifySlotBuckets(slot);
+  let score = 0;
+  for (const bucket of buckets) {
+    const count = bucketCounts.get(bucket) ?? 0;
+    score += profile[bucket] * Math.pow(0.5, count);
+  }
+  // Minimum score so no slot is completely impossible
+  return Math.max(score, 0.1);
 }
 
 // ── Full tree generation ──
 
 /**
- * Generate a complete skill tree for a unit with random topology and themed abilities.
+ * Generate a complete skill tree for a unit with primary + optional secondary theme.
+ * Uses bucket-aware slot selection to ensure diverse ability spread.
  */
-export function generateSkillTree(theme: Theme, rng: () => number): SkillTree {
+export function generateSkillTree(
+  primaryTheme: Theme,
+  secondaryTheme: Theme | null,
+  rng: () => number,
+): SkillTree {
   const { nodes: topology, edges } = generateRandomTopology(rng);
 
   // Separate active and passive nodes
   const activeNodes = topology.filter(n => n.isActive);
   const passiveNodes = topology.filter(n => !n.isActive);
 
-  // Generate actives — primary theme weighted, with off-theme mixing
-  const compatible = findCompatibleThemes(theme);
+  // Designate ~1/3 of active nodes as "secondary" (at least 1 if secondary exists)
+  const secondaryCount = secondaryTheme
+    ? Math.max(1, Math.round(activeNodes.length * (0.3 + rng() * 0.1)))
+    : 0;
+  // Shuffle to randomly assign which nodes are secondary
+  const shuffledActiveIndices = shuffle(
+    activeNodes.map((_, i) => i),
+    rng,
+  );
+  const secondaryIndices = new Set(shuffledActiveIndices.slice(0, secondaryCount));
+
+  // Track bucket counts across ALL actives for diversity
+  const bucketCounts = new Map<FunctionalBucket, number>();
+
   const actives: GeneratedAbility[] = [];
   for (let i = 0; i < activeNodes.length; i++) {
     const node = activeNodes[i]!;
     const tier = activeTierForTreeTier(node.tier, node.dualParent);
 
-    let useTheme = theme;
-    let weaponReq = theme.weaponAffinity;
+    // Determine source theme for this node
+    const useTheme = (secondaryTheme && secondaryIndices.has(i))
+      ? secondaryTheme
+      : primaryTheme;
 
-    // Chance to pull from a compatible off-theme
-    if (compatible.length > 0 && rng() < OFF_THEME_CHANCE) {
-      const totalW = compatible.reduce((s, c) => s + c.weight, 0);
-      let roll = rng() * totalW;
-      for (const c of compatible) {
-        roll -= c.weight;
-        if (roll <= 0) { useTheme = c.theme; break; }
-      }
-      // Weapon req = intersection of primary + off-theme
-      const shared = useTheme.weaponAffinity.filter(w => theme.weaponAffinity.includes(w));
-      weaponReq = shared.length > 0 ? shared : theme.weaponAffinity;
+    // Weapon req: intersection of primary + secondary for secondary nodes
+    let weaponReq = primaryTheme.weaponAffinity;
+    if (useTheme !== primaryTheme) {
+      const shared = useTheme.weaponAffinity.filter(w => primaryTheme.weaponAffinity.includes(w));
+      weaponReq = shared.length > 0 ? shared : primaryTheme.weaponAffinity;
     }
 
-    // Pick progression slot: cycle for on-theme, tier-based for off-theme
-    const slotIndex = useTheme === theme
-      ? (i % useTheme.progression.length)
-      : (node.tier <= 2 ? (rng() < 0.5 ? 0 : 1) : node.tier === 3 ? 2 : 3);
+    // Score each of the source theme's 4 progression slots using bucket profile + decay
+    const slotScores: number[] = useTheme.progression.map(slot =>
+      scoreSlot(slot, useTheme.bucketProfile, bucketCounts),
+    );
+
+    // Pick slot by weighted random from scores
+    const totalScore = slotScores.reduce((s, v) => s + v, 0);
+    let roll = rng() * totalScore;
+    let slotIndex = 0;
+    for (let si = 0; si < slotScores.length; si++) {
+      roll -= slotScores[si]!;
+      if (roll <= 0) { slotIndex = si; break; }
+    }
 
     const slot = useTheme.progression[slotIndex]!;
     const ability = generateAbility(
@@ -340,9 +367,15 @@ export function generateSkillTree(theme: Theme, rng: () => number): SkillTree {
     );
     registerAbility(ability);
     actives.push(ability);
+
+    // Update bucket counts
+    const usedBuckets = classifySlotBuckets(slot);
+    for (const bucket of usedBuckets) {
+      bucketCounts.set(bucket, (bucketCounts.get(bucket) ?? 0) + 1);
+    }
   }
 
-  // Generate passives using PassiveGenerator
+  // Generate passives using PassiveGenerator (unchanged — synergy-focused)
   const passivePowerLevels: PowerLevel[] = passiveNodes.map(n =>
     passivePowerForTier(n.tier, n.dualParent),
   );

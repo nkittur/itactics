@@ -232,6 +232,7 @@ function recruitToRosterMember(recruit: RecruitDef, _rng: () => number): RosterM
     },
     spriteType: recruit.sprite,
     skillTheme: recruit.skillTheme,
+    secondarySkillTheme: recruit.secondarySkillTheme ?? undefined,
     skillTree: recruit.skillTree,
     unlockedNodes: [],
     nodeStacks: {},

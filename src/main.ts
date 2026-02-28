@@ -10,7 +10,7 @@ import { generateTalentStars } from "@data/TalentData";
 import { getArmorDef } from "@data/ArmorData";
 import { setItemRegistry } from "@data/ItemResolver";
 import { setAbilityRegistry } from "@data/AbilityResolver";
-import { pickTheme } from "@data/ThemeData";
+import { pickTheme, pickSecondaryTheme } from "@data/ThemeData";
 import { generateSkillTree } from "@data/SkillTreeData";
 import type { CharacterClass } from "@data/ClassData";
 
@@ -32,7 +32,8 @@ function createStarterUnit(
 
   // Generate skill tree
   const theme = pickTheme(classId as CharacterClass, simpleRng);
-  const skillTree = generateSkillTree(theme, simpleRng);
+  const secondaryTheme = pickSecondaryTheme(theme, simpleRng);
+  const skillTree = generateSkillTree(theme, secondaryTheme, simpleRng);
 
   return {
     name,
@@ -70,6 +71,7 @@ function createStarterUnit(
     },
     spriteType: sprite,
     skillTheme: theme.id,
+    secondarySkillTheme: secondaryTheme?.id,
     abilities: skillTree.nodes.map(n => n.abilityUid),
     skillTree,
     unlockedNodes: [],
