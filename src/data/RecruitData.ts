@@ -41,8 +41,12 @@ const NAMES = [
   "Werner", "Konrad", "Fritz", "Otto",
 ];
 
-// Dynamically populated from all registered classes.
-const RECRUIT_CLASSES: string[] = getAllCharacterClasses();
+// Lazily populated from all registered classes (avoids import-order issues).
+let _recruitClasses: string[] | null = null;
+function getRecruitClasses(): string[] {
+  if (!_recruitClasses) _recruitClasses = getAllCharacterClasses();
+  return _recruitClasses;
+}
 
 const CLASS_SPRITES: Record<string, SpriteCharType[]> = {
   fighter: ["soldier", "swordsman", "armored-axeman"],
@@ -222,7 +226,7 @@ export function generateRecruits(partyLevel: number, rng: () => number): Recruit
     } while (usedNames.has(name) && usedNames.size < NAMES.length);
     usedNames.add(name);
 
-    const classId = pick(RECRUIT_CLASSES, rng);
+    const classId = pick(getRecruitClasses(), rng);
     const level = rollRecruitLevel(partyLevel, rng);
     const talentStars = generateTalentStars(rng);
     const stats = baseStats(classId, rng);
