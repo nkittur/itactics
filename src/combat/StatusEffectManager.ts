@@ -3,98 +3,416 @@ import type { EntityId } from "@entities/Entity";
 import type { StatusEffectsComponent, StatusEffect } from "@entities/components/StatusEffects";
 import type { HealthComponent } from "@entities/components/Health";
 import type { RNG } from "@utils/RNG";
+import type { EventBus } from "@core/EventBus";
+
+// ── Data-Driven Status Effect Definitions ──
+
+export type StackBehavior =
+  | "independent"    // Each stack has its own timer
+  | "refresh"        // New application refreshes duration of all stacks
+  | "intensity";     // Stacks increase a power value, shared duration
+
+export type EffectCategory = "buff" | "debuff" | "neutral";
+
+/** Periodic effect that ticks each turn. */
+export interface PeriodicEffect {
+  /** Damage per stack per tick. 0 if non-damaging. */
+  damagePerTick: number;
+  /** Damage type for periodic damage. */
+  damageType: string;
+  /** Healing per tick (positive = heal). */
+  healPerTick: number;
+  /** Resource to modify per tick. */
+  resourceModify?: { resourceId: string; amount: number };
+}
+
+/** Interaction between two status effects. */
+export interface StatusInteraction {
+  /** The other effect id that triggers this interaction. */
+  withEffect: string;
+  /** Result effect id to apply (replaces both). */
+  resultEffect: string;
+  /** Whether to remove both source effects. */
+  removeBoth: boolean;
+}
+
+/** Behavioral flags that modify entity behavior. */
+export interface BehavioralFlags {
+  skipTurn: boolean;
+  cannotCast: boolean;
+  cannotMove: boolean;
+  fleeAI: boolean;
+  intangible: boolean;
+  invisible: boolean;
+  silenced: boolean;
+  disarmed: boolean;
+  invulnerable: boolean;
+  taunted: boolean;
+  charmed: boolean;
+  phased: boolean;      // Can move through walls/entities
+  flying: boolean;
+  rooted: boolean;
+}
 
 /**
- * Known status effect IDs and their base definitions.
- *
- * - **stun**: Skip turn, 0 defense, no ZoC. Duration: 1 turn.
- * - **bleed**: 5-10 HP/turn ignoring armor. Stacks up to 5. Duration: 2-3 turns.
- * - **daze**: -25% melee skill, melee defense, initiative. Duration: 1-2 turns.
- * - **fleeing**: -30 to melee skill and defense. Applied by MoraleManager.
+ * Data-driven status effect definition.
+ * Loaded from JSON or registered programmatically.
  */
-
 export interface StatusEffectDef {
   readonly id: string;
   readonly name: string;
+  readonly description: string;
+  readonly category: EffectCategory;
+  readonly icon: string;
+
+  /** Base duration in turns. */
   readonly duration: number;
+  /** Maximum number of stacks. */
+  readonly maxStacks: number;
+  /** How stacking behaves. */
+  readonly stackBehavior: StackBehavior;
+
   /** Stat modifiers applied while active. Keys match StatsComponent fields. */
   readonly modifiers: Record<string, number>;
-  /** Max stacks (1 = no stacking, refresh duration instead). */
-  readonly maxStacks: number;
+  /** Whether modifiers scale per stack. */
+  readonly modifiersPerStack: boolean;
+
+  /** Periodic effects (DoT, HoT, resource drain). */
+  readonly periodic: PeriodicEffect | null;
+
+  /** Behavioral flags applied while this effect is active. */
+  readonly flags: Partial<BehavioralFlags>;
+
+  /** Effects applied when this status is first applied. */
+  readonly onApplyEffects: string[];
+  /** Effects applied when this status is removed. */
+  readonly onRemoveEffects: string[];
+  /** Effects applied to the source when this status expires naturally. */
+  readonly onExpireEffects: string[];
+
+  /** Interactions with other effects. */
+  readonly interactions: StatusInteraction[];
+
+  /** Whether this effect can be dispelled. */
+  readonly dispellable: boolean;
+  /** Whether this effect persists through death. */
+  readonly persistsThroughDeath: boolean;
+
+  /** Tags for filtering (e.g., "fire", "ice", "poison", "curse"). */
+  readonly tags: string[];
 }
 
-export const STATUS_EFFECT_DEFS: Record<string, StatusEffectDef> = {
-  stun: {
-    id: "stun",
-    name: "Stunned",
+// ── Effect Registry ──
+
+const effectDefs = new Map<string, StatusEffectDef>();
+
+export function registerStatusEffectDef(def: StatusEffectDef): void {
+  effectDefs.set(def.id, def);
+}
+
+export function getStatusEffectDef(id: string): StatusEffectDef | undefined {
+  return effectDefs.get(id);
+}
+
+// ── Default flags helper ──
+
+function defaultFlags(): BehavioralFlags {
+  return {
+    skipTurn: false, cannotCast: false, cannotMove: false,
+    fleeAI: false, intangible: false, invisible: false,
+    silenced: false, disarmed: false, invulnerable: false,
+    taunted: false, charmed: false, phased: false,
+    flying: false, rooted: false,
+  };
+}
+
+function defWithDefaults(partial: Partial<StatusEffectDef> & { id: string; name: string }): StatusEffectDef {
+  return {
+    description: "",
+    category: "debuff",
+    icon: "",
     duration: 1,
-    modifiers: { dodge: -999 },
     maxStacks: 1,
-  },
-  bleed: {
-    id: "bleed",
-    name: "Bleeding",
-    duration: 2,
+    stackBehavior: "refresh",
     modifiers: {},
-    maxStacks: 5,
-  },
-  daze: {
-    id: "daze",
-    name: "Dazed",
-    duration: 2,
-    modifiers: {}, // Applied dynamically as -25% of base stats
-    maxStacks: 1,
-  },
-  fleeing: {
-    id: "fleeing",
-    name: "Fleeing",
-    duration: 99, // Removed by morale recovery, not duration
-    modifiers: { meleeSkill: -30, dodge: -30 },
-    maxStacks: 1,
-  },
-  root: {
-    id: "root",
-    name: "Rooted",
-    duration: 1,
-    modifiers: { movementPoints: -999 },
-    maxStacks: 1,
-  },
-  vulnerable: {
-    id: "vulnerable",
-    name: "Vulnerable",
-    duration: 2,
-    modifiers: {},
-    maxStacks: 1,
-  },
-  dmg_reduce: {
-    id: "dmg_reduce",
-    name: "Hardened",
-    duration: 2,
-    modifiers: {},
-    maxStacks: 1,
-  },
-  burn: {
-    id: "burn",
-    name: "Burning",
-    duration: 2,
-    modifiers: {},
-    maxStacks: 3,
-  },
-  poison: {
-    id: "poison",
-    name: "Poisoned",
-    duration: 3,
-    modifiers: {},
-    maxStacks: 3,
-  },
-  cursed: {
-    id: "cursed",
-    name: "Cursed",
-    duration: 2,
+    modifiersPerStack: false,
+    periodic: null,
+    flags: {},
+    onApplyEffects: [],
+    onRemoveEffects: [],
+    onExpireEffects: [],
+    interactions: [],
+    dispellable: true,
+    persistsThroughDeath: false,
+    tags: [],
+    ...partial,
+  };
+}
+
+// ── Built-in Effect Definitions (legacy + new) ──
+
+const BUILTIN_EFFECTS: StatusEffectDef[] = [
+  // Legacy effects (backward compatible)
+  defWithDefaults({
+    id: "stun", name: "Stunned", category: "debuff", duration: 1, maxStacks: 1,
+    modifiers: { dodge: -999 }, flags: { skipTurn: true },
+    tags: ["cc", "physical"],
+  }),
+  defWithDefaults({
+    id: "bleed", name: "Bleeding", category: "debuff", duration: 2, maxStacks: 5,
+    stackBehavior: "independent",
+    periodic: { damagePerTick: 7, damageType: "physical", healPerTick: 0 },
+    tags: ["dot", "physical"],
+  }),
+  defWithDefaults({
+    id: "daze", name: "Dazed", category: "debuff", duration: 2, maxStacks: 1,
+    modifiers: { meleeSkill: -15, dodge: -15, initiative: -15 },
+    tags: ["cc", "physical"],
+  }),
+  defWithDefaults({
+    id: "fleeing", name: "Fleeing", category: "debuff", duration: 99, maxStacks: 1,
+    modifiers: { meleeSkill: -30, dodge: -30 }, flags: { fleeAI: true },
+    dispellable: false, tags: ["morale"],
+  }),
+  defWithDefaults({
+    id: "root", name: "Rooted", category: "debuff", duration: 1, maxStacks: 1,
+    modifiers: { movementPoints: -999 }, flags: { rooted: true },
+    tags: ["cc"],
+  }),
+  defWithDefaults({
+    id: "vulnerable", name: "Vulnerable", category: "debuff", duration: 2, maxStacks: 1,
+    tags: ["debuff"],
+  }),
+  defWithDefaults({
+    id: "dmg_reduce", name: "Hardened", category: "buff", duration: 2, maxStacks: 1,
+    tags: ["defensive"],
+  }),
+  defWithDefaults({
+    id: "burn", name: "Burning", category: "debuff", duration: 2, maxStacks: 3,
+    stackBehavior: "independent",
+    periodic: { damagePerTick: 8, damageType: "fire", healPerTick: 0 },
+    interactions: [{ withEffect: "freeze", resultEffect: "thermal_shock", removeBoth: true }],
+    tags: ["dot", "fire"],
+  }),
+  defWithDefaults({
+    id: "poison", name: "Poisoned", category: "debuff", duration: 3, maxStacks: 3,
+    stackBehavior: "independent",
+    periodic: { damagePerTick: 5, damageType: "poison", healPerTick: 0 },
+    tags: ["dot", "poison"],
+  }),
+  defWithDefaults({
+    id: "cursed", name: "Cursed", category: "debuff", duration: 2, maxStacks: 1,
     modifiers: { meleeSkill: -10 },
-    maxStacks: 1,
-  },
-};
+    tags: ["curse", "magical"],
+  }),
+
+  // New effects for expanded mechanics
+  defWithDefaults({
+    id: "freeze", name: "Frozen", category: "debuff", duration: 1, maxStacks: 1,
+    flags: { skipTurn: true, cannotMove: true },
+    modifiers: { dodge: -20 },
+    interactions: [{ withEffect: "burn", resultEffect: "thermal_shock", removeBoth: true }],
+    tags: ["cc", "ice"],
+  }),
+  defWithDefaults({
+    id: "thermal_shock", name: "Thermal Shock", category: "debuff", duration: 1, maxStacks: 1,
+    periodic: { damagePerTick: 25, damageType: "fire", healPerTick: 0 },
+    modifiers: { dodge: -20 },
+    tags: ["combo", "fire", "ice"],
+  }),
+  defWithDefaults({
+    id: "chill", name: "Chilled", category: "debuff", duration: 3, maxStacks: 3,
+    stackBehavior: "intensity",
+    modifiers: { initiative: -5, movementPoints: -1 }, modifiersPerStack: true,
+    tags: ["slow", "ice"],
+  }),
+  defWithDefaults({
+    id: "fear", name: "Feared", category: "debuff", duration: 2, maxStacks: 1,
+    flags: { fleeAI: true, cannotCast: true },
+    tags: ["cc", "psychic"],
+  }),
+  defWithDefaults({
+    id: "charm", name: "Charmed", category: "debuff", duration: 2, maxStacks: 1,
+    flags: { charmed: true },
+    tags: ["cc", "psychic"],
+  }),
+  defWithDefaults({
+    id: "silence", name: "Silenced", category: "debuff", duration: 2, maxStacks: 1,
+    flags: { silenced: true },
+    tags: ["cc", "magical"],
+  }),
+  defWithDefaults({
+    id: "disarm", name: "Disarmed", category: "debuff", duration: 1, maxStacks: 1,
+    flags: { disarmed: true },
+    tags: ["cc", "physical"],
+  }),
+  defWithDefaults({
+    id: "blind", name: "Blinded", category: "debuff", duration: 2, maxStacks: 1,
+    modifiers: { meleeSkill: -30, rangedSkill: -40 },
+    tags: ["cc"],
+  }),
+  defWithDefaults({
+    id: "slow", name: "Slowed", category: "debuff", duration: 2, maxStacks: 1,
+    modifiers: { movementPoints: -3, initiative: -10 },
+    tags: ["slow"],
+  }),
+  defWithDefaults({
+    id: "haste", name: "Hastened", category: "buff", duration: 2, maxStacks: 1,
+    modifiers: { movementPoints: 2, initiative: 15 },
+    tags: ["speed"],
+  }),
+  defWithDefaults({
+    id: "shield", name: "Shielded", category: "buff", duration: 3, maxStacks: 1,
+    tags: ["defensive", "shield"],
+  }),
+  defWithDefaults({
+    id: "regen", name: "Regenerating", category: "buff", duration: 3, maxStacks: 1,
+    periodic: { damagePerTick: 0, damageType: "heal", healPerTick: 10 },
+    tags: ["hot", "heal"],
+  }),
+  defWithDefaults({
+    id: "berserk", name: "Berserk", category: "buff", duration: 3, maxStacks: 1,
+    modifiers: { bonusDamage: 10, dodge: -15 },
+    tags: ["offensive"],
+  }),
+  defWithDefaults({
+    id: "stealth", name: "Stealthed", category: "buff", duration: 99, maxStacks: 1,
+    flags: { invisible: true },
+    dispellable: false,
+    tags: ["stealth"],
+  }),
+  defWithDefaults({
+    id: "phased", name: "Phased", category: "buff", duration: 1, maxStacks: 1,
+    flags: { intangible: true, phased: true },
+    tags: ["time", "defensive"],
+  }),
+  defWithDefaults({
+    id: "marked", name: "Marked", category: "debuff", duration: 3, maxStacks: 1,
+    tags: ["debuff"],
+  }),
+  defWithDefaults({
+    id: "taunt", name: "Taunted", category: "debuff", duration: 2, maxStacks: 1,
+    flags: { taunted: true },
+    tags: ["cc"],
+  }),
+  defWithDefaults({
+    id: "thorns", name: "Thorns", category: "buff", duration: 3, maxStacks: 1,
+    tags: ["defensive", "reflect"],
+  }),
+  defWithDefaults({
+    id: "lifesteal", name: "Lifesteal", category: "buff", duration: 3, maxStacks: 1,
+    tags: ["offensive", "heal"],
+  }),
+  defWithDefaults({
+    id: "electrified", name: "Electrified", category: "debuff", duration: 2, maxStacks: 1,
+    periodic: { damagePerTick: 6, damageType: "lightning", healPerTick: 0 },
+    interactions: [{ withEffect: "wet", resultEffect: "shocked", removeBoth: true }],
+    tags: ["dot", "lightning"],
+  }),
+  defWithDefaults({
+    id: "wet", name: "Wet", category: "debuff", duration: 3, maxStacks: 1,
+    modifiers: { dodge: -5 },
+    interactions: [
+      { withEffect: "electrified", resultEffect: "shocked", removeBoth: true },
+      { withEffect: "freeze", resultEffect: "frozen_solid", removeBoth: true },
+    ],
+    tags: ["water"],
+  }),
+  defWithDefaults({
+    id: "shocked", name: "Shocked", category: "debuff", duration: 1, maxStacks: 1,
+    periodic: { damagePerTick: 20, damageType: "lightning", healPerTick: 0 },
+    flags: { skipTurn: true },
+    tags: ["combo", "lightning", "water"],
+  }),
+  defWithDefaults({
+    id: "frozen_solid", name: "Frozen Solid", category: "debuff", duration: 2, maxStacks: 1,
+    flags: { skipTurn: true, cannotMove: true },
+    modifiers: { dodge: -999 },
+    tags: ["combo", "ice", "water"],
+  }),
+  defWithDefaults({
+    id: "gravity_well", name: "Gravity Well", category: "debuff", duration: 2, maxStacks: 1,
+    modifiers: { movementPoints: -4 },
+    flags: { rooted: true },
+    tags: ["gravity", "cc"],
+  }),
+  defWithDefaults({
+    id: "void_touched", name: "Void Touched", category: "debuff", duration: 3, maxStacks: 1,
+    periodic: { damagePerTick: 8, damageType: "void", healPerTick: 0 },
+    modifiers: { magicResist: -10 },
+    tags: ["void", "dot"],
+  }),
+  defWithDefaults({
+    id: "sonic_disruption", name: "Disrupted", category: "debuff", duration: 2, maxStacks: 1,
+    modifiers: { initiative: -20 },
+    flags: { silenced: true },
+    tags: ["sonic", "cc"],
+  }),
+  defWithDefaults({
+    id: "petrify", name: "Petrified", category: "debuff", duration: 2, maxStacks: 1,
+    flags: { skipTurn: true, cannotMove: true, cannotCast: true },
+    modifiers: { dodge: -999 },
+    tags: ["cc", "earth"],
+  }),
+  defWithDefaults({
+    id: "entangle", name: "Entangled", category: "debuff", duration: 2, maxStacks: 1,
+    flags: { rooted: true },
+    modifiers: { dodge: -10 },
+    periodic: { damagePerTick: 3, damageType: "nature", healPerTick: 0 },
+    tags: ["cc", "nature", "dot"],
+  }),
+  defWithDefaults({
+    id: "inspired", name: "Inspired", category: "buff", duration: 3, maxStacks: 1,
+    modifiers: { meleeSkill: 10, dodge: 5, critChance: 5 },
+    tags: ["support"],
+  }),
+  defWithDefaults({
+    id: "empowered", name: "Empowered", category: "buff", duration: 2, maxStacks: 3,
+    stackBehavior: "intensity",
+    modifiers: { bonusDamage: 5 }, modifiersPerStack: true,
+    tags: ["offensive"],
+  }),
+  defWithDefaults({
+    id: "fortified", name: "Fortified", category: "buff", duration: 3, maxStacks: 3,
+    stackBehavior: "intensity",
+    modifiers: { bonusArmor: 3 }, modifiersPerStack: true,
+    tags: ["defensive"],
+  }),
+  defWithDefaults({
+    id: "evasive", name: "Evasive", category: "buff", duration: 2, maxStacks: 1,
+    modifiers: { dodge: 20 },
+    tags: ["defensive"],
+  }),
+  defWithDefaults({
+    id: "death_mark", name: "Death Mark", category: "debuff", duration: 3, maxStacks: 1,
+    onExpireEffects: ["death_mark_detonate"],
+    tags: ["dark", "delayed"],
+  }),
+  defWithDefaults({
+    id: "time_locked", name: "Time Locked", category: "debuff", duration: 1, maxStacks: 1,
+    flags: { skipTurn: true, invulnerable: true },
+    tags: ["time", "cc"],
+  }),
+];
+
+// Register all built-in effects
+for (const def of BUILTIN_EFFECTS) {
+  registerStatusEffectDef(def);
+}
+
+// ── Legacy backward compatibility ──
+
+/** Legacy STATUS_EFFECT_DEFS for backward compatibility. */
+export const STATUS_EFFECT_DEFS: Record<string, { id: string; name: string; duration: number; modifiers: Record<string, number>; maxStacks: number }> = {};
+for (const def of BUILTIN_EFFECTS) {
+  STATUS_EFFECT_DEFS[def.id] = {
+    id: def.id,
+    name: def.name,
+    duration: def.duration,
+    modifiers: { ...def.modifiers },
+    maxStacks: def.maxStacks,
+  };
+}
 
 export interface BleedTickResult {
   entityId: EntityId;
@@ -102,60 +420,131 @@ export interface BleedTickResult {
   killed: boolean;
 }
 
+/**
+ * Data-driven status effect manager.
+ * Supports 100+ effects with interactions, periodic ticks, behavioral flags, and stacking.
+ */
 export class StatusEffectManager {
+  private eventBus: EventBus | null = null;
+
   constructor(private rng: RNG) {}
+
+  setEventBus(bus: EventBus): void {
+    this.eventBus = bus;
+  }
 
   /**
    * Apply a status effect to an entity.
-   * Stacking effects (bleed) add a new stack up to max.
-   * Non-stacking effects refresh duration.
+   * Handles stacking, interactions, and event emission.
    */
   apply(
     world: World,
     entityId: EntityId,
     effectId: string,
     durationOverride?: number,
+    sourceId?: EntityId | null,
   ): void {
     const comp = world.getComponent<StatusEffectsComponent>(entityId, "statusEffects");
     if (!comp) return;
 
-    const def = STATUS_EFFECT_DEFS[effectId];
+    const def = getStatusEffectDef(effectId) ?? STATUS_EFFECT_DEFS[effectId];
     if (!def) return;
 
     const duration = durationOverride ?? def.duration;
+    const maxStacks = def.maxStacks;
+    const stackBehavior = "stackBehavior" in def ? def.stackBehavior : (maxStacks > 1 ? "independent" : "refresh");
 
-    if (def.maxStacks > 1) {
-      // Stacking effect — add new stack if below max
+    // Check for interactions with existing effects
+    if ("interactions" in def && (def as StatusEffectDef).interactions.length > 0) {
+      for (const interaction of (def as StatusEffectDef).interactions) {
+        if (this.hasEffect(world, entityId, interaction.withEffect)) {
+          if (interaction.removeBoth) {
+            this.removeEffect(world, entityId, interaction.withEffect);
+          }
+          // Apply the result effect instead
+          this.apply(world, entityId, interaction.resultEffect, undefined, sourceId);
+          return;
+        }
+      }
+    }
+
+    // Check behavioral flag: invulnerable blocks debuffs
+    if ("category" in def && (def as StatusEffectDef).category === "debuff") {
+      if (this.hasFlag(world, entityId, "invulnerable")) return;
+    }
+
+    if (maxStacks > 1) {
       const currentStacks = comp.effects.filter((e) => e.id === effectId).length;
-      if (currentStacks < def.maxStacks) {
-        comp.effects.push({
-          id: def.id,
-          name: def.name,
-          remainingTurns: duration,
-          modifiers: { ...def.modifiers },
-        });
+
+      if (stackBehavior === "refresh") {
+        // Refresh all existing stacks, add new if below max
+        for (const eff of comp.effects.filter(e => e.id === effectId)) {
+          eff.remainingTurns = Math.max(eff.remainingTurns, duration);
+        }
+        if (currentStacks < maxStacks) {
+          comp.effects.push({
+            id: effectId,
+            name: ("name" in def ? def.name : effectId),
+            remainingTurns: duration,
+            modifiers: { ...("modifiers" in def ? def.modifiers : {}) },
+          });
+        }
+      } else if (stackBehavior === "intensity") {
+        // Shared duration, increase intensity counter
+        const existing = comp.effects.find(e => e.id === effectId);
+        if (existing) {
+          existing.remainingTurns = Math.max(existing.remainingTurns, duration);
+          existing.modifiers._stacks = Math.min((existing.modifiers._stacks ?? 1) + 1, maxStacks);
+        } else {
+          comp.effects.push({
+            id: effectId,
+            name: ("name" in def ? def.name : effectId),
+            remainingTurns: duration,
+            modifiers: { ...("modifiers" in def ? def.modifiers : {}), _stacks: 1 },
+          });
+        }
       } else {
-        // At max stacks — refresh longest-remaining stack
-        const existing = comp.effects
-          .filter((e) => e.id === effectId)
-          .sort((a, b) => a.remainingTurns - b.remainingTurns);
-        if (existing.length > 0) {
-          existing[0]!.remainingTurns = Math.max(existing[0]!.remainingTurns, duration);
+        // Independent stacks
+        if (currentStacks < maxStacks) {
+          comp.effects.push({
+            id: effectId,
+            name: ("name" in def ? def.name : effectId),
+            remainingTurns: duration,
+            modifiers: { ...("modifiers" in def ? def.modifiers : {}) },
+          });
+        } else {
+          const existing = comp.effects
+            .filter((e) => e.id === effectId)
+            .sort((a, b) => a.remainingTurns - b.remainingTurns);
+          if (existing.length > 0) {
+            existing[0]!.remainingTurns = Math.max(existing[0]!.remainingTurns, duration);
+          }
         }
       }
     } else {
-      // Non-stacking — replace or refresh
+      // Non-stacking: replace or refresh
       const existing = comp.effects.find((e) => e.id === effectId);
       if (existing) {
         existing.remainingTurns = Math.max(existing.remainingTurns, duration);
       } else {
         comp.effects.push({
-          id: def.id,
-          name: def.name,
+          id: effectId,
+          name: ("name" in def ? def.name : effectId),
           remainingTurns: duration,
-          modifiers: { ...def.modifiers },
+          modifiers: { ...("modifiers" in def ? def.modifiers : {}) },
         });
       }
+    }
+
+    // Emit event
+    if (this.eventBus) {
+      this.eventBus.emit("status:applied", {
+        sourceId: sourceId ?? null,
+        targetId: entityId,
+        effectId,
+        stacks: this.getStacks(world, entityId, effectId),
+        duration,
+      });
     }
   }
 
@@ -207,31 +596,61 @@ export class StatusEffectManager {
 
   /**
    * Tick all status effects at turn start for the given entity.
-   * Decrements durations and removes expired effects.
-   * Returns bleed tick results if any.
+   * Processes periodic effects (DoT/HoT), decrements durations, removes expired effects.
    */
   tickTurnStart(world: World, entityId: EntityId): BleedTickResult | null {
     const comp = world.getComponent<StatusEffectsComponent>(entityId, "statusEffects");
     if (!comp) return null;
 
     let bleedResult: BleedTickResult | null = null;
+    const health = world.getComponent<HealthComponent>(entityId, "health");
 
-    // Process bleed ticks (both standard and ability-generated with custom dmg)
-    const bleedStacks = comp.effects.filter((e) => e.id === "bleed");
-    if (bleedStacks.length > 0) {
-      const health = world.getComponent<HealthComponent>(entityId, "health");
-      if (health) {
-        let totalDmg = 0;
-        for (const stack of bleedStacks) {
-          const customDmg = stack.modifiers._dmgPerTurn;
-          totalDmg += customDmg != null ? customDmg : this.rng.nextInt(5, 10);
+    // Process all periodic effects
+    let totalPeriodicDamage = 0;
+    for (const effect of comp.effects) {
+      const def = getStatusEffectDef(effect.id);
+
+      if (def?.periodic) {
+        const stacks = effect.modifiers._stacks ?? 1;
+        if (def.periodic.damagePerTick > 0 && health) {
+          totalPeriodicDamage += def.periodic.damagePerTick * stacks;
         }
-        health.current = Math.max(0, health.current - totalDmg);
-        bleedResult = {
-          entityId,
-          damage: totalDmg,
+        if (def.periodic.healPerTick > 0 && health) {
+          health.current = Math.min(health.max, health.current + def.periodic.healPerTick * stacks);
+        }
+      }
+
+      // Legacy bleed handling
+      if (effect.id === "bleed" && !def?.periodic) {
+        if (health) {
+          const customDmg = effect.modifiers._dmgPerTurn;
+          totalPeriodicDamage += customDmg != null ? customDmg : this.rng.nextInt(5, 10);
+        }
+      }
+
+      // Handle custom dmgPerTurn for dynamic effects
+      if (effect.modifiers._dmgPerTurn != null && effect.id !== "bleed") {
+        if (health) {
+          totalPeriodicDamage += effect.modifiers._dmgPerTurn;
+        }
+      }
+    }
+
+    if (totalPeriodicDamage > 0 && health) {
+      health.current = Math.max(0, health.current - totalPeriodicDamage);
+      bleedResult = {
+        entityId,
+        damage: totalPeriodicDamage,
+        killed: health.current <= 0,
+      };
+
+      if (this.eventBus) {
+        this.eventBus.emit("status:tick", {
+          targetId: entityId,
+          effectId: "periodic",
+          damage: totalPeriodicDamage,
           killed: health.current <= 0,
-        };
+        });
       }
     }
 
@@ -241,7 +660,25 @@ export class StatusEffectManager {
     }
 
     // Remove expired effects
+    const expired = comp.effects.filter(e => e.remainingTurns <= 0);
     comp.effects = comp.effects.filter((e) => e.remainingTurns > 0);
+
+    // Emit removal events and process onExpire effects
+    for (const eff of expired) {
+      if (this.eventBus) {
+        this.eventBus.emit("status:removed", {
+          targetId: entityId,
+          effectId: eff.id,
+          reason: "expired",
+        });
+      }
+      const def = getStatusEffectDef(eff.id);
+      if (def?.onExpireEffects) {
+        for (const expireEffect of def.onExpireEffects) {
+          this.apply(world, entityId, expireEffect);
+        }
+      }
+    }
 
     return bleedResult;
   }
@@ -257,13 +694,44 @@ export class StatusEffectManager {
   getStacks(world: World, entityId: EntityId, effectId: string): number {
     const comp = world.getComponent<StatusEffectsComponent>(entityId, "statusEffects");
     if (!comp) return 0;
-    return comp.effects.filter((e) => e.id === effectId).length;
+    const effects = comp.effects.filter(e => e.id === effectId);
+    if (effects.length === 0) return 0;
+    // For intensity stacking, use _stacks modifier
+    const first = effects[0]!;
+    if (first.modifiers._stacks != null) return first.modifiers._stacks;
+    return effects.length;
+  }
+
+  /** Check if a behavioral flag is active on an entity from any effect. */
+  hasFlag(world: World, entityId: EntityId, flag: keyof BehavioralFlags): boolean {
+    const comp = world.getComponent<StatusEffectsComponent>(entityId, "statusEffects");
+    if (!comp) return false;
+    for (const effect of comp.effects) {
+      const def = getStatusEffectDef(effect.id);
+      if (def?.flags[flag]) return true;
+    }
+    return false;
+  }
+
+  /** Get all active behavioral flags on an entity. */
+  getActiveFlags(world: World, entityId: EntityId): Partial<BehavioralFlags> {
+    const comp = world.getComponent<StatusEffectsComponent>(entityId, "statusEffects");
+    if (!comp) return {};
+    const flags: Partial<BehavioralFlags> = {};
+    for (const effect of comp.effects) {
+      const def = getStatusEffectDef(effect.id);
+      if (def?.flags) {
+        for (const [key, val] of Object.entries(def.flags)) {
+          if (val) (flags as any)[key] = true;
+        }
+      }
+    }
+    return flags;
   }
 
   /**
    * Get total modifier for a stat from all active status effects.
-   * For daze: applies -25% of the base stat value.
-   * Handles both static and dynamic effects (debuff_*, buff_*).
+   * Handles per-stack scaling for intensity-stacked effects.
    */
   getModifier(
     world: World,
@@ -277,10 +745,19 @@ export class StatusEffectManager {
     let total = 0;
 
     for (const effect of comp.effects) {
+      // Legacy daze: -25% to specific stats
       if (effect.id === "daze") {
-        // Daze applies -25% to melee skill, defense, and initiative
         if (statName === "meleeSkill" || statName === "dodge" || statName === "initiative") {
           total -= Math.floor(baseValue * 0.25);
+        }
+        continue;
+      }
+
+      const def = getStatusEffectDef(effect.id);
+      if (def && def.modifiersPerStack) {
+        const stacks = effect.modifiers._stacks ?? 1;
+        if (def.modifiers[statName] !== undefined) {
+          total += def.modifiers[statName]! * stacks;
         }
       } else if (effect.modifiers[statName] !== undefined) {
         total += effect.modifiers[statName]!;
@@ -310,15 +787,67 @@ export class StatusEffectManager {
   countDebuffs(world: World, entityId: EntityId): number {
     const comp = world.getComponent<StatusEffectsComponent>(entityId, "statusEffects");
     if (!comp) return 0;
-    const debuffIds = new Set(["stun", "bleed", "daze", "root", "vulnerable", "fleeing"]);
-    return comp.effects.filter(e => debuffIds.has(e.id) || e.id.startsWith("debuff_")).length;
+    return comp.effects.filter(e => {
+      const def = getStatusEffectDef(e.id);
+      if (def) return def.category === "debuff";
+      // Legacy: known debuff ids
+      const debuffIds = new Set(["stun", "bleed", "daze", "root", "vulnerable", "fleeing"]);
+      return debuffIds.has(e.id) || e.id.startsWith("debuff_");
+    }).length;
+  }
+
+  /** Count total active buffs on an entity. */
+  countBuffs(world: World, entityId: EntityId): number {
+    const comp = world.getComponent<StatusEffectsComponent>(entityId, "statusEffects");
+    if (!comp) return 0;
+    return comp.effects.filter(e => {
+      const def = getStatusEffectDef(e.id);
+      return def?.category === "buff";
+    }).length;
+  }
+
+  /** Get all effects matching a tag. */
+  getEffectsWithTag(world: World, entityId: EntityId, tag: string): StatusEffect[] {
+    const comp = world.getComponent<StatusEffectsComponent>(entityId, "statusEffects");
+    if (!comp) return [];
+    return comp.effects.filter(e => {
+      const def = getStatusEffectDef(e.id);
+      return def?.tags.includes(tag);
+    });
   }
 
   /** Remove a specific effect from an entity. */
-  removeEffect(world: World, entityId: EntityId, effectId: string): void {
+  removeEffect(world: World, entityId: EntityId, effectId: string, reason: "expired" | "dispelled" | "replaced" | "death" = "dispelled"): void {
     const comp = world.getComponent<StatusEffectsComponent>(entityId, "statusEffects");
     if (!comp) return;
+    const hadEffect = comp.effects.some(e => e.id === effectId);
     comp.effects = comp.effects.filter((e) => e.id !== effectId);
+    if (hadEffect && this.eventBus) {
+      this.eventBus.emit("status:removed", { targetId: entityId, effectId, reason });
+    }
+  }
+
+  /** Dispel all dispellable effects of a given category. */
+  dispel(world: World, entityId: EntityId, category?: EffectCategory, count = Infinity): number {
+    const comp = world.getComponent<StatusEffectsComponent>(entityId, "statusEffects");
+    if (!comp) return 0;
+    let removed = 0;
+    const toKeep: StatusEffect[] = [];
+    for (const effect of comp.effects) {
+      const def = getStatusEffectDef(effect.id);
+      const isDispellable = def?.dispellable !== false;
+      const matchesCategory = !category || def?.category === category;
+      if (isDispellable && matchesCategory && removed < count) {
+        removed++;
+        if (this.eventBus) {
+          this.eventBus.emit("status:removed", { targetId: entityId, effectId: effect.id, reason: "dispelled" });
+        }
+      } else {
+        toKeep.push(effect);
+      }
+    }
+    comp.effects = toKeep;
+    return removed;
   }
 
   /** Remove all effects from an entity. */
@@ -332,15 +861,14 @@ export class StatusEffectManager {
     const comp = world.getComponent<StatusEffectsComponent>(entityId, "statusEffects");
     if (!comp) return [];
 
-    // Deduplicate names, show stack count for bleed
     const seen = new Map<string, { name: string; count: number }>();
     for (const e of comp.effects) {
       const existing = seen.get(e.id);
       if (existing) {
         existing.count++;
       } else {
-        const def = STATUS_EFFECT_DEFS[e.id];
-        seen.set(e.id, { name: def?.name ?? e.name, count: 1 });
+        const def = getStatusEffectDef(e.id);
+        seen.set(e.id, { name: def?.name ?? e.name, count: e.modifiers._stacks ?? 1 });
       }
     }
 
