@@ -1,4 +1,4 @@
-import type { CharacterClass } from "./ClassData";
+import { getClassDef, getAllCharacterClasses } from "./ClassData";
 import type { StatKey } from "./TalentData";
 import { generateTalentStars, rollStatIncrease, ALL_STAT_KEYS } from "./TalentData";
 import type { SpriteCharType } from "@rendering/SpriteAnimator";
@@ -12,7 +12,7 @@ import type { SkillTree } from "./SkillTreeData";
 
 export interface RecruitDef {
   name: string;
-  classId: CharacterClass;
+  classId: string;
   level: number;
   stats: RosterMember["stats"];
   maxHp: number;
@@ -41,47 +41,98 @@ const NAMES = [
   "Werner", "Konrad", "Fritz", "Otto",
 ];
 
-const RECRUIT_CLASSES: CharacterClass[] = ["fighter", "spearman", "rogue", "ranger", "brute", "occultist", "priest"];
+// Dynamically populated from all registered classes.
+const RECRUIT_CLASSES: string[] = getAllCharacterClasses();
 
 const CLASS_SPRITES: Record<string, SpriteCharType[]> = {
   fighter: ["soldier", "swordsman", "armored-axeman"],
+  knight: ["knight-templar", "knight"],
   spearman: ["knight-templar", "lancer", "soldier"],
   rogue: ["swordsman", "soldier"],
   ranger: ["archer", "soldier"],
   brute: ["armored-axeman", "knight"],
   occultist: ["wizard"],
   priest: ["priest"],
+  pyromancer: ["wizard"],
+  necromancer: ["wizard"],
+  shadow_knight: ["knight", "swordsman"],
+  monk: ["soldier", "swordsman"],
+  bard: ["swordsman", "soldier"],
+  berserker: ["armored-axeman", "knight"],
+  paladin: ["knight-templar", "knight"],
+  elementalist: ["wizard"],
+  assassin: ["swordsman", "soldier"],
+  warden: ["knight-templar", "soldier", "knight"],
 };
 
-const CLASS_STARTER_WEAPONS: Record<string, string[]> = {
-  fighter: ["short_sword", "hand_axe"],
-  spearman: ["spear"],
-  rogue: ["dagger", "short_sword"],
-  ranger: ["short_bow"],
-  brute: ["hand_axe", "winged_mace"],
-  occultist: ["wooden_wand"],
-  priest: ["oak_staff"],
+/** Map weapon family to a starter weapon ID. */
+const FAMILY_STARTER_WEAPON: Record<string, string> = {
+  sword: "short_sword",
+  dagger: "dagger",
+  axe: "hand_axe",
+  mace: "winged_mace",
+  spear: "spear",
+  polearm: "spear",
+  bow: "short_bow",
+  crossbow: "short_bow",
+  throwing: "throwing_axe",
+  staff: "oak_staff",
+  wand: "wooden_wand",
+  flail: "winged_mace",
+  cleaver: "hand_axe",
 };
+
+function getStarterWeapons(classId: string): string[] {
+  try {
+    const classDef = getClassDef(classId);
+    const weapons: string[] = [];
+    for (const fam of classDef.weaponFamilies.slice(0, 2)) {
+      const w = FAMILY_STARTER_WEAPON[fam];
+      if (w && !weapons.includes(w)) weapons.push(w);
+    }
+    return weapons.length > 0 ? weapons : ["short_sword"];
+  } catch {
+    return ["short_sword"];
+  }
+}
 
 function pick<T>(arr: readonly T[], rng: () => number): T {
   return arr[Math.floor(rng() * arr.length)]!;
 }
 
-/** Base level 1 stats with small random variation. */
-function baseStats(rng: () => number): RosterMember["stats"] {
+/** Base level 1 stats driven from class definition with small random variation. */
+function baseStats(classId: string, rng: () => number): RosterMember["stats"] {
   const vary = () => -2 + Math.floor(rng() * 5); // -2 to +2
-  return {
-    hitpoints: 10 + vary(),
-    stamina: 100,
-    mana: 20,
-    resolve: 45 + vary(),
-    initiative: 95 + vary(),
-    meleeSkill: 45 + vary(),
-    rangedSkill: 30 + vary(),
-    dodge: 3 + Math.floor(rng() * 6), // 3-8
-    magicResist: 0,
-    movementPoints: 8,
-  };
+  try {
+    const classDef = getClassDef(classId);
+    const b = classDef.baseStats;
+    return {
+      hitpoints: b.hitpoints + vary(),
+      stamina: b.stamina,
+      mana: b.mana,
+      resolve: b.resolve + vary(),
+      initiative: b.initiative + vary(),
+      meleeSkill: b.meleeSkill + vary(),
+      rangedSkill: b.rangedSkill + vary(),
+      dodge: b.dodge + Math.floor(rng() * 6),
+      magicResist: b.magicResist + vary(),
+      movementPoints: b.movementPoints,
+    };
+  } catch {
+    // Fallback for unknown classes
+    return {
+      hitpoints: 10 + vary(),
+      stamina: 100,
+      mana: 20,
+      resolve: 45 + vary(),
+      initiative: 95 + vary(),
+      meleeSkill: 45 + vary(),
+      rangedSkill: 30 + vary(),
+      dodge: 3 + Math.floor(rng() * 6),
+      magicResist: 0,
+      movementPoints: 8,
+    };
+  }
 }
 
 /** Apply level-up stat growth for levels above 1. */
@@ -174,7 +225,7 @@ export function generateRecruits(partyLevel: number, rng: () => number): Recruit
     const classId = pick(RECRUIT_CLASSES, rng);
     const level = rollRecruitLevel(partyLevel, rng);
     const talentStars = generateTalentStars(rng);
-    const stats = baseStats(rng);
+    const stats = baseStats(classId, rng);
 
     // Apply level growth
     if (level > 1) {
@@ -183,7 +234,7 @@ export function generateRecruits(partyLevel: number, rng: () => number): Recruit
 
     const sprites = CLASS_SPRITES[classId] ?? ["soldier"];
     const sprite = pick(sprites, rng);
-    const weapons = CLASS_STARTER_WEAPONS[classId] ?? ["short_sword"];
+    const weapons = getStarterWeapons(classId);
     const weapon = pick(weapons, rng);
 
     const is2H = getWeapon(weapon).hands === 2;

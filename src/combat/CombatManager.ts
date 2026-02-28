@@ -33,6 +33,8 @@ import { getConsumable } from "@data/ItemData";
 import { decideTacticalAction, type TacticalAction } from "./TacticalAI";
 import { hasLineOfSight } from "@hex/HexLineOfSight";
 import { RNG } from "@utils/RNG";
+import { EventBus } from "@core/EventBus";
+import { ResourceManager } from "./ResourceManager";
 import { hexDistance, hexNeighbors } from "@hex/HexMath";
 import { findPath, reachableHexes } from "@hex/HexPathfinding";
 import { createActionTracker, trackAction, trackKill, type BattleActionTracker } from "./CPCalculator";
@@ -52,6 +54,8 @@ interface UndoInfo {
 }
 
 export class CombatManager {
+  eventBus: EventBus;
+  resourceManager: ResourceManager;
   turnOrder: TurnOrder;
   damageCalc: DamageCalculator;
   skillExecutor: SkillExecutor;
@@ -133,8 +137,11 @@ export class CombatManager {
     seed?: number,
   ) {
     const rng = new RNG(seed ?? Date.now());
+    this.eventBus = new EventBus();
     this.turnOrder = new TurnOrder();
     this.statusEffects = new StatusEffectManager(rng);
+    this.statusEffects.setEventBus(this.eventBus);
+    this.resourceManager = new ResourceManager(this.eventBus);
     this.morale = new MoraleManager(rng);
     this.damageCalc = new DamageCalculator(rng, grid);
     this.damageCalc.setStatusEffectManager(this.statusEffects);
@@ -951,6 +958,9 @@ export class CombatManager {
 
     // Passive morale recovery
     this.morale.passiveRecovery(this.world, entityId);
+
+    // Tick class resources (regen, decay)
+    this.resourceManager.tickTurnStart(this.world, entityId);
 
     // Tick status effects (bleed damage, duration countdown)
     const bleedResult = this.statusEffects.tickTurnStart(this.world, entityId);

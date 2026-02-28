@@ -17,7 +17,6 @@ import { getWeapon } from "@data/WeaponData";
 import { getArmorDef } from "@data/ArmorData";
 import { getShield } from "@data/ShieldData";
 import { getClassDef, canEquipWeapon, canEquipArmor, canEquipShield } from "@data/ClassData";
-import type { CharacterClass } from "@data/ClassData";
 import type { BalanceParams } from "./CampaignSimulator";
 
 // ── Types ──
@@ -59,7 +58,7 @@ function bestAffordableUpgrade(
   partyLevel?: number,
   params?: BalanceParams,
 ): { itemId: string; price: number } | null {
-  const classDef = member.classId ? getClassDef(member.classId as CharacterClass) : null;
+  const classDef = member.classId ? getClassDef(member.classId) : null;
 
   let currentLevel: number;
   if (category === "weapon") {

@@ -2,7 +2,7 @@ import type { RosterMember, SaveData } from "@save/SaveManager";
 import { saveGame, pruneItemRegistry } from "@save/SaveManager";
 import { getItemPrice, type StoreCategory } from "@data/StoreData";
 import { UNARMED } from "@data/WeaponData";
-import { getClassDef, canEquipWeapon, canEquipShield, canEquipArmor, getClassEquipIcons, getClassAbbrev, type CharacterClass } from "@data/ClassData";
+import { getClassDef, canEquipWeapon, canEquipShield, canEquipArmor, getClassEquipIcons, getClassAbbrev, getAllCharacterClasses } from "@data/ClassData";
 import type { ContractDef } from "@data/ContractData";
 import { generateContracts } from "@data/ContractData";
 import type { RecruitDef } from "@data/RecruitData";
@@ -277,7 +277,7 @@ export class ManagementScreen {
       const classId = type === "roster"
         ? (item as RosterMember).classId ?? "fighter"
         : (item as RecruitDef).classId;
-      const className = getClassDef(classId as CharacterClass).name;
+      const className = getClassDef(classId ).name;
       card.appendChild(el("div", "unit-grid-class", `${className} Lv${item.level}`));
 
       // Cost badge (recruit only)
@@ -319,7 +319,7 @@ export class ManagementScreen {
 
     const info = el("div", "detail-info");
     info.appendChild(el("div", "detail-name", unit.name));
-    const className = getClassDef(unit.classId as CharacterClass).name;
+    const className = getClassDef(unit.classId ).name;
     info.appendChild(el("div", "detail-class", `${className} Lv${unit.level}`));
     if (unit.skillTheme) {
       const primaryName = THEMES[unit.skillTheme]?.name ?? unit.skillTheme;
@@ -747,7 +747,7 @@ export class ManagementScreen {
     }
 
     // Class equipment icons
-    const classDef = getClassDef(unit.classId as CharacterClass);
+    const classDef = getClassDef(unit.classId );
     if (classDef) {
       const badgeRow = el("div", "equip-badge-row");
       badgeRow.appendChild(el("span", "equip-badge-label", "Can equip: "));
@@ -953,7 +953,7 @@ export class ManagementScreen {
 
   private canEquipOnUnit(m: RosterMember, itemId: string, category: StoreCategory): boolean {
     if (!m.classId) return false;
-    const classDef = getClassDef(m.classId as CharacterClass);
+    const classDef = getClassDef(m.classId );
     switch (category) {
       case "weapon": return canEquipWeapon(classDef, resolveWeapon(itemId));
       case "shield": {
@@ -977,7 +977,7 @@ export class ManagementScreen {
   }
 
   private getCompatibleClasses(gen: import("@data/GeneratedItemData").GeneratedItem): string[] {
-    const ALL_CLASSES: CharacterClass[] = ["fighter", "knight", "rogue", "ranger", "spearman", "brute", "occultist", "priest"];
+    const ALL_CLASSES = getAllCharacterClasses();
     const result: string[] = [];
     for (const classId of ALL_CLASSES) {
       const classDef = getClassDef(classId);

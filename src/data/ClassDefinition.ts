@@ -111,6 +111,8 @@ export interface ClassDef {
 
   /** Weapon families this class can use. Empty = all. */
   weaponFamilies: string[];
+  /** Max weapon hands (1 = 1H only, 2 = any). Default 2. */
+  maxWeaponHands?: 1 | 2;
   /** Shield access level. */
   shieldAccess: "none" | "buckler" | "all";
   /** Max armor weight. */

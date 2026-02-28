@@ -97,7 +97,11 @@ function spawnUnit(
     facing: 0,
   });
 
-  const baseMP = unit.stats.mp ?? (unit.classId ? getClassDef(unit.classId).baseMP : 8);
+  // Class-driven base stats
+  let classDef: import("@data/ClassDefinition").ClassDef | undefined;
+  try { if (unit.classId) classDef = getClassDef(unit.classId); } catch { /* unknown class */ }
+  const base = classDef?.baseStats;
+  const baseMP = unit.stats.mp ?? (base?.movementPoints ?? 8);
   const unitLevel = unit.stats.level ?? 1;
   const p = params ?? DEFAULT_PARAMS;
   const bonusDamage = Math.floor((unitLevel - 1) * p.bonusDamagePerLevel);
@@ -105,16 +109,16 @@ function spawnUnit(
   world.addComponent(id, {
     type: "stats" as const,
     hitpoints: unit.stats.hp,
-    stamina: unit.stats.stamina ?? 100,
-    mana: unit.stats.mana ?? 20,
-    resolve: 50,
+    stamina: base?.stamina ?? unit.stats.stamina ?? 100,
+    mana: base?.mana ?? unit.stats.mana ?? 20,
+    resolve: base?.resolve ?? 50,
     initiative: unit.stats.initiative,
     meleeSkill: unit.stats.melee,
-    rangedSkill: unit.stats.rangedSkill ?? 30,
+    rangedSkill: base?.rangedSkill ?? unit.stats.rangedSkill ?? 30,
     dodge: unit.stats.defense,
-    magicResist: unit.stats.magicResist ?? 0,
-    critChance: 5,
-    critMultiplier: 1.5,
+    magicResist: base?.magicResist ?? unit.stats.magicResist ?? 0,
+    critChance: base?.critChance ?? 5,
+    critMultiplier: base?.critMultiplier ?? 1.5,
     movementPoints: baseMP,
     level: unitLevel,
     experience: 0,

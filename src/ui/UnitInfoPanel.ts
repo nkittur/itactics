@@ -1,3 +1,10 @@
+export interface ClassResourceDisplay {
+  name: string;
+  current: number;
+  max: number;
+  color: string;
+}
+
 export class UnitInfoPanel {
   private container: HTMLDivElement;
   private nameText: HTMLDivElement;
@@ -5,6 +12,7 @@ export class UnitInfoPanel {
   private staminaText: HTMLSpanElement;
   private apText: HTMLSpanElement;
   private mpText: HTMLSpanElement;
+  private resourceText: HTMLDivElement;
   private combatText: HTMLDivElement;
   private statusText: HTMLDivElement;
 
@@ -50,6 +58,11 @@ export class UnitInfoPanel {
     this.mpText.className = "uip-mp";
     right.appendChild(this.mpText);
 
+    // Class resources row (Heat, Rage, Chi, etc.)
+    this.resourceText = document.createElement("div");
+    this.resourceText.className = "uip-resources";
+    this.container.appendChild(this.resourceText);
+
     // Combat stats line (weapon damage + armor)
     this.combatText = document.createElement("div");
     this.combatText.className = "uip-combat";
@@ -76,6 +89,7 @@ export class UnitInfoPanel {
     totalArmor?: number,
     bonusDamage?: number,
     bonusArmor?: number,
+    classResources?: ClassResourceDisplay[],
   ): void {
     this.container.style.display = "block";
     this.nameText.textContent = name;
@@ -109,6 +123,22 @@ export class UnitInfoPanel {
       this.mpText.style.display = "block";
     } else {
       this.mpText.style.display = "none";
+    }
+
+    // Class resources (Heat, Rage, Chi, etc.)
+    if (classResources && classResources.length > 0) {
+      // Clear previous
+      this.resourceText.innerHTML = "";
+      for (const res of classResources) {
+        const span = document.createElement("span");
+        span.style.color = res.color;
+        span.style.marginRight = "8px";
+        span.textContent = `${res.name} ${Math.round(res.current)}/${res.max}`;
+        this.resourceText.appendChild(span);
+      }
+      this.resourceText.style.display = "block";
+    } else {
+      this.resourceText.style.display = "none";
     }
 
     // Combat stats: weapon damage + armor

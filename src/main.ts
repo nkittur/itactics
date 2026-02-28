@@ -12,7 +12,8 @@ import { setItemRegistry } from "@data/ItemResolver";
 import { setAbilityRegistry } from "@data/AbilityResolver";
 import { pickTheme, pickSecondaryTheme } from "@data/ThemeData";
 import { generateSkillTree } from "@data/SkillTreeData";
-import type { CharacterClass } from "@data/ClassData";
+import { getClassDef } from "@data/ClassData";
+import "@data/classes/ClassRegistry";
 
 function simpleRng(): number {
   return Math.random();
@@ -31,9 +32,12 @@ function createStarterUnit(
   const headArmor = getArmorDef("hood");
 
   // Generate skill tree
-  const theme = pickTheme(classId as CharacterClass, simpleRng);
+  const theme = pickTheme(classId, simpleRng);
   const secondaryTheme = pickSecondaryTheme(theme, simpleRng);
   const skillTree = generateSkillTree(theme, secondaryTheme, simpleRng);
+
+  const classDef = getClassDef(classId);
+  const base = classDef.baseStats;
 
   return {
     name,
@@ -42,15 +46,15 @@ function createStarterUnit(
     experience: 0,
     stats: {
       hitpoints: hp,
-      stamina: 100,
-      mana: 20,
-      resolve: 45,
-      initiative: 95,
+      stamina: base.stamina,
+      mana: base.mana,
+      resolve: base.resolve,
+      initiative: base.initiative,
       meleeSkill,
-      rangedSkill: 30,
+      rangedSkill: base.rangedSkill,
       dodge,
-      magicResist: 0,
-      movementPoints: 8,
+      magicResist: base.magicResist,
+      movementPoints: base.movementPoints,
     },
     maxHp: hp,
     talentStars: generateTalentStars(simpleRng),

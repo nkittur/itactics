@@ -14,6 +14,10 @@ const ENEMY_NAMES = [
   "Cutthroat", "Ruffian", "Highwayman", "Outlaw", "Bandit",
 ];
 
+const ENEMY_CLASSES = [
+  "fighter", "brute", "spearman", "berserker", "knight", "rogue",
+];
+
 const ENEMY_SPRITES: SpriteCharType[] = [
   "skeleton", "armored-skeleton", "orc", "armored-orc", "elite-orc",
 ];
@@ -151,6 +155,8 @@ function generateEnemies(
   const manaBase = params?.enemyManaBase ?? 20;
 
   for (let i = 0; i < contract.enemyCount; i++) {
+    const classId = pick(ENEMY_CLASSES, rng);
+
     const weapon = getWeaponForLevel(contract.enemyLevel, rng);
     const weaponDef = getWeapon(weapon);
     const is2H = weaponDef.hands === 2;
@@ -163,13 +169,14 @@ function generateEnemies(
       r: startR + i,
       team: "enemy",
       name: pick(ENEMY_NAMES, rng),
+      classId,
       stats: {
         melee: meleeBase + contract.enemyLevel * meleePerLevel,
         defense: contract.enemyLevel * defensePerLevel,
         hp: hpBase + contract.enemyLevel * hpPerLevel,
         initiative: 80 + Math.floor(rng() * 30),
-        magicResist: magicResistBase + contract.enemyLevel * magicResistPerLevel,
         mana: manaBase,
+        magicResist: magicResistBase + contract.enemyLevel * magicResistPerLevel,
         level: contract.enemyLevel,
       },
       weapon,

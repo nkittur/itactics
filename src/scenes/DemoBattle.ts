@@ -41,7 +41,8 @@ import { EnemyDetailPanel, type EnemyDetailData } from "@ui/EnemyDetailPanel";
 import { AttackPreviewPanel } from "@ui/AttackPreviewPanel";
 import { UndoButton } from "@ui/UndoButton";
 import { skillAPCost, skillRange } from "@data/SkillData";
-import { getClassDef, type CharacterClass } from "@data/ClassData";
+import { getClassDef } from "@data/ClassData";
+import { getResourceDef, createResources } from "@entities/components/Resources";
 import { getItemCategory } from "@data/ItemData";
 import { generateTalentStars, type StatKey } from "@data/TalentData";
 import { canLevelUp, xpForNextLevel } from "@data/LevelData";
@@ -145,11 +146,11 @@ function spawnUnit(
   r: number,
   team: "player" | "enemy",
   name: string,
-  stats: { melee: number; defense: number; hp: number; initiative: number; mp?: number; level?: number },
+  stats: { melee: number; defense: number; hp: number; initiative: number; mp?: number; level?: number; mana?: number; magicResist?: number; stamina?: number; rangedSkill?: number },
   equip?: UnitEquipment,
   aiType?: AIType,
   sprite?: SpriteCharType,
-  classId?: CharacterClass,
+  classId?: string,
   bag?: string[],
 ): EntityId {
   // Ensure no overlap
@@ -165,23 +166,28 @@ function spawnUnit(
     facing: 0,
   });
 
+  // Class-driven base stats (falls back to defaults for classless units)
+  let classDef: import("@data/ClassDefinition").ClassDef | undefined;
+  try { if (classId) classDef = getClassDef(classId); } catch { /* unknown class */ }
+  const base = classDef?.baseStats;
+
   const unitLevel = stats.level ?? 1;
   const bonusDamage = Math.floor((unitLevel - 1) * DEFAULT_PARAMS.bonusDamagePerLevel);
   const bonusArmor = Math.floor((unitLevel - 1) * DEFAULT_PARAMS.bonusArmorPerLevel);
   world.addComponent(id, {
     type: "stats",
     hitpoints: stats.hp,
-    stamina: 100,
-    mana: 20,
-    resolve: 50,
+    stamina: base?.stamina ?? stats.stamina ?? 100,
+    mana: base?.mana ?? stats.mana ?? 20,
+    resolve: base?.resolve ?? 50,
     initiative: stats.initiative,
     meleeSkill: stats.melee,
-    rangedSkill: 30,
+    rangedSkill: base?.rangedSkill ?? stats.rangedSkill ?? 30,
     dodge: stats.defense,
-    magicResist: 0,
-    critChance: 5,
-    critMultiplier: 1.5,
-    movementPoints: stats.mp ?? (classId ? getClassDef(classId).baseMP : 8),
+    magicResist: base?.magicResist ?? stats.magicResist ?? 0,
+    critChance: base?.critChance ?? 5,
+    critMultiplier: base?.critMultiplier ?? 1.5,
+    movementPoints: stats.mp ?? (base?.movementPoints ?? 8),
     level: unitLevel,
     experience: 0,
     bonusDamage,
@@ -261,6 +267,25 @@ function spawnUnit(
       type: "characterClass",
       classId,
     } as CharacterClassComponent);
+  }
+
+  // Attach class-specific resources (Heat, Rage, Chi, etc.)
+  if (classDef?.resources && classDef.resources.length > 0) {
+    const resDefs = classDef.resources
+      .map(r => {
+        const def = getResourceDef(r.resourceId);
+        if (!def) return null;
+        // Apply class overrides
+        return {
+          ...def,
+          max: r.maxOverride ?? def.max,
+          startValue: r.startOverride ?? def.startValue,
+        };
+      })
+      .filter((d): d is NonNullable<typeof d> => d !== null);
+    if (resDefs.length > 0) {
+      world.addComponent(id, createResources(resDefs));
+    }
   }
 
   if (team === "player") {
@@ -1006,22 +1031,26 @@ export class DemoBattle {
 
     // Class info
     const cc = this.world.getComponent<CharacterClassComponent>(entityId, "characterClass");
-    const unitClassDef = cc ? getClassDef(cc.classId) : undefined;
+    let unitClassDef: import("@data/ClassDefinition").ClassDef | undefined;
+    try { if (cc) unitClassDef = getClassDef(cc.classId); } catch { /* unknown class */ }
     const classPassives: string[] = [];
     if (unitClassDef) {
-      for (const p of unitClassDef.passives) {
+      for (const p of unitClassDef.innatePassives) {
         switch (p.type) {
-          case "armor_mp_reduction":
-            classPassives.push(`Armor MP penalty -${p.value}`);
+          case "armor_proficiency":
+            classPassives.push(`Armor MP penalty -${p.params.armorMPReduction ?? 0}`);
             break;
-          case "ap_discount":
-            classPassives.push(`${(p.qualifier ?? "").charAt(0).toUpperCase() + (p.qualifier ?? "").slice(1)} AP -${p.value}`);
+          case "weapon_proficiency":
+            classPassives.push(`${(p.params.family ?? p.params.qualifier ?? "").charAt(0).toUpperCase() + (p.params.family ?? p.params.qualifier ?? "").slice(1)} AP -${p.params.apDiscount ?? 0}`);
             break;
-          case "damage_bonus":
-            classPassives.push(`${p.qualifier ?? ""} damage +${p.value}%`);
+          case "damage_type_bonus":
+            classPassives.push(`${p.params.damageType ?? p.params.qualifier ?? ""} damage +${p.params.bonusPercent ?? 0}%`);
             break;
-          case "hit_bonus":
-            classPassives.push(`${(p.qualifier ?? "").charAt(0).toUpperCase() + (p.qualifier ?? "").slice(1)} hit +${p.value}`);
+          case "stat_bonus":
+            classPassives.push(`${(p.params.qualifier ?? "").charAt(0).toUpperCase() + (p.params.qualifier ?? "").slice(1)} ${p.params.stat ?? ""} +${p.params.value ?? 0}`);
+            break;
+          case "resistance":
+            classPassives.push(`${p.params.damageType ?? ""} resist ${p.params.resistPercent ?? 0}%`);
             break;
         }
       }
@@ -1110,23 +1139,27 @@ export class DemoBattle {
 
     const statusEffects = this.combat.statusEffects.getActiveEffects(this.world, entityId);
 
-    const cc = this.world.getComponent<CharacterClassComponent>(entityId, "characterClass");
-    const unitClassDef = cc ? getClassDef(cc.classId) : undefined;
-    const classPassives: string[] = [];
-    if (unitClassDef) {
-      for (const p of unitClassDef.passives) {
+    const cc2 = this.world.getComponent<CharacterClassComponent>(entityId, "characterClass");
+    let unitClassDef2: import("@data/ClassDefinition").ClassDef | undefined;
+    try { if (cc2) unitClassDef2 = getClassDef(cc2.classId); } catch { /* unknown class */ }
+    const classPassives2: string[] = [];
+    if (unitClassDef2) {
+      for (const p of unitClassDef2.innatePassives) {
         switch (p.type) {
-          case "armor_mp_reduction":
-            classPassives.push(`Armor MP penalty -${p.value}`);
+          case "armor_proficiency":
+            classPassives2.push(`Armor MP penalty -${p.params.armorMPReduction ?? 0}`);
             break;
-          case "ap_discount":
-            classPassives.push(`${(p.qualifier ?? "").charAt(0).toUpperCase() + (p.qualifier ?? "").slice(1)} AP -${p.value}`);
+          case "weapon_proficiency":
+            classPassives2.push(`${(p.params.family ?? p.params.qualifier ?? "").charAt(0).toUpperCase() + (p.params.family ?? p.params.qualifier ?? "").slice(1)} AP -${p.params.apDiscount ?? 0}`);
             break;
-          case "damage_bonus":
-            classPassives.push(`${p.qualifier ?? ""} damage +${p.value}%`);
+          case "damage_type_bonus":
+            classPassives2.push(`${p.params.damageType ?? p.params.qualifier ?? ""} damage +${p.params.bonusPercent ?? 0}%`);
             break;
-          case "hit_bonus":
-            classPassives.push(`${(p.qualifier ?? "").charAt(0).toUpperCase() + (p.qualifier ?? "").slice(1)} hit +${p.value}`);
+          case "stat_bonus":
+            classPassives2.push(`${(p.params.qualifier ?? "").charAt(0).toUpperCase() + (p.params.qualifier ?? "").slice(1)} ${p.params.stat ?? ""} +${p.params.value ?? 0}`);
+            break;
+          case "resistance":
+            classPassives2.push(`${p.params.damageType ?? ""} resist ${p.params.resistPercent ?? 0}%`);
             break;
         }
       }
@@ -1137,8 +1170,8 @@ export class DemoBattle {
       name: team.name,
       currentHp: health.current,
       maxHp: health.max,
-      className: unitClassDef?.name,
-      classPassives: classPassives.length > 0 ? classPassives : undefined,
+      className: unitClassDef2?.name,
+      classPassives: classPassives2.length > 0 ? classPassives2 : undefined,
       weaponName: weapon.name,
       weaponDamage: `${weapon.minDamage}-${weapon.maxDamage}`,
       shieldName: shield?.name,
@@ -1327,7 +1360,9 @@ export class DemoBattle {
     }
 
     const cc = this.world.getComponent<CharacterClassComponent>(entityId, "characterClass");
-    const displayName = cc ? `${team.name} (${getClassDef(cc.classId).name})` : team.name;
+    let ccName: string | undefined;
+    try { if (cc) ccName = getClassDef(cc.classId).name; } catch { /* unknown class */ }
+    const displayName = ccName ? `${team.name} (${ccName})` : team.name;
 
     // Compute weapon damage range and armor totals for display
     const bDmg = stats?.bonusDamage ?? 0;
@@ -1336,6 +1371,21 @@ export class DemoBattle {
     const totalArmor = (armor?.body?.armor ?? 0) + (armor?.head?.armor ?? 0);
     const shield = equip?.offHand ? resolveShield(equip.offHand) : undefined;
     const totalArmorWithShield = totalArmor + (shield?.armor ?? 0);
+
+    // Class resources (Heat, Rage, Chi, etc.)
+    const resComp = this.world.getComponent<import("@entities/components/Resources").ResourcesComponent>(entityId, "resources");
+    let classResources: import("@ui/UnitInfoPanel").ClassResourceDisplay[] | undefined;
+    if (resComp) {
+      classResources = Object.entries(resComp.pools).map(([resId, pool]) => {
+        const def = getResourceDef(resId);
+        return {
+          name: def?.name ?? resId,
+          current: pool.current,
+          max: pool.effectiveMax,
+          color: def?.color ?? "#888888",
+        };
+      });
+    }
 
     this.unitInfoPanel.show(
       displayName,
@@ -1352,6 +1402,7 @@ export class DemoBattle {
       totalArmorWithShield,
       bDmg,
       bArm,
+      classResources,
     );
   }
 

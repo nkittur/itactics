@@ -400,20 +400,6 @@ for (const def of BUILTIN_EFFECTS) {
   registerStatusEffectDef(def);
 }
 
-// ── Legacy backward compatibility ──
-
-/** Legacy STATUS_EFFECT_DEFS for backward compatibility. */
-export const STATUS_EFFECT_DEFS: Record<string, { id: string; name: string; duration: number; modifiers: Record<string, number>; maxStacks: number }> = {};
-for (const def of BUILTIN_EFFECTS) {
-  STATUS_EFFECT_DEFS[def.id] = {
-    id: def.id,
-    name: def.name,
-    duration: def.duration,
-    modifiers: { ...def.modifiers },
-    maxStacks: def.maxStacks,
-  };
-}
-
 export interface BleedTickResult {
   entityId: EntityId;
   damage: number;
@@ -447,7 +433,7 @@ export class StatusEffectManager {
     const comp = world.getComponent<StatusEffectsComponent>(entityId, "statusEffects");
     if (!comp) return;
 
-    const def = getStatusEffectDef(effectId) ?? STATUS_EFFECT_DEFS[effectId];
+    const def = getStatusEffectDef(effectId);
     if (!def) return;
 
     const duration = durationOverride ?? def.duration;
