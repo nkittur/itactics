@@ -633,6 +633,78 @@ export function pickSecondaryTheme(primary: Theme, rng: () => number): Theme | n
   return scored[scored.length - 1]?.theme ?? null;
 }
 
+// ── Archetype tag → theme affinity ──
+
+/**
+ * Maps archetype tags to themes they resonate with.
+ * Higher value = stronger affinity. Tags not listed get 0.
+ */
+export const TAG_THEME_AFFINITY: Record<string, Record<string, number>> = {
+  // Combat style tags
+  melee:         { bleeder: 2, crusher: 2, reaper: 2, skirmisher: 2, executioner: 2, sentinel: 1, opportunist: 1, warden: 1 },
+  ranged:        { arcanist: 2, venomancer: 1, hexcurser: 1 },
+  mobile:        { skirmisher: 3, opportunist: 1, reaper: 1 },
+  tank:          { sentinel: 3, warden: 3, crusher: 1 },
+  shield:        { sentinel: 3, warden: 2 },
+  dps:           { executioner: 2, reaper: 2, bleeder: 2, crusher: 1, arcanist: 1, pyromaniac: 1 },
+  single_target: { executioner: 3, bleeder: 2, opportunist: 2 },
+  aoe:           { pyromaniac: 2, crusher: 2, reaper: 1, arcanist: 1 },
+  support:       { sentinel: 2, warden: 2, hexcurser: 1 },
+  aura:          { sentinel: 2, warden: 1 },
+  versatile:     { opportunist: 2, crusher: 1, bleeder: 1, skirmisher: 1 },
+
+  // Damage type tags
+  fire:          { pyromaniac: 5 },
+  poison:        { venomancer: 5 },
+  holy:          { arcanist: 2, sentinel: 1 },
+  zone:          { pyromaniac: 2, warden: 1 },
+
+  // Playstyle tags
+  stealth:       { executioner: 3, opportunist: 2, bleeder: 1 },
+  risk_reward:   { executioner: 2, reaper: 2, pyromaniac: 1 },
+  self_damage:   { reaper: 2, pyromaniac: 1 },
+  debuff:        { hexcurser: 3, opportunist: 2, venomancer: 1 },
+  cc:            { crusher: 3, warden: 2, venomancer: 1 },
+  dot:           { bleeder: 3, pyromaniac: 2, venomancer: 2 },
+};
+
+/**
+ * Pick a theme for an archetype based on its tags + class theme weights as secondary signal.
+ * Returns primary theme.
+ */
+export function pickThemeForArchetype(tags: string[], classId: string, rng: () => number): Theme {
+  const themeScores: Record<string, number> = {};
+
+  // Score from archetype tags
+  for (const tag of tags) {
+    const affinities = TAG_THEME_AFFINITY[tag];
+    if (!affinities) continue;
+    for (const [themeId, score] of Object.entries(affinities)) {
+      themeScores[themeId] = (themeScores[themeId] ?? 0) + score;
+    }
+  }
+
+  // Secondary signal: class theme weights (half weight)
+  const classWeights = CLASS_THEME_WEIGHTS[classId];
+  if (classWeights) {
+    for (const [themeId, w] of Object.entries(classWeights)) {
+      themeScores[themeId] = (themeScores[themeId] ?? 0) + w * 0.5;
+    }
+  }
+
+  // Convert to weighted selection
+  const entries = Object.entries(themeScores).filter(([id]) => THEMES[id]);
+  if (entries.length === 0) return pickTheme(classId, rng);
+
+  const totalScore = entries.reduce((sum, [, s]) => sum + s, 0);
+  let roll = rng() * totalScore;
+  for (const [themeId, s] of entries) {
+    roll -= s;
+    if (roll <= 0) return THEMES[themeId]!;
+  }
+  return THEMES[entries[entries.length - 1]![0]]!;
+}
+
 /** Pick a theme by weighted random for a character class. */
 export function pickTheme(classId: string, rng: () => number): Theme {
   const weights = CLASS_THEME_WEIGHTS[classId] ?? CLASS_THEME_WEIGHTS["fighter"]!;

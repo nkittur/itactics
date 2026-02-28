@@ -15,6 +15,7 @@ import { THEMES } from "@data/ThemeData";
 import { detectUnitSynergies, detectTeamSynergies } from "@data/SynergyDetector";
 import { ALL_STAT_KEYS, statDisplayName, type StatKey } from "@data/TalentData";
 import type { SkillTree, SkillTreeNode } from "@data/SkillTreeData";
+import { getClassDefNew } from "@data/ClassDefinition";
 
 type Tab = "roster" | "shop" | "recruit" | "contracts";
 const MAX_BAG = 2;
@@ -38,6 +39,7 @@ interface DetailUnit {
   unlockedNodes: Set<string>;
   nodeStacks: Record<string, number>;
   classPoints: number;
+  archetypeId?: string;
 }
 
 const DIFFICULTY_COLORS: Record<string, string> = {
@@ -229,6 +231,7 @@ export class ManagementScreen {
         unlockedNodes: new Set(m.unlockedNodes ?? []),
         nodeStacks: m.nodeStacks ?? {},
         classPoints: m.classPoints ?? 0,
+        archetypeId: m.archetypeId,
       };
     } else {
       const r = (this.saveData.availableRecruits ?? [])[this.detailUnit.index];
@@ -252,6 +255,7 @@ export class ManagementScreen {
         unlockedNodes: new Set<string>(),
         nodeStacks: {},
         classPoints: r.classPoints ?? 0,
+        archetypeId: r.archetypeId,
       };
     }
   }
@@ -321,6 +325,14 @@ export class ManagementScreen {
     info.appendChild(el("div", "detail-name", unit.name));
     const className = getClassDef(unit.classId ).name;
     info.appendChild(el("div", "detail-class", `${className} Lv${unit.level}`));
+    // Show archetype name if available
+    if (unit.archetypeId) {
+      const classDef2 = getClassDefNew(unit.classId);
+      const archDef = classDef2?.archetypes.find(a => a.id === unit.archetypeId);
+      if (archDef) {
+        info.appendChild(el("div", "detail-archetype", archDef.name));
+      }
+    }
     if (unit.skillTheme) {
       const primaryName = THEMES[unit.skillTheme]?.name ?? unit.skillTheme;
       const secondaryName = unit.secondarySkillTheme
@@ -436,7 +448,7 @@ export class ManagementScreen {
     const nodeElements = new Map<string, HTMLElement>();
 
     // Render tiers 1-4
-    for (const tier of [1, 2, 3, 4] as const) {
+    for (const tier of [1, 2, 3, 4, 5] as const) {
       const tierNodes = unit.skillTree.nodes
         .filter(n => n.tier === tier)
         .sort((a, b) => a.col - b.col);
@@ -855,6 +867,7 @@ export class ManagementScreen {
       spriteType: r.sprite,
       skillTheme: r.skillTheme,
       secondarySkillTheme: r.secondarySkillTheme ?? undefined,
+      archetypeId: r.archetypeId,
       abilities: r.skillTree.nodes.map(n => n.abilityUid),
       skillTree: r.skillTree,
       unlockedNodes: [],

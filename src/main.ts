@@ -10,8 +10,7 @@ import { generateTalentStars } from "@data/TalentData";
 import { getArmorDef } from "@data/ArmorData";
 import { setItemRegistry } from "@data/ItemResolver";
 import { setAbilityRegistry } from "@data/AbilityResolver";
-import { pickTheme, pickSecondaryTheme } from "@data/ThemeData";
-import { generateSkillTree } from "@data/SkillTreeData";
+import { generateArchetypeTree } from "@data/SkillTreeData";
 import { getClassDef } from "@data/ClassData";
 import "@data/classes/ClassRegistry";
 
@@ -28,10 +27,9 @@ function createStarterUnit(
   const bodyArmor = getArmorDef("linen_tunic");
   const headArmor = getArmorDef("hood");
 
-  // Generate skill tree
-  const theme = pickTheme(classId, simpleRng);
-  const secondaryTheme = pickSecondaryTheme(theme, simpleRng);
-  const skillTree = generateSkillTree(theme, secondaryTheme, simpleRng);
+  // Generate skill tree from archetype structure
+  const archetypeResult = generateArchetypeTree(classId, null, simpleRng);
+  const skillTree = archetypeResult.tree;
 
   const classDef = getClassDef(classId);
   const base = classDef.baseStats;
@@ -71,8 +69,9 @@ function createStarterUnit(
         : null,
     },
     spriteType: sprite,
-    skillTheme: theme.id,
-    secondarySkillTheme: secondaryTheme?.id,
+    skillTheme: archetypeResult.themeId,
+    secondarySkillTheme: archetypeResult.secondaryThemeId ?? undefined,
+    archetypeId: archetypeResult.archetypeId,
     abilities: skillTree.nodes.map(n => n.abilityUid),
     skillTree,
     unlockedNodes: [],

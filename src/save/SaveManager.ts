@@ -5,8 +5,7 @@ import type { RecruitDef } from "@data/RecruitData";
 import type { GeneratedItem } from "@data/GeneratedItemData";
 import type { GeneratedAbility } from "@data/AbilityData";
 import type { SkillTree } from "@data/SkillTreeData";
-import { generateSkillTree } from "@data/SkillTreeData";
-import { THEMES, pickSecondaryTheme } from "@data/ThemeData";
+import { generateArchetypeTree } from "@data/SkillTreeData";
 import { setAbilityRegistry } from "@data/AbilityResolver";
 
 const SAVE_KEY = "itactics-save";
@@ -50,6 +49,8 @@ export interface RosterMember {
   skillTheme?: string;
   /** Secondary skill theme ID for bucket diversity. */
   secondarySkillTheme?: string;
+  /** Archetype ID from class definition (e.g., "fighter_weapon_master"). */
+  archetypeId?: string;
   /** Maps ability UID → level at which it unlocks. @deprecated Use skillTree. */
   abilityUnlockLevels?: Record<string, number>;
   /** Procedurally generated skill tree for this unit. */
@@ -178,17 +179,14 @@ function migrateToSkillTree(member: RosterMember): void {
     return seed / 4294967296;
   };
 
-  const themeId = member.skillTheme ?? "bleeder";
-  const theme = THEMES[themeId] ?? THEMES["bleeder"]!;
-  const secondaryTheme = member.secondarySkillTheme
-    ? (THEMES[member.secondarySkillTheme] ?? null)
-    : pickSecondaryTheme(theme, rng);
-  const skillTree = generateSkillTree(theme, secondaryTheme, rng);
-  if (secondaryTheme && !member.secondarySkillTheme) {
-    member.secondarySkillTheme = secondaryTheme.id;
-  }
+  const classId = member.classId ?? "fighter";
+  const result = generateArchetypeTree(classId, null, rng);
+  const skillTree = result.tree;
 
   member.skillTree = skillTree;
+  member.skillTheme = result.themeId;
+  member.secondarySkillTheme = result.secondaryThemeId ?? undefined;
+  member.archetypeId = result.archetypeId;
   member.classPoints = 0;
   member.unlockedNodes = [];
   member.nodeStacks = {};

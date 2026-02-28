@@ -5,9 +5,7 @@ import type { SpriteCharType } from "@rendering/SpriteAnimator";
 import type { RosterMember } from "@save/SaveManager";
 import { getArmorDef } from "./ArmorData";
 import { getWeapon } from "./WeaponData";
-import { pickTheme, pickSecondaryTheme } from "./ThemeData";
-import { generateRecruitSkills } from "./AbilityGenerator";
-import { generateSkillTree } from "./SkillTreeData";
+import { generateArchetypeTree } from "./SkillTreeData";
 import type { SkillTree } from "./SkillTreeData";
 
 export interface RecruitDef {
@@ -25,6 +23,8 @@ export interface RecruitDef {
   skillTheme: string;
   /** Secondary skill theme ID for bucket diversity. */
   secondarySkillTheme: string | null;
+  /** Archetype ID from class definition (e.g., "fighter_weapon_master"). */
+  archetypeId?: string;
   /** @deprecated Use skillTree. Kept for backward compat. */
   uniqueSkills: { uid: string; unlockLevel: number }[];
   /** Procedurally generated skill tree. */
@@ -243,10 +243,9 @@ export function generateRecruits(partyLevel: number, rng: () => number): Recruit
 
     const is2H = getWeapon(weapon).hands === 2;
 
-    // Generate skill theme and skill tree
-    const theme = pickTheme(classId, rng);
-    const secondaryTheme = pickSecondaryTheme(theme, rng);
-    const skillTree = generateSkillTree(theme, secondaryTheme, rng);
+    // Generate skill tree from archetype structure
+    const archetypeResult = generateArchetypeTree(classId, null, rng);
+    const skillTree = archetypeResult.tree;
 
     // Backward-compat: derive uniqueSkills from tree nodes
     const uniqueSkills = skillTree.nodes.map(n => ({
@@ -273,8 +272,9 @@ export function generateRecruits(partyLevel: number, rng: () => number): Recruit
         bag: [],
       },
       armor: armorForLevel(level),
-      skillTheme: theme.id,
-      secondarySkillTheme: secondaryTheme?.id ?? null,
+      skillTheme: archetypeResult.themeId,
+      secondarySkillTheme: archetypeResult.secondaryThemeId,
+      archetypeId: archetypeResult.archetypeId,
       uniqueSkills,
       skillTree,
       classPoints: startingCP,
