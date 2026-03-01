@@ -8,25 +8,56 @@ export const ALL_BUCKETS: FunctionalBucket[] = ["damage", "dot", "cc", "movement
 
 /** Map each EffectType to its functional bucket. */
 export const EFFECT_TO_BUCKET: Record<EffectType, FunctionalBucket> = {
+  // Damage
   dmg_weapon: "damage",
   dmg_execute: "damage",
   dmg_multihit: "damage",
   dmg_spell: "damage",
+  dmg_reflect: "defensive",
+  // DoTs
   dot_bleed: "dot",
   dot_burn: "dot",
   dot_poison: "dot",
+  // Displacement
   disp_push: "movement",
+  disp_teleport: "movement",
+  disp_dash: "movement",
+  disp_pull: "movement",
+  // CC
   cc_stun: "cc",
   cc_root: "cc",
   cc_daze: "cc",
+  cc_fear: "cc",
+  cc_silence: "cc",
+  cc_taunt: "cc",
+  cc_charm: "cc",
+  // Debuffs
   debuff_stat: "debuff",
   debuff_vuln: "debuff",
+  debuff_armor: "debuff",
+  debuff_healReduce: "debuff",
+  // Buffs
   buff_stat: "defensive",
   buff_dmgReduce: "defensive",
+  buff_stealth: "defensive",
+  buff_shield: "defensive",
+  // Stances
   stance_counter: "defensive",
   stance_overwatch: "defensive",
+  // Resource
   res_apRefund: "resource",
+  // Healing
   heal_pctDmg: "resource",
+  heal_flat: "resource",
+  heal_hot: "resource",
+  lifesteal: "resource",
+  // Summon / zone / trap
+  summon_unit: "damage",
+  zone_persist: "damage",
+  trap_place: "damage",
+  // Channel / transform
+  channel_dmg: "damage",
+  transform_state: "defensive",
 };
 
 // ── Theme progression slot ──

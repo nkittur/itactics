@@ -2,18 +2,31 @@
 
 export type Rarity = "common" | "uncommon" | "rare" | "epic" | "legendary";
 
-// ── Effect types (V1: 14 of 30 — enough for all 7 theme progressions) ──
+// ── Effect types ──
 
 export type EffectType =
-  | "dmg_weapon" | "dmg_execute" | "dmg_multihit" | "dmg_spell"
+  // Damage
+  | "dmg_weapon" | "dmg_execute" | "dmg_multihit" | "dmg_spell" | "dmg_reflect"
+  // DoTs
   | "dot_bleed" | "dot_burn" | "dot_poison"
-  | "disp_push"
-  | "cc_stun" | "cc_root" | "cc_daze"
-  | "debuff_stat" | "debuff_vuln"
-  | "buff_stat" | "buff_dmgReduce"
+  // Displacement
+  | "disp_push" | "disp_teleport" | "disp_dash" | "disp_pull"
+  // Crowd control
+  | "cc_stun" | "cc_root" | "cc_daze" | "cc_fear" | "cc_silence" | "cc_taunt" | "cc_charm"
+  // Debuffs
+  | "debuff_stat" | "debuff_vuln" | "debuff_armor" | "debuff_healReduce"
+  // Buffs
+  | "buff_stat" | "buff_dmgReduce" | "buff_stealth" | "buff_shield"
+  // Stances
   | "stance_counter" | "stance_overwatch"
+  // Resource
   | "res_apRefund"
-  | "heal_pctDmg";
+  // Healing
+  | "heal_pctDmg" | "heal_flat" | "heal_hot" | "lifesteal"
+  // Summoning / zones / traps
+  | "summon_unit" | "zone_persist" | "trap_place"
+  // Channeling / transforms
+  | "channel_dmg" | "transform_state";
 
 export interface EffectPrimitive {
   type: EffectType;
@@ -22,7 +35,11 @@ export interface EffectPrimitive {
   power: number;
 }
 
-export type TargetingType = "tgt_single_enemy" | "tgt_single_ally" | "tgt_self" | "tgt_aoe_adjacent";
+export type TargetingType =
+  | "tgt_single_enemy" | "tgt_single_ally" | "tgt_self"
+  | "tgt_aoe_adjacent" | "tgt_aoe_cone" | "tgt_aoe_line"
+  | "tgt_aoe_radius2" | "tgt_aoe_radius3"
+  | "tgt_all_allies" | "tgt_all_enemies";
 
 export interface TargetingPrimitive {
   type: TargetingType;
@@ -33,7 +50,8 @@ export interface TargetingPrimitive {
 
 export type ModifierType =
   | "mod_accuracy" | "mod_armorIgnore" | "mod_armorDmg"
-  | "mod_headTarget" | "mod_requireState" | "mod_turnEnding";
+  | "mod_headTarget" | "mod_requireState" | "mod_turnEnding"
+  | "mod_hpCost" | "mod_cooldownReset";
 
 export interface ModifierPrimitive {
   type: ModifierType;

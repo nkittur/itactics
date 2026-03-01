@@ -17,25 +17,56 @@ import { generatePassiveFromActives } from "./PassiveGenerator";
 // ── Power costs per effect type ──
 
 const EFFECT_POWER: Record<EffectType, number> = {
+  // Damage
   dmg_weapon: 4,
   dmg_execute: 7,
   dmg_multihit: 6,
   dmg_spell: 5,
+  dmg_reflect: 4,
+  // DoTs
   dot_bleed: 3,
   dot_burn: 3,
   dot_poison: 3,
+  // Displacement
   disp_push: 3,
+  disp_teleport: 3,
+  disp_dash: 4,
+  disp_pull: 3,
+  // CC
   cc_stun: 5,
   cc_root: 4,
   cc_daze: 3,
+  cc_fear: 5,
+  cc_silence: 4,
+  cc_taunt: 3,
+  cc_charm: 7,
+  // Debuffs
   debuff_stat: 3,
   debuff_vuln: 4,
+  debuff_armor: 4,
+  debuff_healReduce: 3,
+  // Buffs
   buff_stat: 3,
   buff_dmgReduce: 4,
+  buff_stealth: 5,
+  buff_shield: 4,
+  // Stances
   stance_counter: 5,
   stance_overwatch: 4,
+  // Resource
   res_apRefund: 3,
+  // Healing
   heal_pctDmg: 4,
+  heal_flat: 3,
+  heal_hot: 3,
+  lifesteal: 5,
+  // Summon / zone / trap
+  summon_unit: 6,
+  zone_persist: 5,
+  trap_place: 4,
+  // Channel / transform
+  channel_dmg: 5,
+  transform_state: 7,
 };
 
 // ── Targeting power multipliers ──
@@ -45,6 +76,12 @@ const TARGETING_MULT: Record<TargetingType, number> = {
   tgt_single_ally: 1.0,
   tgt_self: 0.8,
   tgt_aoe_adjacent: 1.5,
+  tgt_aoe_cone: 1.4,
+  tgt_aoe_line: 1.3,
+  tgt_aoe_radius2: 1.8,
+  tgt_aoe_radius3: 2.2,
+  tgt_all_allies: 1.6,
+  tgt_all_enemies: 2.5,
 };
 
 // ── Default effect params per type ──
@@ -110,6 +147,46 @@ function defaultEffectParams(type: EffectType, tier: 1 | 2 | 3, rng: () => numbe
       return { amount: snap(3, 1, 2) };
     case "heal_pctDmg":
       return { pct: 30 };
+    case "heal_flat":
+      return { amount: snap(tier === 1 ? 15 : tier === 2 ? 25 : 40, 5, 10) };
+    case "heal_hot":
+      return { healPerTurn: snap(tier === 1 ? 6 : 10, 2, 4), turns: tier >= 3 ? 3 : 2 };
+    case "lifesteal":
+      return { pct: snap(tier === 1 ? 30 : tier === 2 ? 50 : 75, 10, 20) };
+    case "dmg_reflect":
+      return { pct: snap(tier === 1 ? 30 : tier === 2 ? 50 : 75, 10, 20), turns: tier >= 3 ? 3 : 2 };
+    case "disp_teleport":
+      return { range: tier >= 3 ? 4 : tier >= 2 ? 3 : 2 };
+    case "disp_dash":
+      return { range: tier >= 3 ? 4 : 3, damageOnArrival: snap(tier === 1 ? 80 : 120, 20, 60) / 100 };
+    case "disp_pull":
+      return { distance: tier >= 3 ? 3 : 2 };
+    case "cc_fear":
+      return { chance: tier === 1 ? 70 : 85, turns: tier >= 3 ? 2 : 1 };
+    case "cc_silence":
+      return { turns: tier >= 3 ? 2 : 1 };
+    case "cc_taunt":
+      return { turns: tier >= 3 ? 3 : 2 };
+    case "cc_charm":
+      return { turns: 1, chance: tier === 1 ? 50 : 70 };
+    case "debuff_armor":
+      return { pct: snap(tier === 1 ? 30 : tier === 2 ? 50 : 75, 10, 20), turns: tier >= 3 ? 3 : 2 };
+    case "debuff_healReduce":
+      return { pct: snap(tier === 1 ? 30 : 50, 10, 20), turns: 2 };
+    case "buff_stealth":
+      return { turns: tier >= 3 ? 3 : 2, breakOnAttack: 1 };
+    case "buff_shield":
+      return { amount: snap(tier === 1 ? 15 : tier === 2 ? 25 : 40, 5, 10), turns: 2 };
+    case "summon_unit":
+      return { hp: snap(tier === 1 ? 20 : tier === 2 ? 35 : 50, 5, 15), turns: tier >= 3 ? 4 : 3, count: 1 };
+    case "zone_persist":
+      return { radius: tier >= 3 ? 2 : 1, turns: tier >= 3 ? 4 : 3, dmgPerTurn: snap(tier === 1 ? 3 : 5, 1, 2) };
+    case "trap_place":
+      return { count: tier >= 3 ? 2 : 1, triggerDmg: snap(tier === 1 ? 10 : 20, 5, 5) };
+    case "channel_dmg":
+      return { dmgPerTurn: snap(tier === 1 ? 8 : tier === 2 ? 12 : 18, 2, 6), turns: tier >= 3 ? 3 : 2 };
+    case "transform_state":
+      return { turns: tier >= 3 ? 5 : 3, bonusPct: snap(tier === 1 ? 20 : 40, 10, 10) };
   }
 }
 
@@ -122,12 +199,32 @@ const NAME_PREFIXES: Record<string, string[]> = {
   cc_stun: ["Concussive", "Crushing", "Shattering", "Staggering"],
   cc_root: ["Binding", "Pinning", "Locking", "Anchoring"],
   cc_daze: ["Crippling", "Blinding", "Disorienting", "Jarring"],
+  cc_fear: ["Terrifying", "Dreadful", "Horrifying", "Nightmarish"],
+  cc_silence: ["Silencing", "Muting", "Hushing", "Suppressing"],
+  cc_taunt: ["Provoking", "Taunting", "Goading", "Challenging"],
+  cc_charm: ["Beguiling", "Mesmerizing", "Enthralling", "Dominating"],
   debuff_stat: ["Enfeebling", "Weakening", "Draining", "Sapping"],
   debuff_vuln: ["Exposing", "Piercing", "Rending", "Sundering"],
+  debuff_armor: ["Corroding", "Shattering", "Crumbling", "Eroding"],
+  debuff_healReduce: ["Festering", "Withering", "Decaying", "Blighting"],
   buff_stat: ["Rallying", "Inspiring", "Empowering", "Fortifying"],
   buff_dmgReduce: ["Warding", "Shielding", "Guarding", "Steeling"],
+  buff_stealth: ["Shadow", "Phantom", "Ghost", "Unseen"],
+  buff_shield: ["Warding", "Barrier", "Aegis", "Bulwark"],
   disp_push: ["Battering", "Shoving", "Thundering", "Driving"],
+  disp_teleport: ["Blinking", "Warping", "Phasing", "Shifting"],
+  disp_dash: ["Charging", "Rushing", "Lunging", "Leaping"],
+  disp_pull: ["Grasping", "Hauling", "Dragging", "Reeling"],
   dmg_spell: ["Arcane", "Mystic", "Eldritch", "Ethereal"],
+  dmg_reflect: ["Thorned", "Mirrored", "Retaliating", "Rebounding"],
+  lifesteal: ["Vampiric", "Draining", "Siphoning", "Leeching"],
+  heal_flat: ["Mending", "Restoring", "Soothing", "Curative"],
+  heal_hot: ["Regenerating", "Renewing", "Nurturing", "Verdant"],
+  summon_unit: ["Conjured", "Summoned", "Spectral", "Manifested"],
+  zone_persist: ["Lingering", "Persistent", "Enduring", "Permeating"],
+  trap_place: ["Hidden", "Concealed", "Lurking", "Devious"],
+  channel_dmg: ["Focused", "Channeled", "Sustained", "Concentrated"],
+  transform_state: ["Ascendant", "Transcendent", "Awakened", "Unleashed"],
 };
 
 const NAME_VERBS: Record<string, string[]> = {
@@ -141,6 +238,26 @@ const NAME_VERBS: Record<string, string[]> = {
   ],
   dmg_multihit: ["Flurry", "Barrage", "Onslaught", "Frenzy", "Rapid Strikes", "Whirlwind"],
   dmg_spell: ["Bolt", "Blast", "Surge", "Nova", "Torrent", "Pulse"],
+  dmg_reflect: ["Thorns", "Mirror Guard", "Retribution", "Reprisal"],
+  heal_flat: ["Mend", "Restore", "Patch", "Salve"],
+  heal_hot: ["Rejuvenation", "Renewal", "Regrowth", "Bloom"],
+  lifesteal: ["Drain", "Siphon", "Leech", "Feast"],
+  cc_fear: ["Terror", "Dread", "Howl", "Panic"],
+  cc_silence: ["Silence", "Hush", "Muffle", "Suppress"],
+  cc_taunt: ["Taunt", "Challenge", "Provoke", "Goad"],
+  cc_charm: ["Domination", "Puppetry", "Mesmerism", "Enthrall"],
+  debuff_armor: ["Shatter Armor", "Corrode", "Crumble", "Rust"],
+  debuff_healReduce: ["Blight", "Wither", "Decay", "Necrosis"],
+  buff_stealth: ["Vanish", "Fade", "Shadow Step", "Cloak"],
+  buff_shield: ["Shield", "Barrier", "Ward", "Aegis"],
+  disp_teleport: ["Blink", "Phase", "Warp", "Shift"],
+  disp_dash: ["Charge", "Rush", "Lunge", "Leap"],
+  disp_pull: ["Grasp", "Hook", "Reel", "Yank"],
+  summon_unit: ["Summon", "Conjure", "Manifest", "Call Forth"],
+  zone_persist: ["Field", "Zone", "Domain", "Territory"],
+  trap_place: ["Trap", "Snare", "Mine", "Ambush"],
+  channel_dmg: ["Focus", "Channel", "Beam", "Torrent"],
+  transform_state: ["Transformation", "Ascension", "Awakening", "Metamorphosis"],
   stance_counter: ["Counter-stance", "Riposte Guard", "Ready Stance", "Retaliating Guard"],
   stance_overwatch: ["Overwatch", "Sentinel Guard", "Watchful Stance", "Vigilant Watch"],
   res_apRefund: ["Rush", "Surge", "Momentum", "Quick Step"],
@@ -148,6 +265,12 @@ const NAME_VERBS: Record<string, string[]> = {
 
 const NAME_SUFFIXES: Record<string, string[]> = {
   tgt_aoe_adjacent: ["of Havoc", "of Devastation", "of Ruin"],
+  tgt_aoe_cone: ["of Havoc", "of Devastation", "of Ruin"],
+  tgt_aoe_line: ["of Havoc", "of Devastation", "of Ruin"],
+  tgt_aoe_radius2: ["of Havoc", "of Devastation", "of Ruin"],
+  tgt_aoe_radius3: ["of Cataclysm", "of Annihilation", "of Oblivion"],
+  tgt_all_allies: ["of Valor", "of Unity", "of Resolve"],
+  tgt_all_enemies: ["of Doom", "of Reckoning", "of Judgment"],
   tgt_self: ["of Will", "of Resilience", "of Focus"],
 };
 
@@ -199,7 +322,11 @@ function calculatePowerBudget(
 }
 
 /** Magical effect types that cost mana instead of stamina. */
-const MAGICAL_EFFECTS = new Set(["dmg_spell", "dot_burn", "dot_poison", "heal_pctDmg"]);
+const MAGICAL_EFFECTS = new Set([
+  "dmg_spell", "dot_burn", "dot_poison", "heal_pctDmg",
+  "heal_flat", "heal_hot", "lifesteal", "cc_charm", "cc_silence",
+  "channel_dmg", "zone_persist", "summon_unit", "transform_state",
+]);
 
 /** Check if an ability's effects are primarily magical. */
 function isMagicalAbility(effects: EffectPrimitive[]): boolean {
@@ -405,6 +532,119 @@ function generateDescription(ability: GeneratedAbility): string {
       case "heal_pctDmg": {
         const pct = effect.params["pct"] as number;
         parts.push(`Heal ${pct}% of damage dealt`);
+        break;
+      }
+      case "heal_flat": {
+        const amt = effect.params["amount"] as number;
+        parts.push(`Heal ${amt} HP`);
+        break;
+      }
+      case "heal_hot": {
+        const hpt = effect.params["healPerTurn"] as number;
+        const turns = effect.params["turns"] as number;
+        parts.push(`Regenerate ${hpt} HP/turn for ${turns} turns`);
+        break;
+      }
+      case "lifesteal": {
+        const pct = effect.params["pct"] as number;
+        parts.push(`Lifesteal: heal ${pct}% of damage dealt`);
+        break;
+      }
+      case "dmg_reflect": {
+        const pct = effect.params["pct"] as number;
+        const turns = effect.params["turns"] as number;
+        parts.push(`Reflect ${pct}% of incoming damage for ${turns} turns`);
+        break;
+      }
+      case "disp_teleport": {
+        const range = effect.params["range"] as number;
+        parts.push(`Teleport up to ${range} hexes`);
+        break;
+      }
+      case "disp_dash": {
+        const range = effect.params["range"] as number;
+        parts.push(`Dash ${range} hexes toward target`);
+        break;
+      }
+      case "disp_pull": {
+        const dist = effect.params["distance"] as number;
+        parts.push(`Pull target ${dist} hex${dist > 1 ? "es" : ""} toward you`);
+        break;
+      }
+      case "cc_fear": {
+        const chance = effect.params["chance"] as number;
+        const turns = effect.params["turns"] as number;
+        parts.push(`${chance}% chance to Fear (flee for ${turns} turn${turns > 1 ? "s" : ""})`);
+        break;
+      }
+      case "cc_silence": {
+        const turns = effect.params["turns"] as number;
+        parts.push(`Silence target for ${turns} turn${turns > 1 ? "s" : ""} (no abilities)`);
+        break;
+      }
+      case "cc_taunt": {
+        const turns = effect.params["turns"] as number;
+        parts.push(`Taunt target for ${turns} turn${turns > 1 ? "s" : ""} (forced to attack you)`);
+        break;
+      }
+      case "cc_charm": {
+        const turns = effect.params["turns"] as number;
+        parts.push(`Charm target for ${turns} turn${turns > 1 ? "s" : ""} (fights for you)`);
+        break;
+      }
+      case "debuff_armor": {
+        const pct = effect.params["pct"] as number;
+        const turns = effect.params["turns"] as number;
+        parts.push(`Destroy ${pct}% of target's armor for ${turns} turns`);
+        break;
+      }
+      case "debuff_healReduce": {
+        const pct = effect.params["pct"] as number;
+        const turns = effect.params["turns"] as number;
+        parts.push(`Reduce healing received by ${pct}% for ${turns} turns`);
+        break;
+      }
+      case "buff_stealth": {
+        const turns = effect.params["turns"] as number;
+        parts.push(`Enter Stealth for ${turns} turns (untargetable, breaks on attack)`);
+        break;
+      }
+      case "buff_shield": {
+        const amt = effect.params["amount"] as number;
+        const turns = effect.params["turns"] as number;
+        parts.push(`Gain ${amt} HP shield for ${turns} turns`);
+        break;
+      }
+      case "summon_unit": {
+        const hp = effect.params["hp"] as number;
+        const turns = effect.params["turns"] as number;
+        const count = effect.params["count"] as number;
+        parts.push(`Summon ${count > 1 ? count + " units" : "a unit"} (${hp} HP, ${turns} turns)`);
+        break;
+      }
+      case "zone_persist": {
+        const radius = effect.params["radius"] as number;
+        const turns = effect.params["turns"] as number;
+        const dmg = effect.params["dmgPerTurn"] as number;
+        parts.push(`Create zone (${radius}-hex radius, ${dmg} dmg/turn, ${turns} turns)`);
+        break;
+      }
+      case "trap_place": {
+        const count = effect.params["count"] as number;
+        const dmg = effect.params["triggerDmg"] as number;
+        parts.push(`Place ${count > 1 ? count + " traps" : "a trap"} (${dmg} damage on trigger)`);
+        break;
+      }
+      case "channel_dmg": {
+        const dmg = effect.params["dmgPerTurn"] as number;
+        const turns = effect.params["turns"] as number;
+        parts.push(`Channel: deal ${dmg} damage/turn for ${turns} turns`);
+        break;
+      }
+      case "transform_state": {
+        const turns = effect.params["turns"] as number;
+        const bonus = effect.params["bonusPct"] as number;
+        parts.push(`Transform: +${bonus}% all stats for ${turns} turns`);
         break;
       }
     }
@@ -667,7 +907,12 @@ export function generateAbility(
   );
   const targeting: TargetingPrimitive = {
     type: targetingType,
-    params: targetingType === "tgt_aoe_adjacent" ? { radius: 1 } : {},
+    params: targetingType === "tgt_aoe_adjacent" ? { radius: 1 }
+      : targetingType === "tgt_aoe_cone" ? { radius: 2, angle: 120 }
+      : targetingType === "tgt_aoe_line" ? { length: 3 }
+      : targetingType === "tgt_aoe_radius2" ? { radius: 2 }
+      : targetingType === "tgt_aoe_radius3" ? { radius: 3 }
+      : {},
     powerMult: TARGETING_MULT[targetingType],
   };
 

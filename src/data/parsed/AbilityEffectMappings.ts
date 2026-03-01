@@ -22,10 +22,10 @@ export const ABILITY_EFFECT_MAPPINGS: Record<string, AbilityEffectMapping> = {
   },
 
   "blink step": {
-    effects: ["buff_stat"],
+    effects: ["disp_teleport"],
     targeting: "tgt_self",
     conditions: { creates: [], exploits: [] },
-    effectParamOverrides: { buff_stat: { stat: "movementPoints" } },
+    effectParamOverrides: { disp_teleport: { range: 4 } },
   },
 
   "shared haste": {
@@ -36,9 +36,10 @@ export const ABILITY_EFFECT_MAPPINGS: Record<string, AbilityEffectMapping> = {
   },
 
   "flicker strike": {
-    effects: ["dmg_weapon"],
+    effects: ["disp_teleport", "dmg_weapon"],
     targeting: "tgt_single_enemy",
     conditions: { creates: [], exploits: [] },
+    effectParamOverrides: { disp_teleport: { range: 6 } },
   },
 
   "overclock": {
@@ -50,16 +51,16 @@ export const ABILITY_EFFECT_MAPPINGS: Record<string, AbilityEffectMapping> = {
 
   "temporal surge": {
     effects: ["buff_stat"],
-    targeting: "tgt_aoe_adjacent",
+    targeting: "tgt_all_allies",
     conditions: { creates: ["haste"], exploits: [] },
     effectParamOverrides: { buff_stat: { stat: "initiative" } },
   },
 
   "infinite loop": {
-    effects: ["buff_stat"],
+    effects: ["transform_state"],
     targeting: "tgt_self",
     conditions: { creates: ["infinite_loop"], exploits: [] },
-    effectParamOverrides: { buff_stat: { stat: "initiative" } },
+    effectParamOverrides: { transform_state: { turns: 2, bonusPct: 100 } },
   },
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -67,9 +68,10 @@ export const ABILITY_EFFECT_MAPPINGS: Record<string, AbilityEffectMapping> = {
   // ═══════════════════════════════════════════════════════════════════════════
 
   "rust touch": {
-    effects: ["dmg_weapon", "debuff_vuln"],
+    effects: ["dmg_weapon", "debuff_armor"],
     targeting: "tgt_single_enemy",
     conditions: { creates: ["corrode"], exploits: [] },
+    effectParamOverrides: { debuff_armor: { pct: 5, turns: 2 } },
   },
 
   "wither bolt": {
@@ -79,10 +81,10 @@ export const ABILITY_EFFECT_MAPPINGS: Record<string, AbilityEffectMapping> = {
   },
 
   "sap vitality": {
-    effects: ["debuff_stat"],
+    effects: ["debuff_healReduce"],
     targeting: "tgt_single_enemy",
     conditions: { creates: ["heal_reduction"], exploits: [] },
-    effectParamOverrides: { debuff_stat: { stat: "resolve" } },
+    effectParamOverrides: { debuff_healReduce: { pct: 30, turns: 3 } },
   },
 
   "dust to dust": {
@@ -92,27 +94,30 @@ export const ABILITY_EFFECT_MAPPINGS: Record<string, AbilityEffectMapping> = {
   },
 
   "entropic field": {
-    effects: ["dot_poison"],
-    targeting: "tgt_aoe_adjacent",
+    effects: ["zone_persist"],
+    targeting: "tgt_aoe_radius3",
     conditions: { creates: ["decay"], exploits: [] },
+    effectParamOverrides: { zone_persist: { radius: 3, turns: 2, dmgPerTurn: 0 } },
   },
 
   "crumble": {
-    effects: ["debuff_vuln"],
+    effects: ["debuff_armor"],
     targeting: "tgt_single_enemy",
     conditions: { creates: ["armor_break"], exploits: [] },
+    effectParamOverrides: { debuff_armor: { pct: 50, turns: 1 } },
   },
 
   "pandemic": {
     effects: ["dot_poison"],
-    targeting: "tgt_aoe_adjacent",
+    targeting: "tgt_aoe_radius3",
     conditions: { creates: [], exploits: ["dot_bleed", "dot_burn", "dot_poison"] },
   },
 
   "heat death": {
-    effects: ["dmg_spell", "dmg_execute"],
+    effects: ["channel_dmg", "dmg_execute"],
     targeting: "tgt_single_enemy",
     conditions: { creates: ["heat_death_mark"], exploits: ["dot_bleed", "dot_burn", "dot_poison"] },
+    effectParamOverrides: { channel_dmg: { dmgPerTurn: 0, turns: 3 } },
   },
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -120,9 +125,10 @@ export const ABILITY_EFFECT_MAPPINGS: Record<string, AbilityEffectMapping> = {
   // ═══════════════════════════════════════════════════════════════════════════
 
   "rewind": {
-    effects: ["heal_pctDmg"],
+    effects: ["heal_flat", "disp_teleport"],
     targeting: "tgt_self",
     conditions: { creates: [], exploits: [] },
+    effectParamOverrides: { heal_flat: { amount: 0 }, disp_teleport: { range: 99 } },
   },
 
   "deja vu": {
@@ -138,9 +144,10 @@ export const ABILITY_EFFECT_MAPPINGS: Record<string, AbilityEffectMapping> = {
   },
 
   "causal loop": {
-    effects: ["debuff_vuln"],
+    effects: ["dmg_reflect"],
     targeting: "tgt_single_enemy",
     conditions: { creates: ["causal_loop"], exploits: [] },
+    effectParamOverrides: { dmg_reflect: { pct: 100, turns: 2 } },
   },
 
   "echo cast": {
@@ -150,15 +157,17 @@ export const ABILITY_EFFECT_MAPPINGS: Record<string, AbilityEffectMapping> = {
   },
 
   "time bomb": {
-    effects: ["dmg_spell"],
-    targeting: "tgt_aoe_adjacent",
+    effects: ["zone_persist", "dmg_spell"],
+    targeting: "tgt_aoe_radius2",
     conditions: { creates: ["time_bomb_marker"], exploits: [] },
+    effectParamOverrides: { zone_persist: { radius: 2, turns: 2, dmgPerTurn: 0 } },
   },
 
   "fork reality": {
-    effects: ["dmg_multihit"],
+    effects: ["summon_unit"],
     targeting: "tgt_self",
     conditions: { creates: ["clone"], exploits: [] },
+    effectParamOverrides: { summon_unit: { hp: 0, turns: 3, count: 1 } },
   },
 
   "grandfather": {
@@ -169,10 +178,10 @@ export const ABILITY_EFFECT_MAPPINGS: Record<string, AbilityEffectMapping> = {
   },
 
   "closed timelike": {
-    effects: ["heal_pctDmg", "buff_stat"],
+    effects: ["heal_flat", "transform_state"],
     targeting: "tgt_self",
     conditions: { creates: ["time_rewind"], exploits: [] },
-    effectParamOverrides: { buff_stat: { stat: "resolve" } },
+    effectParamOverrides: { heal_flat: { amount: 0 }, transform_state: { turns: 1, bonusPct: 0 } },
   },
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -186,10 +195,10 @@ export const ABILITY_EFFECT_MAPPINGS: Record<string, AbilityEffectMapping> = {
   },
 
   "root stance": {
-    effects: ["buff_dmgReduce", "debuff_stat"],
+    effects: ["buff_dmgReduce", "debuff_stat", "cc_taunt"],
     targeting: "tgt_self",
     conditions: { creates: ["rooted_stance"], exploits: [] },
-    effectParamOverrides: { debuff_stat: { stat: "movementPoints" } },
+    effectParamOverrides: { debuff_stat: { stat: "movementPoints" }, cc_taunt: { turns: 2 } },
   },
 
   "splinter burst": {
@@ -199,16 +208,17 @@ export const ABILITY_EFFECT_MAPPINGS: Record<string, AbilityEffectMapping> = {
   },
 
   "entangling wall": {
-    effects: ["dmg_spell", "debuff_stat"],
-    targeting: "tgt_aoe_adjacent",
+    effects: ["zone_persist", "debuff_stat"],
+    targeting: "tgt_aoe_line",
     conditions: { creates: ["thorn_wall"], exploits: [] },
-    effectParamOverrides: { debuff_stat: { stat: "movementPoints" } },
+    effectParamOverrides: { zone_persist: { radius: 1, turns: 3, dmgPerTurn: 0 }, debuff_stat: { stat: "movementPoints" } },
   },
 
   "world tree": {
-    effects: ["buff_dmgReduce", "stance_counter"],
+    effects: ["buff_dmgReduce", "dmg_reflect", "transform_state"],
     targeting: "tgt_self",
     conditions: { creates: ["world_tree", "rooted_stance"], exploits: [] },
+    effectParamOverrides: { dmg_reflect: { pct: 100, turns: 3 }, transform_state: { turns: 3, bonusPct: 80 } },
   },
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -216,15 +226,17 @@ export const ABILITY_EFFECT_MAPPINGS: Record<string, AbilityEffectMapping> = {
   // ═══════════════════════════════════════════════════════════════════════════
 
   "rejuvenate": {
-    effects: ["heal_pctDmg"],
+    effects: ["heal_hot"],
     targeting: "tgt_single_ally",
     conditions: { creates: ["rejuvenate_hot"], exploits: [] },
+    effectParamOverrides: { heal_hot: { healPerTurn: 0, turns: 3 } },
   },
 
   "seedling": {
-    effects: ["heal_pctDmg"],
-    targeting: "tgt_aoe_adjacent",
+    effects: ["summon_unit", "heal_hot"],
+    targeting: "tgt_aoe_radius2",
     conditions: { creates: ["seedling"], exploits: [] },
+    effectParamOverrides: { summon_unit: { hp: 0, turns: 3, count: 1 }, heal_hot: { healPerTurn: 0, turns: 3 } },
   },
 
   "overgrowth": {
@@ -234,22 +246,24 @@ export const ABILITY_EFFECT_MAPPINGS: Record<string, AbilityEffectMapping> = {
   },
 
   "verdant tide": {
-    effects: ["heal_pctDmg"],
-    targeting: "tgt_aoe_adjacent",
+    effects: ["heal_hot"],
+    targeting: "tgt_aoe_radius3",
     conditions: { creates: ["verdant_tide_hot"], exploits: [] },
+    effectParamOverrides: { heal_hot: { healPerTurn: 0, turns: 3 } },
   },
 
   "bloom cascade": {
-    effects: ["heal_pctDmg"],
-    targeting: "tgt_aoe_adjacent",
+    effects: ["heal_flat"],
+    targeting: "tgt_all_allies",
     conditions: { creates: [], exploits: ["seedling"] },
+    effectParamOverrides: { heal_flat: { amount: 0 } },
   },
 
   "gaia's embrace": {
-    effects: ["heal_pctDmg", "debuff_stat"],
-    targeting: "tgt_aoe_adjacent",
+    effects: ["heal_hot", "debuff_stat", "summon_unit", "zone_persist"],
+    targeting: "tgt_all_allies",
     conditions: { creates: ["gaia_embrace", "seedling"], exploits: [] },
-    effectParamOverrides: { debuff_stat: { stat: "movementPoints" } },
+    effectParamOverrides: { debuff_stat: { stat: "movementPoints" }, summon_unit: { hp: 0, turns: 4, count: 1 }, zone_persist: { radius: 99, turns: 4, dmgPerTurn: 0 }, heal_hot: { healPerTurn: 0, turns: 4 } },
   },
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -263,9 +277,10 @@ export const ABILITY_EFFECT_MAPPINGS: Record<string, AbilityEffectMapping> = {
   },
 
   "fungal growth": {
-    effects: ["dot_poison"],
-    targeting: "tgt_aoe_adjacent",
+    effects: ["summon_unit", "zone_persist"],
+    targeting: "tgt_aoe_radius2",
     conditions: { creates: ["fungal_node"], exploits: [] },
+    effectParamOverrides: { summon_unit: { hp: 0, turns: 0, count: 1 }, zone_persist: { radius: 2, turns: 0, dmgPerTurn: 0 } },
   },
 
   "decompose": {
@@ -275,23 +290,24 @@ export const ABILITY_EFFECT_MAPPINGS: Record<string, AbilityEffectMapping> = {
   },
 
   "plague garden": {
-    effects: ["dot_poison", "debuff_stat"],
-    targeting: "tgt_aoe_adjacent",
+    effects: ["zone_persist", "debuff_healReduce", "summon_unit"],
+    targeting: "tgt_aoe_radius2",
     conditions: { creates: ["fungal_node", "plague_zone", "heal_reduction"], exploits: [] },
-    effectParamOverrides: { debuff_stat: { stat: "resolve" } },
+    effectParamOverrides: { zone_persist: { radius: 2, turns: 0, dmgPerTurn: 0 }, debuff_healReduce: { pct: 40, turns: 0 }, summon_unit: { hp: 0, turns: 0, count: 3 } },
   },
 
   "parasitic vine": {
-    effects: ["dot_poison", "heal_pctDmg"],
+    effects: ["channel_dmg", "lifesteal"],
     targeting: "tgt_single_enemy",
     conditions: { creates: ["parasitic_vine"], exploits: [] },
+    effectParamOverrides: { channel_dmg: { dmgPerTurn: 0, turns: 2 }, lifesteal: { pct: 100 } },
   },
 
   "cordyceps": {
-    effects: ["debuff_stat"],
+    effects: ["debuff_stat", "summon_unit"],
     targeting: "tgt_single_enemy",
     conditions: { creates: ["cordyceps_infection"], exploits: [] },
-    effectParamOverrides: { debuff_stat: { stat: "resolve" } },
+    effectParamOverrides: { debuff_stat: { stat: "resolve" }, summon_unit: { hp: 0, turns: 4, count: 1 } },
   },
 
   "the spreading": {
@@ -329,9 +345,10 @@ export const ABILITY_EFFECT_MAPPINGS: Record<string, AbilityEffectMapping> = {
   },
 
   "requiem": {
-    effects: ["dmg_spell", "dmg_execute"],
+    effects: ["channel_dmg", "dmg_execute"],
     targeting: "tgt_single_enemy",
     conditions: { creates: ["requiem_mark"], exploits: [] },
+    effectParamOverrides: { channel_dmg: { dmgPerTurn: 0, turns: 3 } },
   },
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -339,22 +356,24 @@ export const ABILITY_EFFECT_MAPPINGS: Record<string, AbilityEffectMapping> = {
   // ═══════════════════════════════════════════════════════════════════════════
 
   "muffle": {
-    effects: ["cc_daze"],
+    effects: ["cc_silence"],
     targeting: "tgt_single_enemy",
     conditions: { creates: ["silence"], exploits: [] },
+    effectParamOverrides: { cc_silence: { turns: 1 } },
   },
 
   "sound eater": {
-    effects: ["buff_stat"],
+    effects: ["buff_stealth"],
     targeting: "tgt_self",
     conditions: { creates: ["stealth"], exploits: [] },
-    effectParamOverrides: { buff_stat: { stat: "dodge" } },
+    effectParamOverrides: { buff_stealth: { turns: 2, breakOnAttack: 1 } },
   },
 
   "dead air": {
-    effects: ["cc_daze"],
-    targeting: "tgt_aoe_adjacent",
+    effects: ["zone_persist", "cc_silence"],
+    targeting: "tgt_aoe_radius2",
     conditions: { creates: ["silence_zone"], exploits: [] },
+    effectParamOverrides: { zone_persist: { radius: 2, turns: 2, dmgPerTurn: 0 }, cc_silence: { turns: 2 } },
   },
 
   "ambush": {
@@ -364,30 +383,31 @@ export const ABILITY_EFFECT_MAPPINGS: Record<string, AbilityEffectMapping> = {
   },
 
   "void frequency": {
-    effects: ["cc_daze"],
+    effects: ["cc_silence"],
     targeting: "tgt_single_enemy",
     conditions: { creates: ["cooldown_freeze"], exploits: [] },
+    effectParamOverrides: { cc_silence: { turns: 2 } },
   },
 
   "ghost note": {
-    effects: ["buff_stat"],
+    effects: ["buff_stealth", "summon_unit", "cc_taunt"],
     targeting: "tgt_self",
     conditions: { creates: ["stealth", "decoy"], exploits: [] },
-    effectParamOverrides: { buff_stat: { stat: "dodge" } },
+    effectParamOverrides: { buff_stealth: { turns: 2, breakOnAttack: 1 }, summon_unit: { hp: 0, turns: 2, count: 1 }, cc_taunt: { turns: 2 } },
   },
 
   "total silence": {
-    effects: ["cc_daze", "buff_stat"],
-    targeting: "tgt_aoe_adjacent",
+    effects: ["cc_silence", "buff_stealth"],
+    targeting: "tgt_aoe_radius3",
     conditions: { creates: ["silence", "stealth"], exploits: [] },
-    effectParamOverrides: { buff_stat: { stat: "dodge" } },
+    effectParamOverrides: { cc_silence: { turns: 2 }, buff_stealth: { turns: 2, breakOnAttack: 1 } },
   },
 
   "the unheard": {
-    effects: ["buff_stat", "buff_dmgReduce"],
+    effects: ["buff_stealth", "transform_state"],
     targeting: "tgt_self",
     conditions: { creates: ["stealth", "untargetable"], exploits: [] },
-    effectParamOverrides: { buff_stat: { stat: "dodge" } },
+    effectParamOverrides: { buff_stealth: { turns: 4, breakOnAttack: 0 }, transform_state: { turns: 4, bonusPct: 50 } },
   },
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -396,14 +416,14 @@ export const ABILITY_EFFECT_MAPPINGS: Record<string, AbilityEffectMapping> = {
 
   "screech": {
     effects: ["dmg_spell", "debuff_stat"],
-    targeting: "tgt_aoe_adjacent",
+    targeting: "tgt_aoe_cone",
     conditions: { creates: ["disoriented"], exploits: [] },
     effectParamOverrides: { debuff_stat: { stat: "meleeSkill" } },
   },
 
   "bass drop": {
     effects: ["dmg_spell", "disp_push"],
-    targeting: "tgt_aoe_adjacent",
+    targeting: "tgt_aoe_radius2",
     conditions: { creates: [], exploits: [] },
   },
 
@@ -415,35 +435,37 @@ export const ABILITY_EFFECT_MAPPINGS: Record<string, AbilityEffectMapping> = {
   },
 
   "wall of sound": {
-    effects: ["dmg_spell", "cc_stun"],
-    targeting: "tgt_aoe_adjacent",
+    effects: ["zone_persist", "cc_stun"],
+    targeting: "tgt_aoe_line",
     conditions: { creates: ["sound_wall"], exploits: [] },
+    effectParamOverrides: { zone_persist: { radius: 1, turns: 0, dmgPerTurn: 0 } },
   },
 
   "shockwave": {
     effects: ["dmg_spell"],
-    targeting: "tgt_aoe_adjacent",
+    targeting: "tgt_aoe_line",
     conditions: { creates: [], exploits: [] },
   },
 
   "noise complaint": {
-    effects: ["debuff_stat"],
-    targeting: "tgt_aoe_adjacent",
+    effects: ["debuff_stat", "cc_charm"],
+    targeting: "tgt_aoe_radius3",
     conditions: { creates: ["disoriented"], exploits: [] },
-    effectParamOverrides: { debuff_stat: { stat: "meleeSkill" } },
+    effectParamOverrides: { debuff_stat: { stat: "meleeSkill" }, cc_charm: { turns: 2, chance: 30 } },
   },
 
   "brown note": {
-    effects: ["cc_root", "dot_burn"],
+    effects: ["cc_fear", "dot_burn"],
     targeting: "tgt_single_enemy",
     conditions: { creates: ["fear"], exploits: [] },
+    effectParamOverrides: { cc_fear: { chance: 100, turns: 2 } },
   },
 
   "symphony of destruction": {
-    effects: ["dmg_spell", "debuff_stat", "buff_stat"],
-    targeting: "tgt_aoe_adjacent",
+    effects: ["zone_persist", "debuff_stat", "buff_stat"],
+    targeting: "tgt_aoe_radius3",
     conditions: { creates: ["disoriented", "symphony_zone"], exploits: [] },
-    effectParamOverrides: { debuff_stat: { stat: "meleeSkill" }, buff_stat: { stat: "meleeSkill" } },
+    effectParamOverrides: { zone_persist: { radius: 3, turns: 3, dmgPerTurn: 0 }, debuff_stat: { stat: "meleeSkill" }, buff_stat: { stat: "meleeSkill" } },
   },
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -464,14 +486,15 @@ export const ABILITY_EFFECT_MAPPINGS: Record<string, AbilityEffectMapping> = {
 
   "pivot slash": {
     effects: ["dmg_weapon"],
-    targeting: "tgt_aoe_adjacent",
+    targeting: "tgt_aoe_cone",
     conditions: { creates: ["rhythm"], exploits: [] },
   },
 
   "whirlwind step": {
-    effects: ["dmg_weapon"],
+    effects: ["disp_dash", "dmg_weapon"],
     targeting: "tgt_single_enemy",
     conditions: { creates: ["rhythm"], exploits: [] },
+    effectParamOverrides: { disp_dash: { range: 3, damageOnArrival: 0 } },
   },
 
   "rising flourish": {
@@ -501,10 +524,10 @@ export const ABILITY_EFFECT_MAPPINGS: Record<string, AbilityEffectMapping> = {
   },
 
   "the endless dance": {
-    effects: ["buff_stat", "dmg_multihit"],
+    effects: ["transform_state", "dmg_multihit"],
     targeting: "tgt_self",
     conditions: { creates: ["eternal_rhythm"], exploits: ["rhythm"] },
-    effectParamOverrides: { buff_stat: { stat: "meleeSkill" } },
+    effectParamOverrides: { transform_state: { turns: 4, bonusPct: 0 } },
   },
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -524,9 +547,10 @@ export const ABILITY_EFFECT_MAPPINGS: Record<string, AbilityEffectMapping> = {
   },
 
   "force bolt slash": {
-    effects: ["dmg_spell", "dmg_weapon"],
+    effects: ["dmg_spell", "disp_dash", "dmg_weapon"],
     targeting: "tgt_single_enemy",
     conditions: { creates: ["blade_charge"], exploits: [] },
+    effectParamOverrides: { disp_dash: { range: 4, damageOnArrival: 0 } },
   },
 
   "runic barrage": {
@@ -536,20 +560,21 @@ export const ABILITY_EFFECT_MAPPINGS: Record<string, AbilityEffectMapping> = {
   },
 
   "phase cut": {
-    effects: ["dmg_weapon", "debuff_vuln"],
+    effects: ["disp_teleport", "dmg_weapon", "debuff_armor"],
     targeting: "tgt_single_enemy",
     conditions: { creates: [], exploits: ["weave_resonance"] },
+    effectParamOverrides: { disp_teleport: { range: 1 }, debuff_armor: { pct: 100, turns: 1 } },
   },
 
   "resonance overflow": {
     effects: ["dmg_spell"],
-    targeting: "tgt_aoe_adjacent",
+    targeting: "tgt_aoe_line",
     conditions: { creates: [], exploits: ["weave_resonance"] },
   },
 
   "grand synthesis": {
     effects: ["dmg_weapon", "dmg_spell"],
-    targeting: "tgt_aoe_adjacent",
+    targeting: "tgt_aoe_radius3",
     conditions: { creates: [], exploits: ["weave_resonance"] },
   },
 
@@ -566,15 +591,16 @@ export const ABILITY_EFFECT_MAPPINGS: Record<string, AbilityEffectMapping> = {
 
   "harmonic chorus": {
     effects: ["buff_stat"],
-    targeting: "tgt_aoe_adjacent",
+    targeting: "tgt_all_allies",
     conditions: { creates: ["harmonic_chorus"], exploits: [] },
     effectParamOverrides: { buff_stat: { stat: "resolve" } },
   },
 
   "discordant note": {
-    effects: ["cc_daze"],
+    effects: ["cc_silence"],
     targeting: "tgt_single_enemy",
     conditions: { creates: ["interrupt"], exploits: [] },
+    effectParamOverrides: { cc_silence: { turns: 1 } },
   },
 
   "symphony of war": {
@@ -585,10 +611,10 @@ export const ABILITY_EFFECT_MAPPINGS: Record<string, AbilityEffectMapping> = {
   },
 
   "the eternal war song": {
-    effects: ["buff_stat", "buff_dmgReduce"],
-    targeting: "tgt_aoe_adjacent",
+    effects: ["buff_stat", "buff_dmgReduce", "transform_state"],
+    targeting: "tgt_all_allies",
     conditions: { creates: ["eternal_war_song"], exploits: [] },
-    effectParamOverrides: { buff_stat: { stat: "resolve" } },
+    effectParamOverrides: { buff_stat: { stat: "resolve" }, transform_state: { turns: 0, bonusPct: 0 } },
   },
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -603,7 +629,7 @@ export const ABILITY_EFFECT_MAPPINGS: Record<string, AbilityEffectMapping> = {
 
   "hemorrhage wave": {
     effects: ["dmg_spell", "dot_bleed"],
-    targeting: "tgt_aoe_adjacent",
+    targeting: "tgt_aoe_cone",
     conditions: { creates: ["bleed"], exploits: [] },
   },
 
@@ -623,7 +649,7 @@ export const ABILITY_EFFECT_MAPPINGS: Record<string, AbilityEffectMapping> = {
 
   "blood nova": {
     effects: ["dmg_spell"],
-    targeting: "tgt_aoe_adjacent",
+    targeting: "tgt_aoe_radius3",
     conditions: { creates: [], exploits: [] },
   },
 
@@ -635,7 +661,7 @@ export const ABILITY_EFFECT_MAPPINGS: Record<string, AbilityEffectMapping> = {
 
   "the final offering": {
     effects: ["dmg_spell", "heal_pctDmg"],
-    targeting: "tgt_aoe_adjacent",
+    targeting: "tgt_aoe_radius3",
     conditions: { creates: [], exploits: [] },
   },
 
@@ -663,21 +689,24 @@ export const ABILITY_EFFECT_MAPPINGS: Record<string, AbilityEffectMapping> = {
   },
 
   "puppet string": {
-    effects: ["disp_push", "dmg_spell"],
+    effects: ["disp_pull", "dmg_spell"],
     targeting: "tgt_single_enemy",
     conditions: { creates: [], exploits: [] },
+    effectParamOverrides: { disp_pull: { distance: 2 } },
   },
 
   "boil": {
-    effects: ["dot_burn", "debuff_vuln"],
+    effects: ["dot_burn", "debuff_armor"],
     targeting: "tgt_single_enemy",
-    conditions: { creates: ["burn", "vulnerable"], exploits: [] },
+    conditions: { creates: ["burn"], exploits: [] },
+    effectParamOverrides: { debuff_armor: { pct: 10, turns: 3 } },
   },
 
   "full puppet": {
-    effects: ["cc_stun"],
+    effects: ["cc_charm"],
     targeting: "tgt_single_enemy",
     conditions: { creates: ["controlled"], exploits: [] },
+    effectParamOverrides: { cc_charm: { turns: 2, chance: 100 } },
   },
 
   "hemorrhagic burst": {
@@ -699,10 +728,13 @@ export const ABILITY_EFFECT_MAPPINGS: Record<string, AbilityEffectMapping> = {
   },
 
   "sanguine dominion": {
-    effects: ["debuff_stat", "debuff_stat", "cc_daze"],
-    targeting: "tgt_aoe_adjacent",
+    effects: ["debuff_stat", "debuff_stat", "cc_charm"],
+    targeting: "tgt_aoe_radius3",
     conditions: { creates: ["controlled"], exploits: ["bleed"] },
-    effectParamOverrides: { debuff_stat: { stat: "movementPoints" } },
+    effectParamOverrides: {
+      debuff_stat: { stat: "movementPoints" },
+      cc_charm: { turns: 5, chance: 100 },
+    },
   },
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -716,15 +748,17 @@ export const ABILITY_EFFECT_MAPPINGS: Record<string, AbilityEffectMapping> = {
   },
 
   "clot seal": {
-    effects: ["heal_pctDmg"],
+    effects: ["heal_flat"],
     targeting: "tgt_single_ally",
     conditions: { creates: [], exploits: [] },
+    effectParamOverrides: { heal_flat: { amount: 5 } },
   },
 
   "sanguine transfusion": {
-    effects: ["heal_pctDmg"],
+    effects: ["heal_flat"],
     targeting: "tgt_single_ally",
     conditions: { creates: [], exploits: [] },
+    effectParamOverrides: { heal_flat: { amount: 25 } },
   },
 
   "hemorrhage harvest": {
@@ -735,26 +769,28 @@ export const ABILITY_EFFECT_MAPPINGS: Record<string, AbilityEffectMapping> = {
 
   "vital lattice": {
     effects: ["buff_dmgReduce"],
-    targeting: "tgt_single_ally",
+    targeting: "tgt_all_allies",
     conditions: { creates: ["lattice"], exploits: [] },
   },
 
   "soul leak": {
     effects: ["dmg_spell", "heal_pctDmg"],
-    targeting: "tgt_aoe_adjacent",
+    targeting: "tgt_aoe_radius2",
     conditions: { creates: [], exploits: [] },
   },
 
   "mass transfusion": {
-    effects: ["heal_pctDmg"],
-    targeting: "tgt_aoe_adjacent",
+    effects: ["heal_flat"],
+    targeting: "tgt_all_allies",
     conditions: { creates: [], exploits: [] },
+    effectParamOverrides: { heal_flat: { amount: 10 } },
   },
 
   "the eternal circuit": {
-    effects: ["buff_dmgReduce", "heal_pctDmg"],
-    targeting: "tgt_aoe_adjacent",
+    effects: ["buff_dmgReduce", "heal_pctDmg", "dmg_reflect"],
+    targeting: "tgt_all_allies",
     conditions: { creates: ["circuit"], exploits: [] },
+    effectParamOverrides: { dmg_reflect: { pct: 100, turns: 6 } },
   },
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -774,9 +810,10 @@ export const ABILITY_EFFECT_MAPPINGS: Record<string, AbilityEffectMapping> = {
   },
 
   "blade hunger": {
-    effects: ["buff_stat", "heal_pctDmg"],
+    effects: ["buff_stat", "lifesteal"],
     targeting: "tgt_self",
     conditions: { creates: [], exploits: [] },
+    effectParamOverrides: { lifesteal: { pct: 200 } },
   },
 
   "soul drink": {
@@ -792,16 +829,21 @@ export const ABILITY_EFFECT_MAPPINGS: Record<string, AbilityEffectMapping> = {
   },
 
   "feast mode": {
-    effects: ["buff_stat", "heal_pctDmg"],
+    effects: ["lifesteal"],
     targeting: "tgt_self",
     conditions: { creates: [], exploits: [] },
+    effectParamOverrides: { lifesteal: { pct: 100 } },
   },
 
   "the infinite hunger": {
-    effects: ["buff_stat", "heal_pctDmg", "dmg_weapon"],
+    effects: ["buff_stat", "lifesteal", "dmg_weapon", "transform_state"],
     targeting: "tgt_self",
     conditions: { creates: [], exploits: [] },
-    effectParamOverrides: { buff_stat: { stat: "meleeSkill" } },
+    effectParamOverrides: {
+      buff_stat: { stat: "meleeSkill" },
+      lifesteal: { pct: 100 },
+      transform_state: { turns: 4, bonusPct: 300 },
+    },
   },
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -871,9 +913,10 @@ export const ABILITY_EFFECT_MAPPINGS: Record<string, AbilityEffectMapping> = {
   // ═══════════════════════════════════════════════════════════════════════════
 
   "spectral blade": {
-    effects: ["dmg_spell"],
+    effects: ["summon_unit"],
     targeting: "tgt_self",
     conditions: { creates: ["spectral_blade"], exploits: [] },
+    effectParamOverrides: { summon_unit: { hp: 0, turns: -1, count: 1 } },
   },
 
   "phantom strike": {
@@ -883,15 +926,17 @@ export const ABILITY_EFFECT_MAPPINGS: Record<string, AbilityEffectMapping> = {
   },
 
   "arsenal expansion": {
-    effects: ["dmg_spell"],
+    effects: ["summon_unit"],
     targeting: "tgt_self",
     conditions: { creates: ["spectral_blade"], exploits: [] },
+    effectParamOverrides: { summon_unit: { hp: 0, turns: -1, count: 2 } },
   },
 
   "shield formation": {
-    effects: ["buff_dmgReduce"],
+    effects: ["buff_shield"],
     targeting: "tgt_self",
     conditions: { creates: [], exploits: ["spectral_blade"] },
+    effectParamOverrides: { buff_shield: { amount: 3, turns: 2 } },
   },
 
   "spectral surge": {
@@ -901,9 +946,10 @@ export const ABILITY_EFFECT_MAPPINGS: Record<string, AbilityEffectMapping> = {
   },
 
   "ghost lance": {
-    effects: ["dmg_spell"],
-    targeting: "tgt_aoe_adjacent",
+    effects: ["dmg_spell", "summon_unit"],
+    targeting: "tgt_aoe_line",
     conditions: { creates: ["spectral_lance"], exploits: [] },
+    effectParamOverrides: { summon_unit: { hp: 0, turns: -1, count: 1 } },
   },
 
   "haunted volley": {
@@ -913,21 +959,27 @@ export const ABILITY_EFFECT_MAPPINGS: Record<string, AbilityEffectMapping> = {
   },
 
   "blade tornado": {
-    effects: ["dmg_spell", "buff_dmgReduce"],
-    targeting: "tgt_aoe_adjacent",
+    effects: ["zone_persist", "buff_dmgReduce"],
+    targeting: "tgt_aoe_radius2",
     conditions: { creates: [], exploits: ["spectral_blade"] },
+    effectParamOverrides: { zone_persist: { radius: 2, turns: 2, dmgPerTurn: 0 } },
   },
 
   "spectral clone": {
-    effects: ["dmg_spell"],
+    effects: ["summon_unit"],
     targeting: "tgt_single_enemy",
     conditions: { creates: ["spectral_clone"], exploits: ["spectral_blade"] },
+    effectParamOverrides: { summon_unit: { hp: 0, turns: 3, count: 1 } },
   },
 
   "the ghost armory": {
-    effects: ["dmg_multihit", "dmg_spell", "buff_stat"],
-    targeting: "tgt_aoe_adjacent",
+    effects: ["summon_unit", "dmg_spell", "transform_state"],
+    targeting: "tgt_aoe_radius3",
     conditions: { creates: ["spectral_blade", "spectral_greatsword"], exploits: [] },
+    effectParamOverrides: {
+      summon_unit: { hp: 0, turns: 4, count: 10 },
+      transform_state: { turns: 4, bonusPct: 300 },
+    },
   },
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -936,9 +988,10 @@ export const ABILITY_EFFECT_MAPPINGS: Record<string, AbilityEffectMapping> = {
   // NOTE: Harvest Limb and Mass Harvest have empty effects and are skipped.
 
   "crude assembly": {
-    effects: ["dmg_spell"],
+    effects: ["summon_unit"],
     targeting: "tgt_self",
     conditions: { creates: ["construct"], exploits: ["harvested_part"] },
+    effectParamOverrides: { summon_unit: { hp: 0, turns: -1, count: 1 } },
   },
 
   "specialist graft": {
@@ -955,15 +1008,17 @@ export const ABILITY_EFFECT_MAPPINGS: Record<string, AbilityEffectMapping> = {
   },
 
   "composite horror": {
-    effects: ["dmg_spell"],
+    effects: ["summon_unit"],
     targeting: "tgt_self",
     conditions: { creates: ["construct"], exploits: ["harvested_part"] },
+    effectParamOverrides: { summon_unit: { hp: 0, turns: -1, count: 1 } },
   },
 
   "surgical upgrade": {
-    effects: ["heal_pctDmg", "buff_stat"],
+    effects: ["heal_flat", "buff_stat"],
     targeting: "tgt_self",
     conditions: { creates: [], exploits: ["construct"] },
+    effectParamOverrides: { heal_flat: { amount: 50 } },
   },
 
   "optimal configuration": {
@@ -973,9 +1028,10 @@ export const ABILITY_EFFECT_MAPPINGS: Record<string, AbilityEffectMapping> = {
   },
 
   "masterwork abomination": {
-    effects: ["dmg_spell", "dmg_multihit"],
+    effects: ["summon_unit", "dmg_multihit"],
     targeting: "tgt_self",
     conditions: { creates: ["construct"], exploits: ["harvested_part"] },
+    effectParamOverrides: { summon_unit: { hp: 0, turns: -1, count: 1 } },
   },
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -996,17 +1052,20 @@ export const ABILITY_EFFECT_MAPPINGS: Record<string, AbilityEffectMapping> = {
   },
 
   "full conversion": {
-    effects: ["buff_dmgReduce", "buff_stat"],
+    effects: ["transform_state", "buff_dmgReduce"],
     targeting: "tgt_self",
     conditions: { creates: ["undead_form"], exploits: [] },
-    effectParamOverrides: { buff_stat: { stat: "resolve" } },
+    effectParamOverrides: { transform_state: { turns: 6, bonusPct: 0 } },
   },
 
   "the masterwork self": {
-    effects: ["buff_dmgReduce", "heal_pctDmg", "buff_stat"],
+    effects: ["transform_state", "buff_dmgReduce", "heal_hot"],
     targeting: "tgt_self",
     conditions: { creates: ["flesh_construct_form"], exploits: [] },
-    effectParamOverrides: { buff_stat: { stat: "resolve" } },
+    effectParamOverrides: {
+      transform_state: { turns: -1, bonusPct: 0 },
+      heal_hot: { healPerTurn: 2, turns: -1 },
+    },
   },
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -1021,9 +1080,10 @@ export const ABILITY_EFFECT_MAPPINGS: Record<string, AbilityEffectMapping> = {
   },
 
   "spectral shell": {
-    effects: ["buff_dmgReduce"],
+    effects: ["buff_shield"],
     targeting: "tgt_self",
     conditions: { creates: ["spectral_shell"], exploits: ["soul_essence"] },
+    effectParamOverrides: { buff_shield: { amount: 1, turns: -1 } },
   },
 
   "soul tap": {
@@ -1041,14 +1101,15 @@ export const ABILITY_EFFECT_MAPPINGS: Record<string, AbilityEffectMapping> = {
 
   "soul detonation": {
     effects: ["dmg_spell"],
-    targeting: "tgt_aoe_adjacent",
+    targeting: "tgt_aoe_radius3",
     conditions: { creates: [], exploits: ["soul_essence"] },
   },
 
   "spectral minion": {
-    effects: ["dmg_spell"],
+    effects: ["summon_unit"],
     targeting: "tgt_self",
     conditions: { creates: ["spectral_minion"], exploits: ["soul_essence"] },
+    effectParamOverrides: { summon_unit: { hp: 0, turns: 6, count: 1 } },
   },
 
   "soul forge": {
@@ -1059,9 +1120,10 @@ export const ABILITY_EFFECT_MAPPINGS: Record<string, AbilityEffectMapping> = {
   },
 
   "soulstorm engine": {
-    effects: ["dmg_multihit", "dmg_spell"],
-    targeting: "tgt_aoe_adjacent",
+    effects: ["dmg_multihit", "zone_persist"],
+    targeting: "tgt_aoe_radius3",
     conditions: { creates: [], exploits: ["soul_essence"] },
+    effectParamOverrides: { zone_persist: { radius: 3, turns: 3, dmgPerTurn: 0 } },
   },
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -1101,10 +1163,10 @@ export const ABILITY_EFFECT_MAPPINGS: Record<string, AbilityEffectMapping> = {
   },
 
   "crimson god": {
-    effects: ["dmg_weapon", "buff_stat", "dmg_weapon"],
+    effects: ["transform_state", "dmg_weapon", "buff_stat"],
     targeting: "tgt_self",
     conditions: { creates: ["blood_fury_form", "blood_nova_on_kill"], exploits: ["low_hp"] },
-    effectParamOverrides: { buff_stat: { stat: "meleeSkill" } },
+    effectParamOverrides: { transform_state: { turns: 12, bonusPct: 100 }, buff_stat: { stat: "meleeSkill" } },
   },
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -1112,26 +1174,28 @@ export const ABILITY_EFFECT_MAPPINGS: Record<string, AbilityEffectMapping> = {
   // ═══════════════════════════════════════════════════════════════════════════
 
   "bull rush": {
-    effects: ["dmg_weapon", "disp_push"],
+    effects: ["disp_dash", "disp_push"],
     targeting: "tgt_single_enemy",
     conditions: { creates: ["displaced"], exploits: [] },
+    effectParamOverrides: { disp_dash: { range: 3, damageOnArrival: 100 } },
   },
 
   "cleave": {
     effects: ["dmg_weapon"],
-    targeting: "tgt_aoe_adjacent",
+    targeting: "tgt_aoe_cone",
     conditions: { creates: [], exploits: [] },
   },
 
   "titan charge": {
-    effects: ["dmg_weapon", "dmg_weapon"],
+    effects: ["disp_dash", "dmg_weapon"],
     targeting: "tgt_single_enemy",
     conditions: { creates: [], exploits: [] },
+    effectParamOverrides: { disp_dash: { range: 4, damageOnArrival: 150 } },
   },
 
   "whirlwind": {
     effects: ["dmg_multihit"],
-    targeting: "tgt_aoe_adjacent",
+    targeting: "tgt_aoe_radius2",
     conditions: { creates: [], exploits: [] },
   },
 
@@ -1143,28 +1207,30 @@ export const ABILITY_EFFECT_MAPPINGS: Record<string, AbilityEffectMapping> = {
   },
 
   "chain charge": {
-    effects: ["dmg_weapon", "dmg_multihit"],
+    effects: ["disp_dash", "dmg_multihit"],
     targeting: "tgt_single_enemy",
     conditions: { creates: [], exploits: [] },
+    effectParamOverrides: { disp_dash: { range: 3, damageOnArrival: 100 } },
   },
 
   "seismic slam": {
     effects: ["dmg_weapon", "cc_stun", "disp_push"],
-    targeting: "tgt_aoe_adjacent",
+    targeting: "tgt_aoe_radius2",
     conditions: { creates: ["stunned", "momentum"], exploits: [] },
   },
 
   "rampage": {
-    effects: ["res_apRefund"],
+    effects: ["transform_state", "res_apRefund"],
     targeting: "tgt_self",
     conditions: { creates: ["rampage_state"], exploits: [] },
+    effectParamOverrides: { transform_state: { turns: 10, bonusPct: 0 } },
   },
 
   "the living avalanche": {
-    effects: ["dmg_weapon", "buff_stat", "buff_dmgReduce"],
+    effects: ["transform_state", "dmg_weapon", "buff_stat"],
     targeting: "tgt_self",
     conditions: { creates: ["avalanche_form", "aoe_on_move"], exploits: [] },
-    effectParamOverrides: { buff_stat: { stat: "movementPoints" } },
+    effectParamOverrides: { transform_state: { turns: 15, bonusPct: 200 }, buff_stat: { stat: "movementPoints" } },
   },
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -1172,52 +1238,52 @@ export const ABILITY_EFFECT_MAPPINGS: Record<string, AbilityEffectMapping> = {
   // ═══════════════════════════════════════════════════════════════════════════
 
   "battle cry": {
-    effects: ["cc_daze", "debuff_stat"],
-    targeting: "tgt_aoe_adjacent",
+    effects: ["cc_fear", "debuff_stat"],
+    targeting: "tgt_aoe_radius2",
     conditions: { creates: ["feared", "intimidated"], exploits: ["low_morale"] },
-    effectParamOverrides: { debuff_stat: { stat: "meleeSkill" } },
+    effectParamOverrides: { cc_fear: { chance: 60, turns: 2 }, debuff_stat: { stat: "meleeSkill" } },
   },
 
   "taunt": {
-    effects: ["cc_daze", "debuff_stat"],
+    effects: ["cc_taunt", "debuff_stat"],
     targeting: "tgt_single_enemy",
     conditions: { creates: ["taunted"], exploits: [] },
-    effectParamOverrides: { debuff_stat: { stat: "meleeSkill" } },
+    effectParamOverrides: { cc_taunt: { turns: 4 }, debuff_stat: { stat: "meleeSkill" } },
   },
 
   "howl of terror": {
-    effects: ["cc_stun", "debuff_stat"],
-    targeting: "tgt_aoe_adjacent",
+    effects: ["cc_fear", "cc_stun", "debuff_stat"],
+    targeting: "tgt_aoe_radius3",
     conditions: { creates: ["feared", "stunned", "debuffed"], exploits: ["low_morale"] },
-    effectParamOverrides: { debuff_stat: { stat: "meleeSkill" } },
+    effectParamOverrides: { cc_fear: { chance: 80, turns: 4 }, debuff_stat: { stat: "meleeSkill" } },
   },
 
   "crushing dominance": {
-    effects: ["debuff_stat", "debuff_vuln"],
+    effects: ["debuff_stat", "debuff_vuln", "cc_silence"],
     targeting: "tgt_single_enemy",
     conditions: { creates: ["dominated", "vulnerable"], exploits: [] },
-    effectParamOverrides: { debuff_stat: { stat: "meleeSkill" } },
+    effectParamOverrides: { debuff_stat: { stat: "meleeSkill" }, cc_silence: { turns: 10 } },
   },
 
   "mass rout": {
-    effects: ["dmg_weapon", "cc_daze", "debuff_stat"],
-    targeting: "tgt_aoe_adjacent",
+    effects: ["dmg_weapon", "cc_fear", "debuff_stat"],
+    targeting: "tgt_aoe_radius2",
     conditions: { creates: ["feared", "debuffed"], exploits: [] },
-    effectParamOverrides: { debuff_stat: { stat: "meleeSkill" } },
+    effectParamOverrides: { cc_fear: { chance: 60, turns: 3 }, debuff_stat: { stat: "meleeSkill" } },
   },
 
   "war god's roar": {
-    effects: ["cc_stun", "buff_stat"],
-    targeting: "tgt_aoe_adjacent",
+    effects: ["cc_fear", "buff_stat"],
+    targeting: "tgt_all_enemies",
     conditions: { creates: ["feared", "ally_damage_buff"], exploits: [] },
-    effectParamOverrides: { buff_stat: { stat: "meleeSkill" } },
+    effectParamOverrides: { cc_fear: { chance: 100, turns: 2 }, buff_stat: { stat: "meleeSkill" } },
   },
 
   "apex predator": {
-    effects: ["debuff_stat", "buff_stat", "cc_daze"],
-    targeting: "tgt_aoe_adjacent",
+    effects: ["transform_state", "debuff_stat", "cc_silence", "cc_fear"],
+    targeting: "tgt_all_enemies",
     conditions: { creates: ["apex_predator_form", "global_debuff", "ally_buff"], exploits: [] },
-    effectParamOverrides: { debuff_stat: { stat: "meleeSkill" } },
+    effectParamOverrides: { transform_state: { turns: 15, bonusPct: 50 }, debuff_stat: { stat: "meleeSkill" }, cc_silence: { turns: 15 }, cc_fear: { chance: 100, turns: 3 } },
   },
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -1263,9 +1329,10 @@ export const ABILITY_EFFECT_MAPPINGS: Record<string, AbilityEffectMapping> = {
   },
 
   "armor crack": {
-    effects: ["dmg_weapon", "debuff_vuln"],
+    effects: ["dmg_weapon", "debuff_armor"],
     targeting: "tgt_single_enemy",
     conditions: { creates: ["armor_broken"], exploits: ["combo_points"] },
+    effectParamOverrides: { debuff_armor: { pct: 25, turns: 4 } },
   },
 
   "dragon's fist": {
@@ -1331,10 +1398,10 @@ export const ABILITY_EFFECT_MAPPINGS: Record<string, AbilityEffectMapping> = {
   },
 
   "ocean's wrath": {
-    effects: ["buff_stat", "stance_counter", "dmg_weapon"],
+    effects: ["transform_state", "dmg_reflect", "stance_counter"],
     targeting: "tgt_self",
     conditions: { creates: ["oceans_wrath_form", "auto_dodge", "auto_counter"], exploits: [] },
-    effectParamOverrides: { buff_stat: { stat: "dodge" } },
+    effectParamOverrides: { transform_state: { turns: 4, bonusPct: 0 }, dmg_reflect: { pct: 100, turns: 4 } },
   },
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -1369,39 +1436,41 @@ export const ABILITY_EFFECT_MAPPINGS: Record<string, AbilityEffectMapping> = {
 
   "wave of force": {
     effects: ["dmg_spell", "disp_push"],
-    targeting: "tgt_aoe_adjacent",
+    targeting: "tgt_aoe_line",
     conditions: { creates: ["displaced"], exploits: [] },
   },
 
   "ki explosion": {
     effects: ["dmg_spell"],
-    targeting: "tgt_aoe_adjacent",
+    targeting: "tgt_aoe_radius2",
     conditions: { creates: [], exploits: [] },
   },
 
   "focused beam": {
-    effects: ["dmg_spell"],
+    effects: ["channel_dmg"],
     targeting: "tgt_single_enemy",
     conditions: { creates: ["escalating_damage"], exploits: [] },
+    effectParamOverrides: { channel_dmg: { dmgPerTurn: 80, turns: 2 } },
   },
 
   "spirit bomb": {
-    effects: ["dmg_spell"],
-    targeting: "tgt_aoe_adjacent",
+    effects: ["channel_dmg"],
+    targeting: "tgt_aoe_radius3",
     conditions: { creates: [], exploits: [] },
+    effectParamOverrides: { channel_dmg: { dmgPerTurn: 0, turns: 2 } },
   },
 
   "inner supernova": {
     effects: ["dmg_spell", "disp_push"],
-    targeting: "tgt_aoe_adjacent",
+    targeting: "tgt_aoe_radius3",
     conditions: { creates: ["displaced"], exploits: [] },
   },
 
   "transcendent ki": {
-    effects: ["dmg_spell", "buff_stat", "dmg_spell"],
+    effects: ["transform_state", "dmg_spell", "buff_stat"],
     targeting: "tgt_self",
     conditions: { creates: ["transcendent_form", "auto_chain", "free_cast", "periodic_spirit_bomb"], exploits: [] },
-    effectParamOverrides: { buff_stat: { stat: "meleeSkill" } },
+    effectParamOverrides: { transform_state: { turns: 5, bonusPct: 100 }, buff_stat: { stat: "meleeSkill" } },
   },
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -1428,16 +1497,17 @@ export const ABILITY_EFFECT_MAPPINGS: Record<string, AbilityEffectMapping> = {
   },
 
   "tungsten tip": {
-    effects: ["dmg_weapon", "debuff_vuln"],
+    effects: ["dmg_weapon", "debuff_armor"],
     targeting: "tgt_single_enemy",
     conditions: { creates: ["armor_pierced"], exploits: [] },
+    effectParamOverrides: { debuff_armor: { pct: 30, turns: 1 } },
   },
 
   "killzone": {
-    effects: ["buff_stat"],
-    targeting: "tgt_self",
+    effects: ["zone_persist"],
+    targeting: "tgt_aoe_radius2",
     conditions: { creates: ["killzone_area"], exploits: [] },
-    effectParamOverrides: { buff_stat: { stat: "rangedSkill" } },
+    effectParamOverrides: { zone_persist: { radius: 2, turns: 3, dmgPerTurn: 0 } },
   },
 
   "cold calculation": {
@@ -1448,9 +1518,10 @@ export const ABILITY_EFFECT_MAPPINGS: Record<string, AbilityEffectMapping> = {
   },
 
   "sniper's patience": {
-    effects: ["dmg_weapon"],
-    targeting: "tgt_single_enemy",
+    effects: ["channel_dmg"],
+    targeting: "tgt_aoe_line",
     conditions: { creates: [], exploits: [] },
+    effectParamOverrides: { channel_dmg: { dmgPerTurn: 350, turns: 1 } },
   },
 
   "ghost bullet": {
@@ -1470,41 +1541,45 @@ export const ABILITY_EFFECT_MAPPINGS: Record<string, AbilityEffectMapping> = {
   // ═══════════════════════════════════════════════════════════════════════════
 
   "snare trap": {
-    effects: ["cc_root"],
+    effects: ["trap_place", "cc_root"],
     targeting: "tgt_single_enemy",
     conditions: { creates: ["rooted", "trap_placed"], exploits: [] },
+    effectParamOverrides: { trap_place: { count: 1, triggerDmg: 0 } },
   },
 
   "tripwire": {
-    effects: ["debuff_stat"],
+    effects: ["trap_place", "debuff_stat"],
     targeting: "tgt_single_enemy",
     conditions: { creates: ["revealed", "trap_placed"], exploits: [] },
-    effectParamOverrides: { debuff_stat: { stat: "dodge" } },
+    effectParamOverrides: { trap_place: { count: 1, triggerDmg: 0 }, debuff_stat: { stat: "dodge" } },
   },
 
   "bait pile": {
-    effects: ["cc_daze"],
+    effects: ["trap_place", "cc_taunt"],
     targeting: "tgt_single_enemy",
     conditions: { creates: ["lured", "trap_placed"], exploits: [] },
+    effectParamOverrides: { trap_place: { count: 1, triggerDmg: 0 }, cc_taunt: { turns: 1 } },
   },
 
   "spike pit": {
-    effects: ["debuff_stat", "dot_bleed"],
+    effects: ["trap_place", "debuff_stat", "dot_bleed"],
     targeting: "tgt_single_enemy",
     conditions: { creates: ["slowed", "bleeding", "trap_placed"], exploits: [] },
-    effectParamOverrides: { debuff_stat: { stat: "movementPoints" } },
+    effectParamOverrides: { trap_place: { count: 1, triggerDmg: 0 }, debuff_stat: { stat: "movementPoints" } },
   },
 
   "cluster mine": {
-    effects: ["dmg_multihit"],
+    effects: ["trap_place", "dmg_multihit"],
     targeting: "tgt_aoe_adjacent",
     conditions: { creates: ["trap_placed"], exploits: [] },
+    effectParamOverrides: { trap_place: { count: 1, triggerDmg: 50 } },
   },
 
   "corrosive net": {
-    effects: ["cc_root", "debuff_vuln"],
+    effects: ["cc_root", "debuff_armor"],
     targeting: "tgt_single_enemy",
     conditions: { creates: ["ensnared", "armor_degrading"], exploits: [] },
+    effectParamOverrides: { debuff_armor: { pct: 10, turns: 4 } },
   },
 
   "prepared ground": {
@@ -1514,15 +1589,17 @@ export const ABILITY_EFFECT_MAPPINGS: Record<string, AbilityEffectMapping> = {
   },
 
   "killbox setup": {
-    effects: ["dmg_weapon", "cc_root"],
+    effects: ["trap_place", "dmg_weapon", "cc_root"],
     targeting: "tgt_aoe_adjacent",
     conditions: { creates: ["trap_placed", "killbox_zone"], exploits: [] },
+    effectParamOverrides: { trap_place: { count: 3, triggerDmg: 80 } },
   },
 
   "the long game": {
-    effects: ["dmg_multihit", "cc_root"],
-    targeting: "tgt_aoe_adjacent",
+    effects: ["trap_place", "zone_persist", "cc_root"],
+    targeting: "tgt_aoe_radius3",
     conditions: { creates: ["trap_field", "cascading_traps"], exploits: [] },
+    effectParamOverrides: { trap_place: { count: 12, triggerDmg: 40 }, zone_persist: { radius: 3, turns: 8, dmgPerTurn: 30 } },
   },
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -1536,10 +1613,10 @@ export const ABILITY_EFFECT_MAPPINGS: Record<string, AbilityEffectMapping> = {
   },
 
   "scout hawk": {
-    effects: ["debuff_stat"],
-    targeting: "tgt_aoe_adjacent",
+    effects: ["summon_unit"],
+    targeting: "tgt_aoe_cone",
     conditions: { creates: ["scouted", "hawk_active"], exploits: [] },
-    effectParamOverrides: { debuff_stat: { stat: "dodge" } },
+    effectParamOverrides: { summon_unit: { hp: 15, turns: 3, count: 1 } },
   },
 
   "flanking fang": {
@@ -1549,9 +1626,10 @@ export const ABILITY_EFFECT_MAPPINGS: Record<string, AbilityEffectMapping> = {
   },
 
   "heal companion": {
-    effects: ["heal_pctDmg"],
+    effects: ["heal_flat"],
     targeting: "tgt_single_ally",
     conditions: { creates: ["pet_healed"], exploits: [] },
+    effectParamOverrides: { heal_flat: { amount: 40 } },
   },
 
   "arrow + claw": {
@@ -1568,10 +1646,10 @@ export const ABILITY_EFFECT_MAPPINGS: Record<string, AbilityEffectMapping> = {
   },
 
   "scatter drive": {
-    effects: ["dmg_weapon", "debuff_stat", "disp_push"],
+    effects: ["dmg_weapon", "debuff_stat", "disp_pull"],
     targeting: "tgt_aoe_adjacent",
     conditions: { creates: ["slowed", "herded"], exploits: [] },
-    effectParamOverrides: { debuff_stat: { stat: "movementPoints" } },
+    effectParamOverrides: { debuff_stat: { stat: "movementPoints" }, disp_pull: { distance: 2 } },
   },
 
   "primal pact": {
@@ -1588,9 +1666,9 @@ export const ABILITY_EFFECT_MAPPINGS: Record<string, AbilityEffectMapping> = {
   },
 
   "hunt as one": {
-    effects: ["buff_stat", "dmg_weapon", "dmg_weapon"],
+    effects: ["transform_state", "buff_stat", "summon_unit"],
     targeting: "tgt_self",
     conditions: { creates: ["hunt_as_one_form", "shared_hp_pool", "spectral_duplicates"], exploits: [] },
-    effectParamOverrides: { buff_stat: { stat: "movementPoints" } },
+    effectParamOverrides: { transform_state: { turns: 4, bonusPct: 20 }, buff_stat: { stat: "movementPoints" }, summon_unit: { hp: 30, turns: 4, count: 1 } },
   },
 };
