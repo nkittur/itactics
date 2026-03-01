@@ -91,13 +91,13 @@ function defaultEffectParams(type: EffectType, tier: 1 | 2 | 3, rng: () => numbe
     case "cc_daze":
       return { apLoss: tier >= 3 ? 2 : 1, turns: tier >= 3 ? 2 : 1 };
     case "debuff_stat": {
-      const stats = ["dodge", "meleeSkill", "rangedSkill", "initiative", "resolve"];
+      const stats = ["dodge", "meleeSkill", "rangedSkill", "initiative", "resolve", "movementPoints", "magicResist", "critChance"];
       return { stat: stats[Math.floor(rng() * stats.length)]!, amount: snap(tier === 1 ? 10 : 15, 5, 5), turns: 2 };
     }
     case "debuff_vuln":
       return { bonusDmg: snap(20, 10, 10), turns: 2 };
     case "buff_stat": {
-      const bStats = ["dodge", "meleeSkill", "rangedSkill", "initiative", "resolve"];
+      const bStats = ["dodge", "meleeSkill", "rangedSkill", "initiative", "resolve", "movementPoints", "magicResist", "critChance"];
       return { stat: bStats[Math.floor(rng() * bStats.length)]!, amount: snap(tier === 1 ? 10 : 15, 5, 5), turns: 2 };
     }
     case "buff_dmgReduce":
@@ -648,12 +648,18 @@ export function generateAbility(
 ): GeneratedAbility {
   const isPassive = slot.isPassive ?? false;
 
-  // Build effects from the slot's effect pool
-  const effects: EffectPrimitive[] = slot.effects.map(type => ({
-    type,
-    params: defaultEffectParams(type, tier, rng),
-    power: EFFECT_POWER[type],
-  }));
+  // Build effects from the slot's effect pool, applying param overrides if present
+  const effects: EffectPrimitive[] = slot.effects.map(type => {
+    const params = defaultEffectParams(type, tier, rng);
+    // Apply per-effect param overrides (e.g. force a specific stat for debuff_stat)
+    const overrides = slot.effectParamOverrides?.[type];
+    if (overrides) {
+      for (const [key, val] of Object.entries(overrides)) {
+        params[key] = val;
+      }
+    }
+    return { type, params, power: EFFECT_POWER[type] };
+  });
 
   // Build targeting
   const targetingType: TargetingType = slot.targetingConstraint ?? (

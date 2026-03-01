@@ -1,6 +1,6 @@
 /**
- * Audit script: compares design-doc ability types/descriptions against
- * procedurally generated effects for all enabled classes.
+ * Audit script: compares design-doc ability descriptions against
+ * procedurally generated effects using LLM-mapped effect expectations.
  *
  * Usage: npx tsx scripts/audit-skills.ts
  * Output: audit/skill-audit.md
@@ -18,6 +18,7 @@ import { getAllClassDefs } from "../src/data/ClassDefinition";
 import { resolveAbility, setAbilityRegistry } from "../src/data/AbilityResolver";
 import { DOC_CLASSES, type DocAbility } from "../src/data/parsed/SkillTreeContent";
 import { normalizeDocType, DOC_TYPE_HINTS } from "../src/data/AbilityTypeMapping";
+import { ABILITY_EFFECT_MAPPINGS } from "../src/data/parsed/AbilityEffectMappings";
 import type { GeneratedAbility, EffectType } from "../src/data/AbilityData";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -32,82 +33,54 @@ function makeRng(seed: number): () => number {
   };
 }
 
-// ── Effect category classification ──
-
-type EffectCategory = "damage" | "dot" | "cc" | "debuff" | "buff" | "heal" | "stance" | "movement" | "resource";
-
-function classifyEffect(type: EffectType): EffectCategory {
-  if (type.startsWith("dmg_")) return "damage";
-  if (type.startsWith("dot_")) return "dot";
-  if (type.startsWith("cc_")) return "cc";
-  if (type.startsWith("debuff_")) return "debuff";
-  if (type === "buff_stat" || type === "buff_dmgReduce") return "buff";
-  if (type === "heal_pctDmg") return "heal";
-  if (type.startsWith("stance_")) return "stance";
-  if (type === "disp_push") return "movement";
-  if (type === "res_apRefund") return "resource";
-  return "damage"; // fallback
-}
-
-/** What effect categories does a doc type expect? */
-function expectedCategories(docType: string): EffectCategory[] {
-  const norm = normalizeDocType(docType);
-  switch (norm) {
-    case "Attack": case "Active": return ["damage"];
-    case "Aoe": return ["damage"];
-    case "Debuff": return ["debuff"];
-    case "Cc": return ["cc"];
-    case "Buff": return ["buff"];
-    case "Heal": return ["heal"];
-    case "Stance": return ["stance", "buff"];
-    case "Movement": return ["movement", "buff"];
-    case "Channel": return ["damage"];
-    case "Ultimate": return ["damage", "buff"];
-    case "Toggle": return ["buff", "stance"];
-    case "Cleanse": return ["buff", "heal"];
-    case "Stealth": return ["buff"];
-    case "Transform": return ["buff"];
-    case "Utility": return ["buff", "resource"];
-    case "Summon": return ["buff"];
-    default: return [];
-  }
-}
-
-/** Check if an ability's generated effects match expectations for its doc type. */
+/** Check if generated effects match LLM-mapped expectations for this ability. */
 function checkMismatch(
   docAbility: DocAbility,
   generated: GeneratedAbility,
-): { match: boolean; issue: string; suggestion: string } {
+): { match: boolean; source: string; issue: string } {
   const norm = normalizeDocType(docAbility.type);
   const hints = DOC_TYPE_HINTS[norm];
+
+  // Skip passives
+  if (hints?.isPassive) {
+    return { match: true, source: "passive", issue: "" };
+  }
+
+  // Check against LLM mapping first
+  const llmMapping = ABILITY_EFFECT_MAPPINGS[docAbility.name.toLowerCase()];
+  if (llmMapping) {
+    const expectedEffects = new Set(llmMapping.effects);
+    const generatedEffects = new Set(generated.effects.map(e => e.type));
+
+    // Match if at least one expected effect type is present
+    const hasExpected = [...expectedEffects].some(e => generatedEffects.has(e));
+    if (hasExpected) {
+      return { match: true, source: "llm", issue: "" };
+    }
+
+    return {
+      match: false,
+      source: "llm",
+      issue: `LLM expected [${[...expectedEffects].join(", ")}] but generated [${[...generatedEffects].join(", ")}]`,
+    };
+  }
+
+  // Fallback: check against doc type hints
   if (!hints) {
-    return { match: true, issue: "", suggestion: "" };
+    return { match: true, source: "none", issue: "" };
   }
 
-  // Skip passives — they're generated differently
-  if (hints.isPassive) {
-    return { match: true, issue: "", suggestion: "" };
-  }
-
-  const genCategories = new Set(generated.effects.map(e => classifyEffect(e.type)));
-  const expected = expectedCategories(docAbility.type);
-
-  if (expected.length === 0) {
-    return { match: true, issue: "", suggestion: "" };
-  }
-
-  // Match if at least one expected category is present in generated effects
-  const hasExpected = expected.some(cat => genCategories.has(cat));
+  const expectedEffects = new Set(hints.effects);
+  const generatedEffects = new Set(generated.effects.map(e => e.type));
+  const hasExpected = [...expectedEffects].some(e => generatedEffects.has(e));
   if (hasExpected) {
-    return { match: true, issue: "", suggestion: "" };
+    return { match: true, source: "type-hint", issue: "" };
   }
 
-  const genList = [...genCategories].join(", ");
-  const expList = expected.join(" or ");
   return {
     match: false,
-    issue: `${docAbility.type} described → generated [${genList}] (expected ${expList})`,
-    suggestion: `Use DOC_TYPE_HINTS["${norm}"] → effects: [${hints.effects.join(", ")}], targeting: ${hints.targeting}`,
+    source: "type-hint",
+    issue: `Type hint expected [${hints.effects.join(", ")}] but generated [${[...generatedEffects].join(", ")}]`,
   };
 }
 
@@ -125,13 +98,15 @@ interface AuditEntry {
   generatedEffects: string;
   generatedTargeting: string;
   match: boolean;
+  source: string;
   issue: string;
-  suggestion: string;
 }
 
 const entries: AuditEntry[] = [];
 let totalAbilities = 0;
 let totalMismatches = 0;
+let llmMapped = 0;
+let typeHintFallback = 0;
 
 for (const classDef of allClasses) {
   const docClass = DOC_CLASSES.find(c => c.id === classDef.id);
@@ -148,7 +123,7 @@ for (const classDef of allClasses) {
     const rng = makeRng(42);
     const result = generateArchetypeTree(classDef.id, archIdx, rng);
 
-    // Build nodeId → DocAbility map (same logic as SkillTreeData)
+    // Build nodeId → DocAbility map
     const nodeDocMap = new Map<string, DocAbility>();
     for (let i = 0; i < docArch.abilities.length; i++) {
       const nodeId = `${docArch.id}_${i}`;
@@ -164,8 +139,10 @@ for (const classDef of allClasses) {
 
       totalAbilities++;
 
-      const { match, issue, suggestion } = checkMismatch(docAbility, generated);
+      const { match, source, issue } = checkMismatch(docAbility, generated);
       if (!match) totalMismatches++;
+      if (source === "llm") llmMapped++;
+      if (source === "type-hint") typeHintFallback++;
 
       entries.push({
         className: docClass.name,
@@ -176,8 +153,8 @@ for (const classDef of allClasses) {
         generatedEffects: generated.effects.map(e => e.type).join(", "),
         generatedTargeting: generated.targeting.type,
         match,
+        source,
         issue,
-        suggestion,
       });
     }
   }
@@ -193,8 +170,11 @@ lines.push("");
 lines.push(`## Summary`);
 lines.push("");
 lines.push(`- Total abilities audited: ${totalAbilities}`);
-lines.push(`- Mismatches: ${totalMismatches}`);
-lines.push(`- Match rate: ${((1 - totalMismatches / totalAbilities) * 100).toFixed(1)}%`);
+lines.push(`- **Mismatches: ${totalMismatches}**`);
+lines.push(`- **Match rate: ${((1 - totalMismatches / totalAbilities) * 100).toFixed(1)}%**`);
+lines.push(`- LLM-mapped abilities: ${llmMapped}`);
+lines.push(`- Type-hint fallback: ${typeHintFallback}`);
+lines.push(`- Passive (skipped): ${entries.filter(e => e.source === "passive").length}`);
 lines.push("");
 
 // Group by class
@@ -211,7 +191,7 @@ for (const [key, group] of byClass) {
   lines.push("");
 
   if (mismatches.length === 0) {
-    lines.push("All abilities match their doc types.");
+    lines.push("All abilities match expectations.");
     lines.push("");
     continue;
   }
@@ -224,20 +204,20 @@ for (const [key, group] of byClass) {
     lines.push(`- **Doc description**: ${e.docDesc}`);
     lines.push(`- **Generated effects**: ${e.generatedEffects}`);
     lines.push(`- **Generated targeting**: ${e.generatedTargeting}`);
+    lines.push(`- **Source**: ${e.source}`);
     lines.push(`- **Issue**: ${e.issue}`);
-    lines.push(`- **Fix**: ${e.suggestion}`);
     lines.push("");
   }
 }
 
-// Also list all matching abilities in a compact table
+// Compact table
 lines.push("## All Abilities (compact)");
 lines.push("");
-lines.push("| Class | Archetype | Ability | Doc Type | Generated Effects | Targeting | Match |");
-lines.push("|---|---|---|---|---|---|---|");
+lines.push("| Class | Archetype | Ability | Doc Type | Generated Effects | Targeting | Source | Match |");
+lines.push("|---|---|---|---|---|---|---|---|");
 for (const e of entries) {
   const matchStr = e.match ? "OK" : "MISMATCH";
-  lines.push(`| ${e.className} | ${e.archetypeName} | ${e.abilityName} | ${e.docType} | ${e.generatedEffects} | ${e.generatedTargeting} | ${matchStr} |`);
+  lines.push(`| ${e.className} | ${e.archetypeName} | ${e.abilityName} | ${e.docType} | ${e.generatedEffects} | ${e.generatedTargeting} | ${e.source} | ${matchStr} |`);
 }
 
 const report = lines.join("\n") + "\n";
@@ -249,4 +229,5 @@ console.log(`\nAudit complete:`);
 console.log(`  Total abilities: ${totalAbilities}`);
 console.log(`  Mismatches: ${totalMismatches}`);
 console.log(`  Match rate: ${((1 - totalMismatches / totalAbilities) * 100).toFixed(1)}%`);
+console.log(`  LLM-mapped: ${llmMapped}, Type-hint fallback: ${typeHintFallback}`);
 console.log(`  Report: ${outPath}`);

@@ -95,3 +95,7 @@ export function getDocTypeConditions(docType: string): { creates: string[]; expl
   const normalized = normalizeDocType(docType);
   return DOC_TYPE_CONDITIONS[normalized] ?? { creates: [], exploits: [] };
 }
+
+// Note: Description-level effect mapping is now handled by
+// src/data/parsed/AbilityEffectMappings.ts (LLM-generated).
+// The DOC_TYPE_HINTS above serve as a fallback for unmapped abilities.

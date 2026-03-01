@@ -9,6 +9,7 @@ import { generatePassiveSuite, type PowerLevel } from "./PassiveGenerator";
 import { generateAbility, rollRarity } from "./AbilityGenerator";
 import { DOC_CLASSES, type DocAbility } from "./parsed/SkillTreeContent";
 import { isDocTypePassive, getDocTypeHints, getDocTypeConditions } from "./AbilityTypeMapping";
+import { ABILITY_EFFECT_MAPPINGS } from "./parsed/AbilityEffectMappings";
 
 // Re-export for convenience
 export type { PowerLevel };
@@ -601,17 +602,33 @@ export function generateArchetypeTree(
     let slot: ThemeProgressionSlot;
 
     if (docAbility) {
-      // Build synthetic slot from doc type hints instead of random theme slot
-      const hints = getDocTypeHints(docAbility.type);
-      const conditions = getDocTypeConditions(docAbility.type);
-      slot = {
-        role: "setup",
-        effects: [...hints.effects],
-        conditions: { creates: [...conditions.creates], exploits: [...conditions.exploits] },
-        targetingConstraint: hints.targeting,
-        isPassive: false,
-        powerRange: [6, 20],
-      };
+      // Look up LLM-mapped effects for this ability by name
+      const llmMapping = ABILITY_EFFECT_MAPPINGS[docAbility.name.toLowerCase()];
+
+      if (llmMapping) {
+        // Use the LLM-analyzed mapping (description-aware)
+        slot = {
+          role: "setup",
+          effects: [...llmMapping.effects],
+          conditions: { creates: [...llmMapping.conditions.creates], exploits: [...llmMapping.conditions.exploits] },
+          targetingConstraint: llmMapping.targeting,
+          isPassive: false,
+          powerRange: [6, 20],
+          effectParamOverrides: llmMapping.effectParamOverrides,
+        };
+      } else {
+        // Fallback to doc type hints for unmapped abilities
+        const typeHints = getDocTypeHints(docAbility.type);
+        const typeConds = getDocTypeConditions(docAbility.type);
+        slot = {
+          role: "setup",
+          effects: [...typeHints.effects],
+          conditions: { creates: [...typeConds.creates], exploits: [...typeConds.exploits] },
+          targetingConstraint: typeHints.targeting,
+          isPassive: false,
+          powerRange: [6, 20],
+        };
+      }
     } else {
       // Fallback: score progression slots using bucket profile + decay
       const slotScores = useTheme.progression.map(s =>

@@ -44,6 +44,8 @@ export interface ThemeProgressionSlot {
   isPassive?: boolean;
   /** Power budget range [min, max]. */
   powerRange: [number, number];
+  /** Per-effect parameter overrides (e.g. force debuff_stat to use "movementPoints"). */
+  effectParamOverrides?: Record<string, Record<string, number | string>>;
 }
 
 // ── Theme definition ──
