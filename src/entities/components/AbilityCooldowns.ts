@@ -13,3 +13,22 @@ export function createAbilityCooldowns(): AbilityCooldownsComponent {
     cooldowns: {},
   };
 }
+
+/** Reset all cooldowns for an entity. */
+export function resetCooldowns(comp: AbilityCooldownsComponent): void {
+  for (const key of Object.keys(comp.cooldowns)) {
+    comp.cooldowns[key] = 0;
+  }
+}
+
+/** Reduce all cooldowns by N turns (min 0). */
+export function reduceCooldowns(comp: AbilityCooldownsComponent, amount: number): void {
+  for (const key of Object.keys(comp.cooldowns)) {
+    comp.cooldowns[key] = Math.max(0, (comp.cooldowns[key] ?? 0) - amount);
+  }
+}
+
+/** Reset a single ability's cooldown. */
+export function resetAbilityCooldown(comp: AbilityCooldownsComponent, abilityId: string): void {
+  comp.cooldowns[abilityId] = 0;
+}

@@ -67,6 +67,9 @@ const EFFECT_POWER: Record<EffectType, number> = {
   // Channel / transform
   channel_dmg: 5,
   transform_state: 7,
+  // Utility
+  cleanse: 3,
+  cooldown_reset: 5,
 };
 
 // ── Targeting power multipliers ──
@@ -187,6 +190,10 @@ function defaultEffectParams(type: EffectType, tier: 1 | 2 | 3, rng: () => numbe
       return { dmgPerTurn: snap(tier === 1 ? 8 : tier === 2 ? 12 : 18, 2, 6), turns: tier >= 3 ? 3 : 2 };
     case "transform_state":
       return { turns: tier >= 3 ? 5 : 3, bonusPct: snap(tier === 1 ? 20 : 40, 10, 10) };
+    case "cleanse":
+      return { count: tier >= 3 ? 999 : tier + 1 };
+    case "cooldown_reset":
+      return tier >= 3 ? {} : { reduceBy: tier };
   }
 }
 
@@ -225,6 +232,8 @@ const NAME_PREFIXES: Record<string, string[]> = {
   trap_place: ["Hidden", "Concealed", "Lurking", "Devious"],
   channel_dmg: ["Focused", "Channeled", "Sustained", "Concentrated"],
   transform_state: ["Ascendant", "Transcendent", "Awakened", "Unleashed"],
+  cleanse: ["Purifying", "Cleansing", "Purging", "Absolvant"],
+  cooldown_reset: ["Refreshing", "Renewing", "Invigorating", "Resetting"],
 };
 
 const NAME_VERBS: Record<string, string[]> = {
@@ -261,6 +270,8 @@ const NAME_VERBS: Record<string, string[]> = {
   stance_counter: ["Counter-stance", "Riposte Guard", "Ready Stance", "Retaliating Guard"],
   stance_overwatch: ["Overwatch", "Sentinel Guard", "Watchful Stance", "Vigilant Watch"],
   res_apRefund: ["Rush", "Surge", "Momentum", "Quick Step"],
+  cleanse: ["Purify", "Cleanse", "Purge", "Absolve"],
+  cooldown_reset: ["Refresh", "Recharge", "Reset", "Invigorate"],
 };
 
 const NAME_SUFFIXES: Record<string, string[]> = {
@@ -645,6 +656,16 @@ function generateDescription(ability: GeneratedAbility): string {
         const turns = effect.params["turns"] as number;
         const bonus = effect.params["bonusPct"] as number;
         parts.push(`Transform: +${bonus}% all stats for ${turns} turns`);
+        break;
+      }
+      case "cleanse": {
+        const count = effect.params["count"] as number;
+        parts.push(count >= 999 ? "Remove all debuffs" : `Remove up to ${count} debuffs`);
+        break;
+      }
+      case "cooldown_reset": {
+        const reduceBy = effect.params["reduceBy"] as number | undefined;
+        parts.push(reduceBy ? `Reduce all cooldowns by ${reduceBy}` : "Reset all cooldowns");
         break;
       }
     }

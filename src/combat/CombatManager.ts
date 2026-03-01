@@ -97,6 +97,14 @@ export class CombatManager {
   private _actionTracker: BattleActionTracker = createActionTracker();
   get actionTracker(): BattleActionTracker { return this._actionTracker; }
 
+  /** Tracks the last ability used per entity (for combo chain sequencing). */
+  private _lastAbilityUsed = new Map<EntityId, string>();
+
+  /** Get the last ability used by an entity. */
+  getLastAbilityUsed(entityId: EntityId): string | undefined {
+    return this._lastAbilityUsed.get(entityId);
+  }
+
   // ── Callbacks for the rendering/UI layer ──
 
   onPhaseChange?: (phase: CombatPhase) => void;
@@ -680,7 +688,32 @@ export class CombatManager {
     // Track action for CP
     trackAction(this._actionTracker, attackerId);
 
+    // HP self-cost (Phase 2)
+    if (ability.cost.hpCost && ability.cost.hpCost > 0) {
+      const attackerHealth = this.world.getComponent<HealthComponent>(attackerId, "health");
+      if (attackerHealth) {
+        attackerHealth.current = Math.max(1, attackerHealth.current - ability.cost.hpCost);
+      }
+    }
+
+    // Custom resource costs (Phase 3)
+    if (ability.cost.resourceCosts) {
+      for (const [resId, amount] of Object.entries(ability.cost.resourceCosts)) {
+        this.resourceManager?.modify(this.world, attackerId, resId, -amount, "ability_cost");
+      }
+    }
+
     const abilityResult = this.abilityExecutor.execute(this.world, attackerId, defenderId, ability, weapon);
+
+    // Track last ability used for combo chains (Phase 8)
+    this._lastAbilityUsed.set(attackerId, ability.uid);
+
+    // Custom resource generation (Phase 3)
+    if (ability.cost.resourceGenerate) {
+      for (const [resId, amount] of Object.entries(ability.cost.resourceGenerate)) {
+        this.resourceManager?.modify(this.world, attackerId, resId, amount, "ability_generate");
+      }
+    }
 
     // Notify UI about each attack result
     for (const ar of abilityResult.attackResults) {

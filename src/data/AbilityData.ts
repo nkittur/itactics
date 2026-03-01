@@ -26,7 +26,9 @@ export type EffectType =
   // Summoning / zones / traps
   | "summon_unit" | "zone_persist" | "trap_place"
   // Channeling / transforms
-  | "channel_dmg" | "transform_state";
+  | "channel_dmg" | "transform_state"
+  // Utility
+  | "cleanse" | "cooldown_reset";
 
 export interface EffectPrimitive {
   type: EffectType;
@@ -60,7 +62,8 @@ export interface ModifierPrimitive {
   powerAdd: number;
 }
 
-export type TriggerType = "trg_onKill" | "trg_onHit" | "trg_onTakeDamage" | "trg_turnStart" | "trg_belowHP";
+export type TriggerType = "trg_onKill" | "trg_onHit" | "trg_onTakeDamage" | "trg_turnStart" | "trg_belowHP"
+  | "trg_onAllyDeath" | "trg_onSummonDeath";
 
 export interface TriggerPrimitive {
   type: TriggerType;
@@ -78,6 +81,12 @@ export interface AbilityCost {
   /** 0 = no cooldown. */
   cooldown: number;
   turnEnding: boolean;
+  /** HP self-cost (deducted before execution). 0 = none. */
+  hpCost?: number;
+  /** Custom resource costs (key = resource def id, value = amount). */
+  resourceCosts?: Record<string, number>;
+  /** Custom resources generated on use (key = resource def id, value = amount). */
+  resourceGenerate?: Record<string, number>;
 }
 
 export interface GeneratedAbility {
@@ -96,6 +105,10 @@ export interface GeneratedAbility {
   isPassive: boolean;
   rarity: Rarity;
   synergyTags: { creates: string[]; exploits: string[] };
+  /** If set, this ability gets bonus effects when used after the named ability. */
+  comboFrom?: string;
+  /** If true, applies buff effects to allies and debuff/damage to enemies in same AoE. */
+  dualTarget?: boolean;
 }
 
 // ── UID generation (same pattern as GeneratedItemData.ts gi_ → ga_) ──

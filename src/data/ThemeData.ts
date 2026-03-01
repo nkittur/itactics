@@ -58,6 +58,9 @@ export const EFFECT_TO_BUCKET: Record<EffectType, FunctionalBucket> = {
   // Channel / transform
   channel_dmg: "damage",
   transform_state: "defensive",
+  // Utility
+  cleanse: "defensive",
+  cooldown_reset: "resource",
 };
 
 // ── Theme progression slot ──

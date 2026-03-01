@@ -262,6 +262,29 @@ export class DamagePipeline {
     return ctx;
   }
 
+  /**
+   * Register a conditional scaling middleware.
+   * Used for stack-based burst damage, distance scaling, resource-spent scaling, etc.
+   * @param name A unique name for this scaler.
+   * @param scaler Function that returns a multiplier (1.0 = no change).
+   */
+  registerConditionalScaler(
+    name: string,
+    scaler: (ctx: DamageContext) => number,
+  ): () => void {
+    return this.registerHandler({
+      stage: "pre_damage",
+      priority: 10, // After base modifiers
+      name: `conditional_scale_${name}`,
+      handler: (ctx) => {
+        const mult = scaler(ctx);
+        if (mult !== 1.0) {
+          ctx.rawDamage = Math.floor(ctx.rawDamage * mult);
+        }
+      },
+    });
+  }
+
   // ── Built-in Handlers ──
 
   private registerBuiltinHandlers(): void {
@@ -307,6 +330,27 @@ export class DamagePipeline {
       },
     });
 
+    // Stage 2b: Populate shields from status effects (buff_shield)
+    this.registerHandler({
+      stage: "shield",
+      priority: -10, // Before absorption
+      name: "shield_from_status",
+      handler: (ctx) => {
+        const comp = ctx.world.getComponent<any>(ctx.defenderId, "statusEffects");
+        if (!comp) return;
+        for (const effect of comp.effects) {
+          if (effect.id === "shield" && effect.modifiers._shieldAmount > 0) {
+            ctx.shields.push({
+              id: `status_shield_${effect.id}`,
+              amount: effect.modifiers._shieldAmount,
+              priority: 0,
+              sourceId: ctx.defenderId,
+            });
+          }
+        }
+      },
+    });
+
     // Stage 3: Shield absorption
     this.registerHandler({
       stage: "shield",
@@ -342,6 +386,22 @@ export class DamagePipeline {
         // Remove depleted shields
         ctx.shields = ctx.shields.filter(s => s.amount > 0);
         ctx.rawDamage = remainingDamage;
+
+        // Sync shield amounts back to status effects
+        const statusComp = ctx.world.getComponent<any>(ctx.defenderId, "statusEffects");
+        if (statusComp) {
+          for (const effect of statusComp.effects) {
+            if (effect.id === "shield" && effect.modifiers._shieldAmount != null) {
+              const matching = ctx.shields.find(s => s.id === `status_shield_${effect.id}`);
+              if (matching) {
+                effect.modifiers._shieldAmount = matching.amount;
+              } else {
+                // Shield fully consumed — remove status
+                effect.remainingTurns = 0;
+              }
+            }
+          }
+        }
       },
     });
 

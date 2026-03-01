@@ -393,6 +393,23 @@ const BUILTIN_EFFECTS: StatusEffectDef[] = [
     flags: { skipTurn: true, invulnerable: true },
     tags: ["time", "cc"],
   }),
+  // Armor Break
+  defWithDefaults({
+    id: "armor_break", name: "Armor Break", category: "debuff", duration: 3, maxStacks: 1,
+    modifiers: { bonusArmor: -3 },
+    tags: ["debuff", "physical"],
+  }),
+  // Heal Reduction
+  defWithDefaults({
+    id: "heal_reduce", name: "Healing Reduced", category: "debuff", duration: 3, maxStacks: 1,
+    tags: ["debuff"],
+  }),
+  // Channeled damage
+  defWithDefaults({
+    id: "channel_dmg", name: "Channeled", category: "debuff", duration: 3, maxStacks: 1,
+    periodic: { damagePerTick: 15, damageType: "magical", healPerTick: 0 },
+    tags: ["dot", "channel"],
+  }),
 ];
 
 // Register all built-in effects
@@ -824,6 +841,35 @@ export class StatusEffectManager {
       const isDispellable = def?.dispellable !== false;
       const matchesCategory = !category || def?.category === category;
       if (isDispellable && matchesCategory && removed < count) {
+        removed++;
+        if (this.eventBus) {
+          this.eventBus.emit("status:removed", { targetId: entityId, effectId: effect.id, reason: "dispelled" });
+        }
+      } else {
+        toKeep.push(effect);
+      }
+    }
+    comp.effects = toKeep;
+    return removed;
+  }
+
+  /**
+   * Cleanse debuffs from an entity by tag or category.
+   * @param tag If provided, only removes debuffs with this tag. Otherwise removes all debuffs.
+   * @param count Max number of debuffs to cleanse (default: all).
+   * @returns Number of debuffs removed.
+   */
+  cleanse(world: World, entityId: EntityId, tag?: string, count = Infinity): number {
+    const comp = world.getComponent<StatusEffectsComponent>(entityId, "statusEffects");
+    if (!comp) return 0;
+    let removed = 0;
+    const toKeep: StatusEffect[] = [];
+    for (const effect of comp.effects) {
+      const def = getStatusEffectDef(effect.id);
+      const isDebuff = def ? def.category === "debuff" : effect.id.startsWith("debuff_");
+      const isDispellable = def?.dispellable !== false;
+      const matchesTag = !tag || def?.tags.includes(tag);
+      if (isDebuff && isDispellable && matchesTag && removed < count) {
         removed++;
         if (this.eventBus) {
           this.eventBus.emit("status:removed", { targetId: entityId, effectId: effect.id, reason: "dispelled" });

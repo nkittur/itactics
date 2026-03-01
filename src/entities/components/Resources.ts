@@ -302,6 +302,45 @@ export const BUILTIN_RESOURCES: ResourceDef[] = [
     regenRate: 0, displayMode: "bar", color: "#aaddff",
     thresholds: [], tags: ["time", "build_spend"],
   },
+  // Phase 3: Class-specific resources
+  {
+    id: "ki",
+    name: "Ki",
+    min: 0, max: 10, startValue: 0,
+    decayRate: 0, decayBehavior: "none", decayDelay: 0,
+    regenRate: 0, displayMode: "pips", color: "#44ddcc",
+    thresholds: [], tags: ["martial", "build_spend"],
+  },
+  {
+    id: "resonance",
+    name: "Resonance",
+    min: 0, max: 100, startValue: 0,
+    decayRate: 5, decayBehavior: "toward_zero", decayDelay: 1,
+    regenRate: 0, displayMode: "bar", color: "#cc88ff",
+    thresholds: [
+      { value: 100, direction: "above", eventTag: "shatter_ready" },
+    ],
+    tags: ["sonic", "build_spend"],
+  },
+  {
+    id: "rhythm",
+    name: "Rhythm",
+    min: 0, max: 5, startValue: 0,
+    decayRate: 1, decayBehavior: "toward_zero", decayDelay: 0,
+    regenRate: 0, displayMode: "pips", color: "#ff88cc",
+    thresholds: [
+      { value: 5, direction: "above", eventTag: "perfect_rhythm" },
+    ],
+    tags: ["martial", "build_spend"],
+  },
+  {
+    id: "soul_essence",
+    name: "Soul Essence",
+    min: 0, max: 10, startValue: 0,
+    decayRate: 0, decayBehavior: "none", decayDelay: 0,
+    regenRate: 0, displayMode: "pips", color: "#aa44ff",
+    thresholds: [], tags: ["dark", "build_spend"],
+  },
 ];
 
 // Register built-in resources
