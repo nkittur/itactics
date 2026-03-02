@@ -282,7 +282,7 @@ export class ManagementScreen {
       const classId = type === "roster"
         ? (item as RosterMember).classId ?? "fighter"
         : (item as RecruitDef).classId;
-      const className = getClassDef(classId ).name;
+      const className = getClassDefNew(classId)?.name ?? classId;
       card.appendChild(el("div", "unit-grid-class", `${className} Lv${item.level}`));
 
       // Cost badge (recruit only)
@@ -324,7 +324,7 @@ export class ManagementScreen {
 
     const info = el("div", "detail-info");
     info.appendChild(el("div", "detail-name", unit.name));
-    const className = getClassDef(unit.classId ).name;
+    const className = getClassDefNew(unit.classId)?.name ?? unit.classId;
     info.appendChild(el("div", "detail-class", `${className} Lv${unit.level}`));
     // Show archetype name if available
     if (unit.archetypeId) {
@@ -763,7 +763,7 @@ export class ManagementScreen {
     }
 
     // Class equipment icons
-    const classDef = getClassDef(unit.classId );
+    const classDef = getClassDefNew(unit.classId);
     if (classDef) {
       const badgeRow = el("div", "equip-badge-row");
       badgeRow.appendChild(el("span", "equip-badge-label", "Can equip: "));
@@ -970,7 +970,8 @@ export class ManagementScreen {
 
   private canEquipOnUnit(m: RosterMember, itemId: string, category: StoreCategory): boolean {
     if (!m.classId) return false;
-    const classDef = getClassDef(m.classId );
+    const classDef = getClassDefNew(m.classId);
+    if (!classDef) return false;
     switch (category) {
       case "weapon": return canEquipWeapon(classDef, resolveWeapon(itemId));
       case "shield": {
@@ -997,7 +998,8 @@ export class ManagementScreen {
     const ALL_CLASSES = getAllCharacterClasses();
     const result: string[] = [];
     for (const classId of ALL_CLASSES) {
-      const classDef = getClassDef(classId);
+      const classDef = getClassDefNew(classId);
+      if (!classDef) continue;
       let canEquip = false;
       switch (gen.slotType) {
         case "weapon": canEquip = canEquipWeapon(classDef, resolveWeapon(gen.uid)); break;

@@ -11,7 +11,8 @@ import { getArmorDef } from "@data/ArmorData";
 import { setItemRegistry } from "@data/ItemResolver";
 import { setAbilityRegistry } from "@data/AbilityResolver";
 import { generateArchetypeTree } from "@data/SkillTreeData";
-import { getClassDef } from "@data/ClassData";
+import { getClassDef, getAllCharacterClasses } from "@data/ClassData";
+import { deleteSave } from "@save/SaveManager";
 import "@data/classes/DesignDocClasses";
 
 function simpleRng(): number {
@@ -109,6 +110,27 @@ async function init() {
 
   if (saveData) {
     setItemRegistry(saveData.itemRegistry ?? {});
+
+    // Check save compatibility — detect stale class IDs
+    const validClasses = new Set(getAllCharacterClasses());
+    const staleClasses = new Set<string>();
+    for (const m of saveData.roster) {
+      if (m.classId && !validClasses.has(m.classId)) staleClasses.add(m.classId);
+    }
+    for (const r of saveData.availableRecruits ?? []) {
+      if (r.classId && !validClasses.has(r.classId)) staleClasses.add(r.classId);
+    }
+
+    if (staleClasses.size > 0) {
+      const names = [...staleClasses].join(", ");
+      const msg = `Incompatible save data detected.\n\nYour save references classes that no longer exist: ${names}.\n\nDelete save and start fresh?`;
+      if (confirm(msg)) {
+        await deleteSave();
+        window.location.reload();
+        return;
+      }
+      // User declined — proceed but things may break
+    }
   }
 
   if (!saveData) {

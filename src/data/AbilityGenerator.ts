@@ -501,7 +501,8 @@ function generateDescription(ability: GeneratedAbility): string {
       }
       case "cc_daze": {
         const loss = effect.params["apLoss"] as number;
-        parts.push(`Daze target (-${loss} AP next turn)`);
+        const turns = effect.params["turns"] as number;
+        parts.push(`Daze target (-${loss} AP for ${turns} turn${turns > 1 ? "s" : ""})`);
         break;
       }
       case "debuff_stat": {
@@ -514,19 +515,22 @@ function generateDescription(ability: GeneratedAbility): string {
       }
       case "debuff_vuln": {
         const bonus = effect.params["bonusDmg"] as number;
-        parts.push(`Apply Vulnerable (+${bonus}% damage taken)`);
+        const turns = effect.params["turns"] as number;
+        parts.push(`Apply Vulnerable (+${bonus}% damage taken) for ${turns} turns`);
         break;
       }
       case "buff_stat": {
         const stat = effect.params["stat"] as string;
         const amt = effect.params["amount"] as number;
+        const turns = effect.params["turns"] as number;
         const statName = stat.replace(/([A-Z])/g, " $1").trim();
-        parts.push(`+${amt} ${statName}`);
+        parts.push(`+${amt} ${statName} for ${turns} turns`);
         break;
       }
       case "buff_dmgReduce": {
         const pct = effect.params["percent"] as number;
-        parts.push(`Reduce damage taken by ${pct}%`);
+        const turns = effect.params["turns"] as number;
+        parts.push(`Reduce damage taken by ${pct}% for ${turns} turn${turns > 1 ? "s" : ""}`);
         break;
       }
       case "stance_counter":

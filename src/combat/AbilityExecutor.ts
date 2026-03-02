@@ -606,7 +606,7 @@ export class AbilityExecutor {
   private executeBuffDmgReduce(
     world: World, entityId: EntityId, effect: EffectPrimitive, result: AbilityResult,
   ): void {
-    const pct = (effect.params.pct as number) ?? 20;
+    const pct = (effect.params.percent as number) ?? (effect.params.pct as number) ?? 20;
     const turns = (effect.params.turns as number) ?? 2;
     this.statusEffects.applyDynamic(world, entityId, {
       id: "dmg_reduce", name: "Hardened", duration: turns,
@@ -664,7 +664,10 @@ export class AbilityExecutor {
   ): void {
     const healPerTurn = (effect.params.healPerTurn as number) ?? 10;
     const turns = (effect.params.turns as number) ?? 3;
-    this.statusEffects.apply(world, targetId, "regen", turns);
+    this.statusEffects.applyDynamic(world, targetId, {
+      id: "regen", name: "Regeneration", duration: turns,
+      modifiers: {}, healPerTick: healPerTurn,
+    });
     result.appliedEffects.push("regen");
   }
 
@@ -884,8 +887,10 @@ export class AbilityExecutor {
   ): void {
     const pct = (effect.params.pct as number) ?? 20;
     const turns = (effect.params.turns as number) ?? 3;
-    // Use the built-in thorns status which already has reflect handling in DamagePipeline
-    this.statusEffects.apply(world, entityId, "thorns", turns);
+    this.statusEffects.applyDynamic(world, entityId, {
+      id: "thorns", name: "Damage Reflect", duration: turns,
+      modifiers: { _reflectPct: pct },
+    });
     result.appliedEffects.push("thorns");
   }
 
@@ -920,7 +925,7 @@ export class AbilityExecutor {
 
     const zoneType = (effect.params.zoneType as string) ?? "fire_field";
     const radius = (effect.params.radius as number);
-    const duration = (effect.params.duration as number);
+    const duration = (effect.params.turns as number) ?? (effect.params.duration as number);
 
     const targetPos = world.getComponent<PositionComponent>(targetId, "position");
     if (!targetPos) return;
@@ -983,7 +988,7 @@ export class AbilityExecutor {
     if (!this.managers.transformationManager) return;
 
     const formId = (effect.params.formId as string) ?? "default_form";
-    const duration = (effect.params.duration as number);
+    const duration = (effect.params.turns as number) ?? (effect.params.duration as number);
 
     const success = this.managers.transformationManager.transform(
       world, entityId, formId, duration,

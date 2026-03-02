@@ -558,12 +558,17 @@ export class StatusEffectManager {
   applyDynamic(
     world: World,
     entityId: EntityId,
-    customDef: { id: string; name: string; duration: number; modifiers: Record<string, number>; maxStacks?: number; dmgPerTurn?: number },
+    customDef: { id: string; name: string; duration: number; modifiers: Record<string, number>; maxStacks?: number; dmgPerTurn?: number; healPerTick?: number; tags?: string[] },
   ): void {
     const comp = world.getComponent<StatusEffectsComponent>(entityId, "statusEffects");
     if (!comp) return;
 
     const maxStacks = customDef.maxStacks ?? 1;
+
+    // Build extra modifier entries for dynamic periodic values
+    const dynamicMods: Record<string, number> = {};
+    if (customDef.dmgPerTurn != null) dynamicMods._dmgPerTurn = customDef.dmgPerTurn;
+    if (customDef.healPerTick != null) dynamicMods._healPerTick = customDef.healPerTick;
 
     if (maxStacks > 1) {
       const currentStacks = comp.effects.filter((e) => e.id === customDef.id).length;
@@ -572,7 +577,7 @@ export class StatusEffectManager {
           id: customDef.id,
           name: customDef.name,
           remainingTurns: customDef.duration,
-          modifiers: { ...customDef.modifiers, ...(customDef.dmgPerTurn != null ? { _dmgPerTurn: customDef.dmgPerTurn } : {}) },
+          modifiers: { ...customDef.modifiers, ...dynamicMods },
         });
       } else {
         const existing = comp.effects
@@ -591,7 +596,7 @@ export class StatusEffectManager {
           id: customDef.id,
           name: customDef.name,
           remainingTurns: customDef.duration,
-          modifiers: { ...customDef.modifiers, ...(customDef.dmgPerTurn != null ? { _dmgPerTurn: customDef.dmgPerTurn } : {}) },
+          modifiers: { ...customDef.modifiers, ...dynamicMods },
         });
       }
     }
@@ -636,6 +641,11 @@ export class StatusEffectManager {
         if (health) {
           totalPeriodicDamage += effect.modifiers._dmgPerTurn;
         }
+      }
+
+      // Handle custom healPerTick for dynamic effects (e.g., heal_hot)
+      if (effect.modifiers._healPerTick != null && health) {
+        health.current = Math.min(health.max, health.current + effect.modifiers._healPerTick);
       }
     }
 
