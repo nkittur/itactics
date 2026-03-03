@@ -27,6 +27,7 @@ import { wrapSkillDef, wrapGeneratedAbility } from "@data/CombatSkill";
 import { resolveAbility } from "@data/AbilityResolver";
 import type { AbilitiesComponent } from "@entities/components/Abilities";
 import type { AbilityCooldownsComponent } from "@entities/components/AbilityCooldowns";
+import type { StatusEffectsComponent } from "@entities/components/StatusEffects";
 import type { CharacterClassComponent } from "@entities/components/CharacterClass";
 import { getClassAPDiscount, getClassArmorMPReduction, canEquipWeapon, canEquipShield } from "@data/ClassData";
 import { getClassDefNew } from "@data/ClassDefinition";
@@ -705,6 +706,11 @@ export class CombatManager {
 
     const abilityResult = this.abilityExecutor.execute(this.world, attackerId, defenderId, ability, weapon);
 
+    // Apply AP refund from res_apRefund effects
+    if (abilityResult.apRefunded && abilityResult.apRefunded > 0) {
+      this.apManager.refund(abilityResult.apRefunded);
+    }
+
     // Track last ability used for combo chains (Phase 8)
     this._lastAbilityUsed.set(attackerId, ability.uid);
 
@@ -1045,9 +1051,21 @@ export class CombatManager {
       this.setPhase("playerTurn");
       this.selectedUnit = entityId;
       this.apManager.resetForTurn();
+      this.applyDazeAPPenalty(entityId);
       this.resetMPForUnit(entityId);
       this.calculateMoveRange(entityId);
       this.setPlayerState("awaitingInput");
+    }
+  }
+
+  /** Reduce starting AP if the unit has a daze status with _apLoss modifier. */
+  private applyDazeAPPenalty(entityId: EntityId): void {
+    const statusComp = this.world.getComponent<StatusEffectsComponent>(entityId, "statusEffects");
+    if (!statusComp) return;
+    for (const eff of statusComp.effects) {
+      if (eff.id === "daze" && eff.modifiers._apLoss) {
+        this.apManager.spend(eff.modifiers._apLoss);
+      }
     }
   }
 

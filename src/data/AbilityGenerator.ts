@@ -603,8 +603,9 @@ function generateDescription(ability: GeneratedAbility): string {
         break;
       }
       case "cc_charm": {
+        const chance = effect.params["chance"] as number;
         const turns = effect.params["turns"] as number;
-        parts.push(`Charm target for ${turns} turn${turns > 1 ? "s" : ""} (fights for you)`);
+        parts.push(`${chance}% chance to Charm target for ${turns} turn${turns > 1 ? "s" : ""} (fights for you)`);
         break;
       }
       case "debuff_armor": {

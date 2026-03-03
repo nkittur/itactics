@@ -21,6 +21,7 @@ import type { ResourceManager } from "./ResourceManager";
 import type { EventBus } from "@core/EventBus";
 import type { AbilityCooldownsComponent } from "@entities/components/AbilityCooldowns";
 import { resetCooldowns, reduceCooldowns } from "@entities/components/AbilityCooldowns";
+import type { ActiveStancesComponent } from "@entities/components/ActiveStances";
 
 /** Result of executing a generated ability. */
 export interface AbilityResult {
@@ -155,8 +156,10 @@ export class AbilityExecutor {
         case "dmg_weapon":
         case "dmg_execute":
         case "dmg_multihit": {
-          const mult = (effect.params.mult as number) ?? 1.0;
           const hits = effect.type === "dmg_multihit" ? ((effect.params.hits as number) ?? 2) : 1;
+          const mult = effect.type === "dmg_multihit"
+            ? ((effect.params.multPerHit as number) ?? 0.5)
+            : ((effect.params.multiplier as number) ?? (effect.params.mult as number) ?? 1.0);
           minDmg += Math.floor(weapon.minDamage * mult * hits);
           maxDmg += Math.floor(weapon.maxDamage * mult * hits);
           const preview = this.damageCalc.previewMelee(world, attackerId, targetId);
@@ -224,10 +227,10 @@ export class AbilityExecutor {
         this.executeDmgWeapon(world, attackerId, targetId, effect, ability, weapon, result, exploitBonus);
         break;
       case "dmg_execute":
-        this.executeDmgExecute(world, attackerId, targetId, effect, ability, weapon, result);
+        this.executeDmgExecute(world, attackerId, targetId, effect, ability, weapon, result, exploitBonus);
         break;
       case "dmg_multihit":
-        this.executeDmgMultihit(world, attackerId, targetId, effect, ability, weapon, result);
+        this.executeDmgMultihit(world, attackerId, targetId, effect, ability, weapon, result, exploitBonus);
         break;
       case "dmg_spell":
         this.executeDmgSpell(world, attackerId, targetId, effect, ability, weapon, result, exploitBonus);
@@ -242,7 +245,7 @@ export class AbilityExecutor {
         this.executeDotPoison(world, targetId, effect, result);
         break;
       case "disp_push":
-        this.executeDispPush(world, attackerId, targetId, result);
+        this.executeDispPush(world, attackerId, targetId, effect, result);
         break;
       case "cc_stun":
         this.executeCCStun(world, targetId, effect, result);
@@ -271,9 +274,12 @@ export class AbilityExecutor {
       case "stance_overwatch":
         this.executeStanceOverwatch(world, attackerId, ability, result);
         break;
-      case "res_apRefund":
-        // AP refund handled via passive/trigger system, not as direct effect
+      case "res_apRefund": {
+        const apAmt = (effect.params.amount as number) ?? 2;
+        result.apRefunded = (result.apRefunded ?? 0) + apAmt;
+        result.appliedEffects.push(`ap_refund_${apAmt}`);
         break;
+      }
       case "heal_pctDmg":
         // Deferred — processed after all damage effects in execute()
         break;
@@ -320,7 +326,7 @@ export class AbilityExecutor {
         this.executeDispDash(world, attackerId, targetId, effect, ability, weapon, result);
         break;
       case "disp_pull":
-        this.executeDispPull(world, attackerId, targetId, result);
+        this.executeDispPull(world, attackerId, targetId, effect, result);
         break;
       case "dmg_reflect":
         this.executeDmgReflect(world, attackerId, effect, result);
@@ -356,7 +362,7 @@ export class AbilityExecutor {
     effect: EffectPrimitive, ability: GeneratedAbility, weapon: WeaponDef,
     result: AbilityResult, exploitBonus: number,
   ): void {
-    const mult = (effect.params.mult as number) ?? 1.0;
+    const mult = (effect.params.multiplier as number) ?? (effect.params.mult as number) ?? 1.0;
     const hitMod = (effect.params.hitChanceMod as number) ?? 0;
 
     // Build a synthetic SkillDef to delegate to DamageCalculator
@@ -386,15 +392,18 @@ export class AbilityExecutor {
   private executeDmgExecute(
     world: World, attackerId: EntityId, targetId: EntityId,
     effect: EffectPrimitive, ability: GeneratedAbility, weapon: WeaponDef,
-    result: AbilityResult,
+    result: AbilityResult, exploitBonus: number,
   ): void {
-    const baseMult = (effect.params.mult as number) ?? 1.0;
+    const baseMult = (effect.params.multiplier as number) ?? (effect.params.mult as number) ?? 1.0;
     const bonusMult = (effect.params.bonusMult as number) ?? 0.5;
-    const hpThreshold = (effect.params.hpThreshold as number) ?? 0.5;
+    const rawThreshold = (effect.params.hpThreshold as number) ?? 50;
+    // Generator stores threshold as percentage (e.g. 30 = 30%), normalize to 0-1
+    const hpThreshold = rawThreshold > 1 ? rawThreshold / 100 : rawThreshold;
 
     const targetHealth = world.getComponent<HealthComponent>(targetId, "health");
     const hpPct = targetHealth ? targetHealth.current / targetHealth.max : 1;
-    const executeMult = hpPct < hpThreshold ? baseMult + bonusMult * (1 - hpPct) : baseMult;
+    const executeBase = baseMult * (1 + exploitBonus);
+    const executeMult = hpPct < hpThreshold ? executeBase + bonusMult * (1 - hpPct) : executeBase;
 
     const syntheticSkill: SkillDef = {
       id: ability.uid, name: ability.name, weaponFamilies: [],
@@ -412,7 +421,7 @@ export class AbilityExecutor {
   private executeDmgMultihit(
     world: World, attackerId: EntityId, targetId: EntityId,
     effect: EffectPrimitive, ability: GeneratedAbility, weapon: WeaponDef,
-    result: AbilityResult,
+    result: AbilityResult, exploitBonus: number,
   ): void {
     const hits = (effect.params.hits as number) ?? 2;
     const multPerHit = (effect.params.multPerHit as number) ?? 0.5;
@@ -423,7 +432,7 @@ export class AbilityExecutor {
 
       const syntheticSkill: SkillDef = {
         id: ability.uid, name: ability.name, weaponFamilies: [],
-        apCost: 0, staminaExtra: 0, damageMultiplier: multPerHit,
+        apCost: 0, staminaExtra: 0, damageMultiplier: multPerHit * (1 + exploitBonus),
         hitChanceModifier: 0, range: 0, targetType: "enemy", rangeType: "melee",
         isBasicAttack: false, isStance: false, description: ability.description,
       };
@@ -505,7 +514,8 @@ export class AbilityExecutor {
   }
 
   private executeDispPush(
-    world: World, attackerId: EntityId, targetId: EntityId, result: AbilityResult,
+    world: World, attackerId: EntityId, targetId: EntityId,
+    effect: EffectPrimitive, result: AbilityResult,
   ): void {
     const attackerPos = world.getComponent<PositionComponent>(attackerId, "position");
     const targetPos = world.getComponent<PositionComponent>(targetId, "position");
@@ -514,25 +524,32 @@ export class AbilityExecutor {
     const dir = hexDirection(attackerPos, targetPos);
     if (!dir) return;
 
-    const destQ = targetPos.q + dir.dq;
-    const destR = targetPos.r + dir.dr;
-    const destTile = this.grid.get(destQ, destR);
+    const distance = (effect.params.distance as number) ?? 1;
 
-    if (destTile && !destTile.occupant && destTile.movementCost < Infinity) {
-      // Move target
-      const oldTile = this.grid.get(targetPos.q, targetPos.r);
-      if (oldTile) oldTile.occupant = null;
-      destTile.occupant = targetId;
-      targetPos.q = destQ;
-      targetPos.r = destR;
-      targetPos.elevation = destTile.elevation;
-      result.pushed = { entityId: targetId, toQ: destQ, toR: destR };
-    } else if (destTile?.occupant) {
-      // Collision: 5 flat damage to both
-      const targetHealth = world.getComponent<HealthComponent>(targetId, "health");
-      const collisionHealth = world.getComponent<HealthComponent>(destTile.occupant, "health");
-      if (targetHealth) targetHealth.current = Math.max(0, targetHealth.current - 5);
-      if (collisionHealth) collisionHealth.current = Math.max(0, collisionHealth.current - 5);
+    for (let step = 0; step < distance; step++) {
+      const destQ = targetPos.q + dir.dq;
+      const destR = targetPos.r + dir.dr;
+      const destTile = this.grid.get(destQ, destR);
+
+      if (destTile && !destTile.occupant && destTile.movementCost < Infinity) {
+        const oldTile = this.grid.get(targetPos.q, targetPos.r);
+        if (oldTile) oldTile.occupant = null;
+        destTile.occupant = targetId;
+        targetPos.q = destQ;
+        targetPos.r = destR;
+        targetPos.elevation = destTile.elevation;
+        result.pushed = { entityId: targetId, toQ: destQ, toR: destR };
+      } else if (destTile?.occupant) {
+        // Collision: 5 flat damage to both, stop pushing
+        const targetHealth = world.getComponent<HealthComponent>(targetId, "health");
+        const collisionHealth = world.getComponent<HealthComponent>(destTile.occupant, "health");
+        if (targetHealth) targetHealth.current = Math.max(0, targetHealth.current - 5);
+        if (collisionHealth) collisionHealth.current = Math.max(0, collisionHealth.current - 5);
+        break;
+      } else {
+        // Blocked by impassable terrain or edge — stop pushing
+        break;
+      }
     }
   }
 
@@ -561,7 +578,11 @@ export class AbilityExecutor {
     world: World, targetId: EntityId, effect: EffectPrimitive, result: AbilityResult,
   ): void {
     const turns = (effect.params.turns as number) ?? 2;
-    this.statusEffects.apply(world, targetId, "daze", turns);
+    const apLoss = (effect.params.apLoss as number) ?? 1;
+    this.statusEffects.applyDynamic(world, targetId, {
+      id: "daze", name: "Dazed", duration: turns,
+      modifiers: { _apLoss: apLoss },
+    });
     result.appliedEffects.push("daze");
   }
 
@@ -768,19 +789,49 @@ export class AbilityExecutor {
     result.appliedEffects.push(`shield_${amount}`);
   }
 
-  /** disp_teleport: Move entity directly to a target position (skip pathing). */
+  /** disp_teleport: Move entity to a random empty tile within range. */
   private executeDispTeleport(
     world: World, entityId: EntityId, effect: EffectPrimitive, result: AbilityResult,
   ): void {
+    // Support explicit coordinates OR range-based random teleport
     const targetQ = (effect.params.targetQ as number);
     const targetR = (effect.params.targetR as number);
-    if (targetQ == null || targetR == null) return;
+    const range = (effect.params.range as number) ?? 3;
 
     const pos = world.getComponent<PositionComponent>(entityId, "position");
     if (!pos) return;
 
-    const destTile = this.grid.get(targetQ, targetR);
+    let destQ: number;
+    let destR: number;
+
+    if (targetQ != null && targetR != null) {
+      destQ = targetQ;
+      destR = targetR;
+    } else {
+      // Find all empty tiles within range and pick one randomly
+      const candidates: { q: number; r: number }[] = [];
+      for (let dq = -range; dq <= range; dq++) {
+        for (let dr = Math.max(-range, -dq - range); dr <= Math.min(range, -dq + range); dr++) {
+          const q = pos.q + dq;
+          const r = pos.r + dr;
+          if (dq === 0 && dr === 0) continue;
+          const tile = this.grid.get(q, r);
+          if (tile && !tile.occupant && tile.movementCost < Infinity) {
+            candidates.push({ q, r });
+          }
+        }
+      }
+      if (candidates.length === 0) return;
+      const pick = candidates[Math.floor(this.rng.nextFloat() * candidates.length)]!;
+      destQ = pick.q;
+      destR = pick.r;
+    }
+
+    const destTile = this.grid.get(destQ, destR);
     if (!destTile || destTile.occupant) return;
+
+    const oldQ = pos.q;
+    const oldR = pos.r;
 
     // Free old tile
     const oldTile = this.grid.get(pos.q, pos.r);
@@ -788,15 +839,15 @@ export class AbilityExecutor {
 
     // Occupy new tile
     destTile.occupant = entityId;
-    pos.q = targetQ;
-    pos.r = targetR;
+    pos.q = destQ;
+    pos.r = destR;
     pos.elevation = destTile.elevation;
     result.appliedEffects.push("teleport");
 
     if (this.managers.eventBus) {
       this.managers.eventBus.emit("movement:move", {
-        entityId, fromQ: oldTile ? pos.q : targetQ, fromR: oldTile ? pos.r : targetR,
-        toQ: targetQ, toR: targetR,
+        entityId, fromQ: oldQ, fromR: oldR,
+        toQ: destQ, toR: destR,
       });
     }
   }
@@ -842,7 +893,7 @@ export class AbilityExecutor {
     }
 
     // Deal damage on arrival
-    const dmgMult = (effect.params.mult as number) ?? 0.8;
+    const dmgMult = (effect.params.damageOnArrival as number) ?? (effect.params.mult as number) ?? 0.8;
     const syntheticSkill: SkillDef = {
       id: ability.uid, name: ability.name, weaponFamilies: [],
       apCost: 0, staminaExtra: 0, damageMultiplier: dmgMult,
@@ -854,30 +905,40 @@ export class AbilityExecutor {
     result.appliedEffects.push(...attackResult.appliedEffects);
   }
 
-  /** disp_pull: Move target toward caster. */
+  /** disp_pull: Move target toward caster by N hexes. */
   private executeDispPull(
-    world: World, attackerId: EntityId, targetId: EntityId, result: AbilityResult,
+    world: World, attackerId: EntityId, targetId: EntityId,
+    effect: EffectPrimitive, result: AbilityResult,
   ): void {
     const attackerPos = world.getComponent<PositionComponent>(attackerId, "position");
     const targetPos = world.getComponent<PositionComponent>(targetId, "position");
     if (!attackerPos || !targetPos) return;
 
-    // Direction from target toward attacker
-    const dir = hexDirection(targetPos, attackerPos);
-    if (!dir) return;
+    const distance = (effect.params.distance as number) ?? 1;
 
-    const destQ = targetPos.q + dir.dq;
-    const destR = targetPos.r + dir.dr;
-    const destTile = this.grid.get(destQ, destR);
+    for (let step = 0; step < distance; step++) {
+      // Recalculate direction each step since target position changes
+      const dir = hexDirection(targetPos, attackerPos);
+      if (!dir) break;
 
-    if (destTile && !destTile.occupant && destTile.movementCost < Infinity) {
-      const oldTile = this.grid.get(targetPos.q, targetPos.r);
-      if (oldTile) oldTile.occupant = null;
-      destTile.occupant = targetId;
-      targetPos.q = destQ;
-      targetPos.r = destR;
-      targetPos.elevation = destTile.elevation;
-      result.appliedEffects.push("pull");
+      const destQ = targetPos.q + dir.dq;
+      const destR = targetPos.r + dir.dr;
+
+      // Don't pull onto the caster's tile
+      if (destQ === attackerPos.q && destR === attackerPos.r) break;
+
+      const destTile = this.grid.get(destQ, destR);
+      if (destTile && !destTile.occupant && destTile.movementCost < Infinity) {
+        const oldTile = this.grid.get(targetPos.q, targetPos.r);
+        if (oldTile) oldTile.occupant = null;
+        destTile.occupant = targetId;
+        targetPos.q = destQ;
+        targetPos.r = destR;
+        targetPos.elevation = destTile.elevation;
+        result.appliedEffects.push("pull");
+      } else {
+        break; // Blocked
+      }
     }
   }
 
@@ -1039,8 +1100,30 @@ export class AbilityExecutor {
         case "bleeding":
           if (this.statusEffects.hasEffect(world, targetId, "bleed")) bonus += 0.15;
           break;
+        case "poisoned":
+          if (this.statusEffects.hasEffect(world, targetId, "poison")) bonus += 0.15;
+          break;
+        case "burning":
+          if (this.statusEffects.hasEffect(world, targetId, "burn")) bonus += 0.15;
+          break;
         case "stunned":
           if (this.statusEffects.hasEffect(world, targetId, "stun")) bonus += 0.2;
+          break;
+        case "dazed":
+          if (this.statusEffects.hasEffect(world, targetId, "daze")) bonus += 0.1;
+          break;
+        case "rooted":
+          if (this.statusEffects.hasEffect(world, targetId, "root")) bonus += 0.15;
+          break;
+        case "displaced":
+          // Target was recently pushed — check for a displacement marker
+          if (this.statusEffects.hasEffect(world, targetId, "displaced")) bonus += 0.1;
+          break;
+        case "vulnerable":
+          if (this.statusEffects.hasEffect(world, targetId, "vulnerable")) bonus += 0.15;
+          break;
+        case "cursed":
+          if (this.statusEffects.hasEffect(world, targetId, "cursed")) bonus += 0.15;
           break;
         case "low_hp": {
           const health = world.getComponent<HealthComponent>(targetId, "health");
@@ -1050,6 +1133,11 @@ export class AbilityExecutor {
         case "debuffed": {
           const debuffCount = this.statusEffects.countDebuffs(world, targetId);
           bonus += debuffCount * 0.05;
+          break;
+        }
+        case "in_stance": {
+          const stances = world.getComponent<ActiveStancesComponent>(targetId, "activeStances");
+          if (stances && stances.stances.size > 0) bonus += 0.15;
           break;
         }
       }
