@@ -19,8 +19,18 @@ export type EffectType =
   | "buff_stat" | "buff_dmgReduce" | "buff_stealth" | "buff_shield"
   // Stances
   | "stance_counter" | "stance_overwatch"
-  // Resource
-  | "res_apRefund"
+  // Resource (instant when from triggers)
+  | "res_apRefund" | "res_mana" | "res_stamina" | "res_mp"
+  // Grant AP this turn (e.g. Overclock double AP — uncapped, not a refund)
+  | "grant_ap"
+  // Triggered utility (e.g. on kill: extend buff; turn start: apply status)
+  | "extend_status" | "apply_status"
+  // Trigger-only: deal flat damage to the attacker (e.g. Afterimage on dodge)
+  | "dmg_to_attacker"
+  // Trigger-only (onTakeDamage): apply status to the attacker (e.g. Toxic Skin: poison melee attackers)
+  | "apply_status_to_attacker"
+  // Active: apply named status to target or to self
+  | "apply_status_self"
   // Healing
   | "heal_pctDmg" | "heal_flat" | "heal_hot" | "lifesteal"
   // Summoning / zones / traps
@@ -63,7 +73,13 @@ export interface ModifierPrimitive {
 }
 
 export type TriggerType = "trg_onKill" | "trg_onHit" | "trg_onTakeDamage" | "trg_turnStart" | "trg_belowHP"
-  | "trg_onAllyDeath" | "trg_onSummonDeath";
+  | "trg_onAllyDeath" | "trg_onSummonDeath" | "trg_onDodge";
+
+/** Condition that must be true for the trigger to fire (e.g. "while hasted"). */
+export type TriggerCondition =
+  | { type: "has_status"; statusId: string }
+  | { type: "below_hp_percent"; percent: number }
+  | { type: "above_hp_percent"; percent: number };
 
 export interface TriggerPrimitive {
   type: TriggerType;
@@ -72,6 +88,20 @@ export interface TriggerPrimitive {
   powerAdd: number;
   /** Effect fired when trigger activates. */
   triggeredEffect?: EffectPrimitive;
+  /** If set, trigger only fires when this condition is true (e.g. "while hasted" = has_status haste). */
+  condition?: TriggerCondition;
+}
+
+/** When to apply an effect: immediately or at end of caster's turn. */
+export type EffectDelay = "immediate" | "end_of_turn";
+
+/** Instant resource grants from triggers (on kill, on dodge, etc.). Applied immediately to the beneficiary. */
+export interface TriggerGrants {
+  ap?: number;
+  mp?: number;
+  hp?: number;
+  mana?: number;
+  stamina?: number;
 }
 
 export interface AbilityCost {
@@ -109,6 +139,8 @@ export interface GeneratedAbility {
   comboFrom?: string;
   /** If true, applies buff effects to allies and debuff/damage to enemies in same AoE. */
   dualTarget?: boolean;
+  /** If true, after executing (e.g. Flicker Strike), move caster back to their pre-cast position. */
+  returnToStoredPositionAfterExecute?: boolean;
 }
 
 // ── UID generation (same pattern as GeneratedItemData.ts gi_ → ga_) ──

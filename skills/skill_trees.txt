@@ -1,0 +1,611 @@
+================================================================================
+SKILL TREES — COMBAT MECHANICS EDITION (turn-based, hex-based, balanced)
+================================================================================
+This version aligns descriptions with turn-based combat:
+  - Time: turns only (no seconds). Cooldowns in turns.
+  - Distance: hexes only (no meters).
+  - Action economy: "AP" = action points (how many actions per turn); "initiative"
+    = turn order. Buffs that "give more actions" grant AP at turn start.
+  - More impactful numbers: tier 1 modest, tier 5 dramatic. Buffs 40–100% where
+    appropriate; durations 3–5 turns unless the effect is extreme.
+  - Lower tier = weaker; higher tier = stronger. Skills moved or scaled as needed.
+================================================================================
+
+################################################################################
+CLASS 1: CHRONOWEAVER (Time Mage)
+################################################################################
+Fantasy: You unravel the threads of time itself, speeding allies, decaying
+enemies, and fracturing reality with paradoxes.
+
+ARCHETYPE A: ACCELERANT (Speed / Haste / Tempo)
+--------------------------------------------------------------------------------
+Identity: Pure speed fantasy. You act more, allies act more, enemies feel slow.
+
+Tier 1 (Common)
+  - Quicken         | Buff     | Haste self for 3 turns: +40% AP at turn start, +1 movement
+  - Tempo Tap       | Passive  | Basic attacks grant +1 AP (once per turn, max 2 bonus AP)
+  - Blink Step      | Movement | Short-range teleport. 3 turns cooldown.
+
+Tier 2 (Uncommon)
+  - Shared Haste    | Buff     | Apply Quicken to self and one ally (3 turns, +40% AP each)
+  - Flicker Strike  | Attack   | Teleport to target, strike, teleport back to start
+  - Time Slip       | Passive  | +15 dodge for 1 turn at the start of your turn (evasion)
+
+Tier 3 (Rare)
+  - Overclock       | Buff     | Double your AP this turn (up to 2× base). At end of turn,
+                    |          | become stunned for 1 turn.
+  - Cascade         | Passive  | While you have Haste, each kill extends your Haste by 1 turn
+  - Blur            | Passive  | While hasted, gain +25 dodge (evasion)
+
+Tier 4 (Epic)
+  - Temporal Surge  | Buff     | All allies gain +50% AP at turn start for 3 turns. 10 turns cooldown.
+  - Afterimage      | Passive  | While hasted, when you dodge an attack deal 20 flat damage to the attacker
+
+Tier 5 (Legendary)
+  - Infinite Loop   | Ultimate | For 2 turns, every action you take is repeated once for free
+                    |          | (second action costs 0 AP). 15 turns cooldown. Does not copy other ultimates.
+
+>> Your notes on Accelerant:
+>>
+>>
+
+
+ARCHETYPE B: ENTROPY (Decay / Damage-over-Time / Erosion)
+--------------------------------------------------------------------------------
+Identity: Patient destroyer. You wither enemies over time, aging armor and flesh.
+
+Tier 1 (Common)
+  - Rust Touch      | Attack   | Melee hit applies Corrode: -15% armor for 3 turns, stacks 2
+  - Wither Bolt     | Attack   | Ranged bolt dealing low damage + Decay (DoT, 2 turns)
+  - Sap Vitality    | Debuff   | Target heals 40% less for 4 turns
+
+Tier 2 (Uncommon)
+  - Accelerate Rot  | Passive  | Your DoTs tick 25% faster (each turn counts as 1.25 for duration)
+  - Frailty Aura    | Aura     | Enemies within 3 hexes take 15% more damage from all sources
+  - Dust to Dust    | Attack   | If target has 2+ DoTs, deal burst damage equal to 2 ticks
+
+Tier 3 (Rare)
+  - Entropic Field  | AoE      | 3-hex zone: all enemies inside gain Decay each turn. Lasts 3 turns.
+  - Age of Ruin     | Passive  | Your DoTs reduce enemy healing received by 10% per stack (max 30%)
+  - Crumble         | Attack   | Destroy 50% of target's remaining armor. 6 turns cooldown.
+
+Tier 4 (Epic)
+  - Pandemic        | Active   | All DoTs on target spread to enemies within 3 hexes (full duration)
+  - Temporal Rot    | Passive  | When an enemy dies with your DoTs, nearby enemies gain
+                    |          | those DoTs at half remaining duration
+
+Tier 5 (Legendary)
+  - Heat Death      | Ultimate | Mark a target. For 4 turns, all DoT damage they take from you
+                    |          | is recorded. At end, deal that total again as a single burst. 15 turns cooldown.
+
+>> Your notes on Entropy:
+>>
+>>
+
+
+ARCHETYPE C: PARADOX (Reality-Bending / High-Risk High-Reward)
+--------------------------------------------------------------------------------
+Identity: Chaotic time wizard. Powerful but unpredictable, warping cause and effect.
+
+Tier 1 (Common)
+  - Rewind          | Heal     | Restore self to HP and position from 1 turn ago. 5 turns cooldown.
+  - Deja Vu         | Debuff   | Target repeats their last action involuntarily (once, next turn)
+  - Stutter         | CC       | Stun target for 1 turn
+
+Tier 2 (Uncommon)
+  - Split Timeline  | Passive  | 20% chance any non-ultimate skill activates twice (second at 50% effect)
+  - Causal Loop     | Debuff   | For 2 turns, target takes 50% of the damage they deal (to anyone)
+  - Echo Cast       | Active   | Repeat your last-used non-ultimate skill at 60% power, no AP cost
+
+Tier 3 (Rare)
+  - Schrodinger     | Passive  | When you would die, 50% chance to instead heal to 40% HP. Once per combat.
+  - Time Bomb       | Attack   | Place a marker. After 2 turns, all damage dealt in that hex
+                    |          | during that time is dealt again as AoE to enemies there.
+  - Fork Reality    | Summon   | Create a clone for 4 turns. It copies your attacks at 50% damage.
+                    |          | If it dies, you take 25% of your max HP.
+
+Tier 4 (Epic)
+  - Grandfather     | Active   | Erase an enemy's last action (undo their last attack, heal, or buff). 8 turns cooldown.
+  - Instability     | Passive  | All your skills have +30% damage but ±20% variance
+                    |          | (can overperform or underperform)
+
+Tier 5 (Legendary)
+  - Closed Timelike | Ultimate | Rewind the entire battlefield 2 turns. All positions, HP, and
+    Curve           |          | cooldowns reset to their state 2 turns ago. Only you retain
+                    |          | memory (keep your buffs). 15 turns cooldown.
+
+>> Your notes on Paradox:
+>>
+>>
+
+
+[YOUR OVERALL NOTES ON CHRONOWEAVER]
+>
+>
+>
+
+
+################################################################################
+CLASS 2: IRONBLOOM WARDEN (Nature Tank)
+################################################################################
+Fantasy: A living fortress of bark, thorn, and root. You grow your own armor,
+punish attackers, and sustain your team through the earth's resilience.
+
+ARCHETYPE A: THORNWALL (Defensive / Reactive Damage)
+--------------------------------------------------------------------------------
+Identity: The immovable object. You want to be hit. Every blow grows your power.
+
+Tier 1 (Common)
+  - Barkskin        | Buff     | +30% damage reduction for 3 turns
+  - Thorn Coat      | Reactive | Reflect 15% of damage taken back to the attacker
+  - Root Stance     | Stance   | Immobile but +40% damage reduction, +threat (taunt) for 2 turns
+
+Tier 2 (Uncommon)
+  - Ironwood        | Passive  | Barkskin now also grants +20% max HP while active
+  - Briar Lash      | Reactive | When hit, 35% chance to root attacker for 1 turn
+  - Living Fortress | Passive  | +5% damage reduction per enemy currently targeting you (max 5 = 25%)
+
+Tier 3 (Rare)
+  - Splinter Burst  | Active   | Shatter your Barkskin early to deal AoE damage scaling with
+                    |          | damage absorbed while it was active. Requires Barkskin.
+  - Petrified Bark  | Passive  | Below 30% HP, gain 50% damage reduction until above 30% again
+  - Entangling Wall | Active   | Summon a line of thorns (3 hexes). Enemies that enter or end turn
+                    |          | there take damage and are slowed 50% for 1 turn.
+
+Tier 4 (Epic)
+  - Martyrwood      | Passive  | 30% of damage dealt to allies within 2 hexes is redirected to you.
+                    |          | You heal for 10% of damage redirected.
+  - Thorn King      | Passive  | Thorn Coat reflection increased to 35%. Reflected damage
+                    |          | now applies Bleed (DoT, 2 turns).
+
+Tier 5 (Legendary)
+  - World Tree      | Ultimate | For 3 turns you become immobile and massive: +80% damage reduction,
+                    |          | all allies within 4 hexes gain +40% damage reduction, and attackers
+                    |          | take heavy thorn damage. 15 turns cooldown.
+
+>> Your notes on Thornwall:
+>>
+>>
+
+
+ARCHETYPE B: OVERGROWTH (Healing / Regeneration / Sustain)
+--------------------------------------------------------------------------------
+Identity: Unkillable regenerator. You outlast everything through constant growth.
+
+Tier 1 (Common)
+  - Rejuvenate      | Heal     | HoT on self or one ally: heals over 3 turns (modest per-turn value)
+  - Photosynthesis  | Passive  | Regen 3% max HP per turn when you did not take damage last turn
+  - Seedling        | Summon   | Plant a seedling that pulses minor heals to units in 2 hexes for 4 turns
+
+Tier 2 (Uncommon)
+  - Deep Roots      | Passive  | Rejuvenate now also grants +15% damage reduction for its duration
+  - Overgrowth      | Active   | Instantly grow all active Seedlings: double their heal per turn
+                    |          | and radius for the rest of their duration. Consumes no seedlings.
+  - Sap Blood       | Passive  | 20% of damage you deal heals you (lifesteal)
+
+Tier 3 (Rare)
+  - Verdant Tide    | Heal     | AoE heal-over-time in 3 hexes radius, 3 turns duration
+  - Regrowth        | Passive  | When your HoTs overheal, store excess as a shield (max 25% of your max HP)
+  - Symbiosis       | Passive  | While adjacent to a Seedling, gain +25% to all healing you do
+
+Tier 4 (Epic)
+  - Ancient Growth  | Passive  | Your HoTs can critically heal (2×) with 20% chance
+  - Bloom Cascade   | Heal     | Consume all your Seedlings. Each consumed heals all allies in
+                    |          | its radius for a large burst. More seedlings = bigger total heal.
+
+Tier 5 (Legendary)
+  - Gaia's Embrace  | Ultimate | For 4 turns the battlefield is overgrown: all allies regen 6% max HP
+                    |          | per turn, all enemies are slowed 30%, and a Seedling spawns at your
+                    |          | position every turn. 15 turns cooldown.
+
+>> Your notes on Overgrowth:
+>>
+>>
+
+
+ARCHETYPE C: ROT HERALD (Offensive Nature / Poison / Fungal)
+--------------------------------------------------------------------------------
+Identity: Nature's dark side. You weaponize decay, spores, and parasites.
+
+Tier 1 (Common)
+  - Spore Shot      | Attack   | Ranged attack that applies Poison (DoT, 2 turns)
+  - Fungal Growth   | Summon   | Plant a fungal node. Enemies that end turn in 2 hexes take
+                    |          | poison damage each turn. Lasts 4 turns.
+  - Toxic Skin      | Passive  | When you are hit, attacker gains Poison (2 turns)
+
+Tier 2 (Uncommon)
+  - Mycelium Net    | Passive  | Enemies within 2 hexes of any of your fungal nodes are slowed 25%
+  - Virulent Strain | Passive  | Your Poison deals 40% more damage per tick
+  - Decompose       | Active   | Consume Poison stacks on target for burst damage (scales with stacks)
+
+Tier 3 (Rare)
+  - Plague Garden   | Active   | Plant 3 fungal nodes in a triangle. Zone inside deals constant
+                    |          | poison damage and reduces healing received by 50%. Lasts 3 turns.
+  - Parasitic Vine  | Attack   | Latch onto target. Drain HP from them to you each turn for 2 turns.
+                    |          | Breaks if you move more than 3 hexes from target.
+  - Necrotic Bloom  | Passive  | When an enemy dies while they have your Poison, they explode in
+                    |          | a 2-hex poison AoE (damage + apply Poison)
+
+Tier 4 (Epic)
+  - Cordyceps       | Debuff   | Infect target. If they die within 3 turns, a fungal minion
+                    |          | rises from their corpse for 4 turns (fights for you).
+  - Rot Aura        | Aura     | Enemies within 3 hexes lose 3% max HP per turn (current and max)
+
+Tier 5 (Legendary)
+  - The Spreading   | Ultimate | Mark a target. An infection grows over 3 turns. At full growth it
+                    |          | detonates: lethal to non-bosses, 50% max HP to bosses. At 50%
+                    |          | growth, infection spreads to one nearby enemy. 15 turns cooldown.
+
+>> Your notes on Rot Herald:
+>>
+>>
+
+
+[YOUR OVERALL NOTES ON IRONBLOOM WARDEN]
+>
+>
+>
+
+
+################################################################################
+CLASS 3: ECHO DANCER (Sound / Vibration Assassin)
+################################################################################
+Fantasy: You weaponize sound itself — precise frequencies to shatter, silence to
+vanish, and overwhelming noise to break minds and matter.
+
+ARCHETYPE A: RESONANCE (Amplification / Burst / Precision)
+--------------------------------------------------------------------------------
+Identity: Surgical striker. Build frequency on a target, then shatter them.
+
+Tier 1 (Common)
+  - Tuning Strike   | Attack   | Melee hit applies 1 Resonance stack to target
+  - Harmonic Blade  | Passive  | Every 3rd hit on same target deals +50% damage
+  - Pitch Perfect   | Passive  | +20% crit chance against targets with 3+ Resonance
+
+Tier 2 (Uncommon)
+  - Shatter Point   | Attack   | Consume all Resonance stacks. Deal burst damage
+                    |          | scaling with stacks consumed (big payoff at 5+)
+  - Sympathetic Vibe| Passive  | When you apply Resonance to a target, enemies within
+                    |          | 2 hexes gain 1 stack too
+  - Overtone        | Passive  | Resonance stacks reduce target's damage dealt by 5% each (max 25%)
+
+Tier 3 (Rare)
+  - Crystal Freq    | Active   | Lock onto target's Resonance. For 3 turns, all your hits
+                    |          | on them apply 2 stacks instead of 1.
+  - Feedback Loop   | Passive  | Shatter Point refunds 1 stack per enemy hit by the burst
+  - Glass Cannon    | Buff     | +40% damage dealt, +20% damage taken for 4 turns
+
+Tier 4 (Epic)
+  - Sonic Boom      | Active   | Detonate all Resonance on all enemies within 3 hexes at once.
+                    |          | Chain: each detonation adds 1 stack to survivors in range.
+  - Perfect Pitch   | Passive  | Shatter Point at 8+ stacks always crits and ignores 50% armor
+
+Tier 5 (Legendary)
+  - Requiem         | Ultimate | Mark a target. For 4 turns, track all damage dealt to them.
+                    |          | At end, deal 60% of that total as pure damage (ignores defenses). 15 turns cooldown.
+
+>> Your notes on Resonance:
+>>
+>>
+
+
+ARCHETYPE B: SILENCE (Stealth / Debuff / Denial)
+--------------------------------------------------------------------------------
+Identity: Ghost operative. You erase sound, erase yourself, and erase enemies'
+ability to fight back.
+
+Tier 1 (Common)
+  - Muffle          | Debuff   | Silence target for 2 turns (no abilities)
+  - Sound Eater     | Stealth  | Enter stealth for 3 turns. Broken by attacking. 5 turns cooldown.
+  - Dampening Field | Passive  | Reduce your aggro generation by 50%
+
+Tier 2 (Uncommon)
+  - Dead Air        | Debuff   | Create a 2-hex zone of silence. Enemies inside cannot cast
+                    |          | for 3 turns.
+  - Ambush          | Attack   | Attacks from stealth deal +80% damage and stun for 1 turn
+  - Whisper Step    | Passive  | +2 movement while stealthed
+
+Tier 3 (Rare)
+  - Anechoic        | Passive  | While in stealth, you are immune to AoE detection and reveal
+  - Void Frequency  | Debuff   | Target's cooldowns do not tick for 2 turns
+  - Ghost Note      | Active   | Leave a decoy at your position. Enemies target it for 2 turns. You gain stealth.
+
+Tier 4 (Epic)
+  - Total Silence   | Active   | 3-hex radius: all enemies silenced for 2 turns, all allies
+                    |          | gain stealth for 2 turns. 10 turns cooldown.
+  - Erasure         | Passive  | Kills from stealth do not break stealth. 2-turn internal cooldown.
+
+Tier 5 (Legendary)
+  - The Unheard     | Ultimate | For 4 turns you exist in perfect silence: stealth not broken by
+                    |          | attacks, all your attacks count as from stealth (+50% damage),
+                    |          | enemies cannot target you directly. 15 turns cooldown.
+
+>> Your notes on Silence:
+>>
+>>
+
+
+ARCHETYPE C: CACOPHONY (AoE / Chaos / Disruption)
+--------------------------------------------------------------------------------
+Identity: Noise bomb. You overwhelm areas with disorienting, damaging sound.
+
+Tier 1 (Common)
+  - Screech         | Attack   | Cone AoE, moderate damage + Disoriented for 1 turn (miss chance)
+  - Bass Drop       | Attack   | AoE slam, damages and knocks back enemies in 2 hexes
+  - Tinnitus        | Debuff   | Target has 25% miss chance for 3 turns
+
+Tier 2 (Uncommon)
+  - Wall of Sound   | Active   | Create a barrier of noise. Enemies crossing it are
+                    |          | stunned 1 turn and take damage.
+  - Discordant Aura | Aura     | Enemies within 3 hexes deal 15% less damage
+  - Shockwave       | Attack   | Line attack: damages all enemies in a row; damage
+                    |          | increases per enemy hit
+
+Tier 3 (Rare)
+  - Noise Complaint | Active   | Large 4-hex AoE. All enemies Disoriented for 2 turns.
+                    |          | Disoriented enemies that attack have 30% chance to hit an ally instead.
+  - Feedback Shriek | Passive  | When you take a crit, emit a damaging pulse in 3 hexes
+  - Amp It Up       | Passive  | Your AoE abilities have +1 hex radius
+
+Tier 4 (Epic)
+  - Brown Note      | Active   | Target enemy flees in terror for 2 turns and takes DoT.
+                    |          | Feared enemies spread fear to allies they pass. 8 turns cooldown.
+  - Sound & Fury    | Passive  | Each enemy hit by your AoEs this turn grants you +8% damage
+                    |          | for 2 turns (stacks, max 5)
+
+Tier 5 (Legendary)
+  - Symphony of     | Ultimate | 4-hex radius for 4 turns. Constant AoE damage that escalates
+    Destruction     |          | each turn (+25% per tick). Enemies inside slowed 40% and Disoriented.
+                    |          | Allies inside gain +25% damage. 15 turns cooldown.
+
+>> Your notes on Cacophony:
+>>
+>>
+
+
+[YOUR OVERALL NOTES ON ECHO DANCER]
+>
+>
+>
+
+
+################################################################################
+CLASS 4: ASHWRIGHT (Fire Crafter / Artificer)
+################################################################################
+Fantasy: You forge weapons, constructs, and destruction from living flame. Part
+blacksmith, part pyromancer — you build and burn in equal measure.
+
+ARCHETYPE A: FORGEMASTER (Constructs / Summons / Turrets)
+--------------------------------------------------------------------------------
+Identity: Army builder. You create fire constructs that fight, tank, and zone.
+
+Tier 1 (Common)
+  - Flame Turret    | Summon   | Place a turret that fires at enemies for 4 turns. Max 2 turrets.
+  - Forge Hammer    | Attack   | Melee strike that heals your nearest construct for 15% max HP
+  - Ember Sprite    | Summon   | Summon a small fire spirit that attacks your target. Lasts 4 turns.
+
+Tier 2 (Uncommon)
+  - Reinforced Hull | Passive  | Your constructs have +40% max HP
+  - Molten Core     | Passive  | When a construct dies, it explodes for AoE fire damage (2 hexes)
+  - Overclock Turret| Active   | Target turret doubles its attack rate for 2 turns, then is destroyed
+
+Tier 3 (Rare)
+  - Iron Golem      | Summon   | Summon a tanky fire golem. Taunts enemies, lasts 5 turns.
+                    |          | Only 1 active at a time. 8 turns cooldown.
+  - Forge Network   | Passive  | Constructs within 3 hexes of each other gain +20% damage
+  - Salvage         | Heal     | Destroy a construct to heal yourself for 40% of its max HP
+
+Tier 4 (Epic)
+  - Master Blueprint| Passive  | +1 max turrets. Turrets now track and lead targets.
+  - Awakened Forge  | Active   | All active constructs are healed to full and gain +50%
+                    |          | damage for 4 turns. 10 turns cooldown.
+
+Tier 5 (Legendary)
+  - Titan of Cinder | Ultimate | Merge all active constructs into a massive fire titan for 4 turns.
+                    |          | Titan's power scales with constructs consumed. Cleave, fire breath,
+                    |          | taunts all enemies. 15 turns cooldown.
+
+>> Your notes on Forgemaster:
+>>
+>>
+
+
+ARCHETYPE B: PYROCLAST (Pure Fire Destruction)
+--------------------------------------------------------------------------------
+Identity: Raw devastation. Biggest explosions, highest single-target burns.
+
+Tier 1 (Common)
+  - Fireball        | Attack   | Ranged fire projectile, moderate damage
+  - Ignite          | Debuff   | Target burns (DoT) for 2 turns
+  - Kindle          | Passive  | Hitting a burning target grants +20% fire damage for 2 turns
+
+Tier 2 (Uncommon)
+  - Wildfire        | Passive  | Ignite spreads to 1 nearby enemy when applied
+  - Combustion      | Attack   | If target is burning, consume the burn for instant damage
+                    |          | equal to remaining DoT + 50%
+  - Flashpoint      | Passive  | Crits apply Ignite (1 turn) automatically
+
+Tier 3 (Rare)
+  - Pyroclasm       | Attack   | Channel 1 turn, then launch a massive fireball. 3× damage of
+                    |          | Fireball. Interrupting wastes the cast.
+  - Living Bomb     | Debuff   | Target burns and explodes after 2 turns, damaging enemies in 2 hexes.
+                    |          | If they die early, explosion is 50% bigger.
+  - Ash Walker      | Passive  | Standing in fire terrain (yours or enemy) grants +25% damage
+
+Tier 4 (Epic)
+  - Eruption        | Active   | Targeted AoE: pillar of fire. High damage, 3-hex radius,
+                    |          | leaves burning ground for 3 turns. 8 turns cooldown.
+  - Fahrenheit      | Passive  | Each consecutive fire ability this turn increases your fire damage
+                    |          | by 10% (resets next turn). Stacks 5×.
+
+Tier 5 (Legendary)
+  - Supernova       | Ultimate | Channel 1 turn. Gather all fire in 4 hexes (burning enemies,
+                    |          | burning ground, construct explosions). Release as one cataclysmic
+                    |          | blast. Damage scales with fire sources gathered. 15 turns cooldown.
+
+>> Your notes on Pyroclast:
+>>
+>>
+
+
+ARCHETYPE C: EMBER SAGE (Fire Support / Buffs / Utility)
+--------------------------------------------------------------------------------
+Identity: Battlefield controller and force multiplier. You enhance allies with
+flame-forged boons and control the field with fire terrain.
+
+Tier 1 (Common)
+  - Tempered Blade  | Buff     | Enchant ally's weapon with fire. +20% damage as fire for 3 turns
+  - Warm Glow       | Heal     | Moderate heal on ally. If they are on fire terrain, +50% heal
+  - Firelight       | Utility  | Illuminate 4-hex area, revealing stealthed enemies for 3 turns
+
+Tier 2 (Uncommon)
+  - Crucible        | Buff     | Ally gains +25% damage reduction for 3 turns. When it expires,
+                    |          | they emit a fire burst in 2 hexes.
+  - Controlled Burn | Active   | Place fire terrain (2-hex radius) for 4 turns. Allies on it
+                    |          | regen HP per turn. Enemies on it take DoT.
+  - Quench          | Cleanse  | Remove all debuffs from ally. For each removed, they gain
+                    |          | +8% damage for 2 turns.
+
+Tier 3 (Rare)
+  - Forge Bond      | Buff     | Link two allies. They share 20% of healing received with each
+                    |          | other for 4 turns.
+  - Phoenix Ash     | Passive  | Your heals on targets below 30% HP are 2× effective
+  - Signal Fire     | Active   | Place a beacon. Allies within 2 hexes gain +20% crit chance.
+                    |          | Lasts 4 turns. Only 1 active.
+
+Tier 4 (Epic)
+  - Reforged        | Active   | Target ally is cleansed, healed for 30% max HP, and gains
+                    |          | +35% damage for 3 turns. 8 turns cooldown.
+  - Hearth          | Passive  | While standing in your fire terrain, allies there cannot be
+                    |          | critically hit and have +30% CC resistance
+
+Tier 5 (Legendary)
+  - Phoenix Pyre    | Ultimate | Designate an ally. If they die within 5 turns, they resurrect
+                    |          | at 50% HP with a fire explosion (massive AoE). If they don't die,
+                    |          | they gain +30% all stats for 3 turns instead. 15 turns cooldown.
+
+>> Your notes on Ember Sage:
+>>
+>>
+
+
+[YOUR OVERALL NOTES ON ASHWRIGHT]
+>
+>
+>
+
+
+################################################################################
+CLASS 5: VOIDCALLER (Cosmic Horror Caster)
+################################################################################
+Fantasy: A scholar who stared too long into the abyss between stars and let
+something stare back, wielding alien psychic forces that corrode sanity as they shred flesh.
+
+ARCHETYPE A: ABYSSAL GAZE (Madness / Psychic Damage)
+--------------------------------------------------------------------------------
+Identity: Inflict creeping psychic DoTs and escalating Fracture stacks that unravel
+an enemy's mind before their body gives out.
+
+Tier 1 (Common)
+  - Mind Crack          | Attack   | Deal psychic damage; apply 1 stack of Fracture (max 10)
+  - Whisper Barrage     | Active   | Fire 3 psychic bolts; each hit applies Fracture if target already has any
+  - Unnerving Gaze      | Debuff   | Reduce target's damage dealt by 20% for 3 turns; applies 2 Fracture
+
+Tier 2 (Uncommon)
+  - Echo of the Void    | Passive  | Each Fracture stack on a target amplifies your psychic damage to them by 3%
+  - Screaming Void      | Attack   | Psychic scream in a cone; damage and 3 Fracture to all hit
+  - Paranoia Seed       | Debuff   | Plant a trigger; when target is next damaged they attack a random nearby ally once
+
+Tier 3 (Rare)
+  - Shatter Mind        | Active   | Consume all Fracture on a target; deal burst damage equal to 8× stacks
+  - Delusion Field      | Aura     | Enemies within 3 hexes have 25% chance each turn to lose 1 action (misfire, miss, idle)
+  - Fractal Feedback    | Reactive | When you take damage, attacker takes 25% of that damage as psychic
+
+Tier 4 (Epic)
+  - Cascade Madness     | Passive  | On Shatter Mind kill, spread 5 Fracture to all enemies within 3 hexes of the corpse
+  - Unmaking Gaze       | Channel  | Channel 1 turn; reduce target's max HP by 10%, persisting 5 turns
+
+Tier 5 (Legendary)
+  - The Eye Opens       | Transform | For 4 turns you embody the Void: all attacks apply 3 Fracture,
+                    |          | Shatter Mind has no cooldown, and enemies with 10 Fracture are
+                    |          | Dominated (fight for you until they die). 15 turns cooldown.
+
+>> Your notes on Abyssal Gaze:
+>>
+>>
+
+
+ARCHETYPE B: GRAVITY WELL (Gravity Manipulation)
+--------------------------------------------------------------------------------
+Identity: Reshape the battlefield with gravitational anomalies — pull enemies together,
+crush them, or fling them into each other.
+
+Tier 1 (Common)
+  - Tidal Pull          | Active   | Pull a single target 2 hexes toward you; light impact damage on arrival
+  - Density Curse        | Debuff   | Target's effective weight increases; movement reduced by 35% for 3 turns
+  - Micro-Collapse       | Attack   | Collapse space around a target; moderate damage in 1-hex radius
+
+Tier 2 (Uncommon)
+  - Gravity Spike       | Attack   | Spike gravity beneath target; launch them 2 hexes, dealing fall damage
+  - Orbital Decay       | Passive  | Enemies slowed by your gravity effects take 15% increased damage from all sources
+  - Singularity Seed     | Active   | Place a gravity node; pulls enemies within 3 hexes toward it over 2 turns, then implodes
+
+Tier 3 (Rare)
+  - Event Horizon       | CC       | Create a vortex at a location; enemies cannot leave the 3-hex radius for 2 turns
+  - Compression Wave    | Attack   | Crush all pulled or grouped enemies for heavy AoE damage
+  - Zero-G Field        | Active   | Toggle a 3-hex zone: enemies inside float and cannot use ground movement for 2 turns
+
+Tier 4 (Epic)
+  - Tidal Lattice       | Passive  | Each enemy inside your Event Horizon increases Compression Wave damage by 25%
+  - Collapse Star       | Active   | Merge two Singularity Seeds into a supernova dealing massive AoE damage
+
+Tier 5 (Legendary)
+  - Black Hole Protocol | Channel  | Channel 1 turn to summon a black hole for 3 turns. Pulls everything in 4 hexes
+                    |          | toward center, crushing damage per turn; enemies that reach center are incapacitated. 15 turns cooldown.
+
+>> Your notes on Gravity Well:
+>>
+>>
+
+
+ARCHETYPE C: VOID SHEPHERD (Void Summons)
+--------------------------------------------------------------------------------
+Identity: Tear rifts in reality to summon eldritch entities that fight for you.
+
+Tier 1 (Common)
+  - Rift Spawn          | Summon   | Summon a Void Mote (fragile melee) that attacks your target. Lasts 4 turns.
+  - Tether Wisp         | Summon   | Summon a Wisp that latches to an enemy, reducing their healing received by 40%
+  - Shepherd's Call     | Passive  | Your summons have +20% HP and +15% damage when within 2 hexes of you
+
+Tier 2 (Uncommon)
+  - Abyssal Hound       | Summon   | Summon a Void Hound that pursues a target, applying Fracture on each hit. 4 turns.
+  - Rift Anchor         | Active   | Designate a hex; all your summons teleport there
+  - Eldritch Pack       | Passive  | Each additional active summon grants all others +10% damage (max 3 summons)
+
+Tier 3 (Rare)
+  - Tendril Horror      | Summon   | Summon a Horror that roots the nearest enemy for 1 turn, then drains HP per turn. 4 turns.
+  - Void Gate           | Active   | Open a rift; once per 8 turns, pull a random eldritch creature through
+  - Unravel Chorus      | Active   | All your summons self-destruct in a burst; each deals heavy AoE psychic damage
+
+Tier 4 (Epic)
+  - Elder Spawn         | Summon   | Summon a powerful Elder Void Spawn; uses Abyssal Gaze and slam attacks. 4 turns.
+  - Hive Mind           | Passive  | Your summons share an HP pool; when one dies, others absorb 50% of its remaining HP
+
+Tier 5 (Legendary)
+  - The Shepherded      | Summon   | Tear a Grand Rift for 4 turns. Spawns Void Motes, Hounds, and Tendril Horrors
+    Abyss               |          | every turn. All your summons gain Unstoppable (immune to CC and banishment). 15 turns cooldown.
+
+>> Your notes on Void Shepherd:
+>>
+>>
+
+
+[YOUR OVERALL NOTES ON VOIDCALLER]
+>
+>
+>
+
+================================================================================
+NOTE: Classes 6 and beyond are in skill_trees_backup.txt. Apply the same
+conversion rules to produce a full combat edition.
+================================================================================

@@ -1,12 +1,12 @@
-import { getClassDef, getAllCharacterClasses } from "./ClassData";
+import { getClassDef } from "./ClassData";
 import type { StatKey } from "./TalentData";
 import { generateTalentStars, rollStatIncrease, ALL_STAT_KEYS } from "./TalentData";
 import type { SpriteCharType } from "@rendering/SpriteAnimator";
 import type { RosterMember } from "@save/SaveManager";
 import { getArmorDef } from "./ArmorData";
 import { getWeapon } from "./WeaponData";
-import { generateArchetypeTree } from "./SkillTreeData";
 import type { SkillTree } from "./SkillTreeData";
+import { getClass as getRulesetClass, getArchetypeAbilitySlots, buildSkillTreeFromArchetype, PLAYABLE_CLASS_IDS } from "./ruleset/RulesetLoader";
 
 export interface RecruitDef {
   name: string;
@@ -41,11 +41,9 @@ const NAMES = [
   "Werner", "Konrad", "Fritz", "Otto",
 ];
 
-// Lazily populated from all registered classes (avoids import-order issues).
-let _recruitClasses: string[] | null = null;
+// Only recruit from playable classes (the 5 we've fixed for now).
 function getRecruitClasses(): string[] {
-  if (!_recruitClasses) _recruitClasses = getAllCharacterClasses();
-  return _recruitClasses;
+  return [...PLAYABLE_CLASS_IDS];
 }
 
 const CLASS_SPRITES: Record<string, SpriteCharType[]> = {
@@ -238,17 +236,26 @@ export function generateRecruits(partyLevel: number, rng: () => number): Recruit
 
     const is2H = getWeapon(weapon).hands === 2;
 
-    // Generate skill tree from archetype structure
-    const archetypeResult = generateArchetypeTree(classId, null, rng);
-    const skillTree = archetypeResult.tree;
+    const rulesetClass = getRulesetClass(classId);
+    let skillTree: SkillTree = { nodes: [], edges: [] };
+    let uniqueSkills: { uid: string; unlockLevel: number }[] = [];
+    let archetypeId: string | undefined;
+    let skillTheme: string = classId;
+    let secondarySkillTheme: string | null = null;
 
-    // Backward-compat: derive uniqueSkills from tree nodes
-    const uniqueSkills = skillTree.nodes.map(n => ({
-      uid: n.abilityUid,
-      unlockLevel: n.tier * 5, // approximate old-style unlock levels
-    }));
+    if (rulesetClass && rulesetClass.archetypes.length > 0) {
+      const archIndex = Math.floor(rng() * rulesetClass.archetypes.length);
+      const arch = rulesetClass.archetypes[archIndex]!;
+      archetypeId = arch.id;
+      skillTheme = arch.id;
+      const tree = buildSkillTreeFromArchetype(classId, arch.id);
+      skillTree = tree ?? { nodes: [], edges: [] };
+      uniqueSkills = getArchetypeAbilitySlots(classId, arch.id).map(s => ({
+        uid: s.abilityId,
+        unlockLevel: s.tier * 5,
+      }));
+    }
 
-    // Higher-level recruits come with starting CP: ~1 battle per level
     const startingCP = (level - 1) * 80;
 
     recruits.push({
@@ -262,14 +269,14 @@ export function generateRecruits(partyLevel: number, rng: () => number): Recruit
       cost: 40 + level * 25,
       equipment: {
         mainHand: weapon,
-        offHand: is2H ? null : null, // No shield by default for recruits
+        offHand: is2H ? null : null,
         accessory: null,
         bag: [],
       },
       armor: armorForLevel(level),
-      skillTheme: archetypeResult.themeId,
-      secondarySkillTheme: archetypeResult.secondaryThemeId,
-      archetypeId: archetypeResult.archetypeId,
+      skillTheme,
+      secondarySkillTheme,
+      archetypeId,
       uniqueSkills,
       skillTree,
       classPoints: startingCP,

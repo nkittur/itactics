@@ -258,7 +258,12 @@ const BUILTIN_EFFECTS: StatusEffectDef[] = [
   }),
   defWithDefaults({
     id: "haste", name: "Hastened", category: "buff", duration: 2, maxStacks: 1,
-    modifiers: { movementPoints: 2, initiative: 15 },
+    modifiers: { movementPoints: 2, initiative: 15, _apBonusPct: 30 },
+    tags: ["speed"],
+  }),
+  defWithDefaults({
+    id: "temporal_surge", name: "Temporal Surge", category: "buff", duration: 3, maxStacks: 1,
+    modifiers: { movementPoints: 3, initiative: 25, _apBonusPct: 50 },
     tags: ["speed"],
   }),
   defWithDefaults({
@@ -354,6 +359,12 @@ const BUILTIN_EFFECTS: StatusEffectDef[] = [
     modifiers: { dodge: -999 },
     tags: ["cc", "earth"],
   }),
+  /** Thornwall passive: below 30% HP → 50% damage reduction (applied each turn when condition met). */
+  defWithDefaults({
+    id: "petrified_bark", name: "Petrified Bark", category: "buff", duration: 1, maxStacks: 1,
+    modifiers: { _reducePct: 50 },
+    tags: ["defensive"],
+  }),
   defWithDefaults({
     id: "entangle", name: "Entangled", category: "debuff", duration: 2, maxStacks: 1,
     flags: { rooted: true },
@@ -409,6 +420,12 @@ const BUILTIN_EFFECTS: StatusEffectDef[] = [
     id: "channel_dmg", name: "Channeled", category: "debuff", duration: 3, maxStacks: 1,
     periodic: { damagePerTick: 15, damageType: "magical", healPerTick: 0 },
     tags: ["dot", "channel"],
+  }),
+  // DoT tick rate multiplier (Phase 5: "Your DoTs tick 25% faster")
+  defWithDefaults({
+    id: "accelerate_rot", name: "Accelerate Rot", category: "buff", duration: 99, maxStacks: 1,
+    modifiers: { _dotTickRateMult: 1.25 },
+    tags: ["passive"],
   }),
 ];
 
@@ -485,11 +502,12 @@ export class StatusEffectManager {
           eff.remainingTurns = Math.max(eff.remainingTurns, duration);
         }
         if (currentStacks < maxStacks) {
-          comp.effects.push({
+        comp.effects.push({
             id: effectId,
             name: ("name" in def ? def.name : effectId),
             remainingTurns: duration,
             modifiers: { ...("modifiers" in def ? def.modifiers : {}) },
+            sourceId,
           });
         }
       } else if (stackBehavior === "intensity") {
@@ -504,6 +522,7 @@ export class StatusEffectManager {
             name: ("name" in def ? def.name : effectId),
             remainingTurns: duration,
             modifiers: { ...("modifiers" in def ? def.modifiers : {}), _stacks: 1 },
+            sourceId,
           });
         }
       } else {
@@ -514,6 +533,7 @@ export class StatusEffectManager {
             name: ("name" in def ? def.name : effectId),
             remainingTurns: duration,
             modifiers: { ...("modifiers" in def ? def.modifiers : {}) },
+            sourceId,
           });
         } else {
           const existing = comp.effects
@@ -535,6 +555,7 @@ export class StatusEffectManager {
           name: ("name" in def ? def.name : effectId),
           remainingTurns: duration,
           modifiers: { ...("modifiers" in def ? def.modifiers : {}) },
+          sourceId,
         });
       }
     }
@@ -558,7 +579,7 @@ export class StatusEffectManager {
   applyDynamic(
     world: World,
     entityId: EntityId,
-    customDef: { id: string; name: string; duration: number; modifiers: Record<string, number>; maxStacks?: number; dmgPerTurn?: number; healPerTick?: number; tags?: string[] },
+    customDef: { id: string; name: string; duration: number; modifiers: Record<string, number>; maxStacks?: number; dmgPerTurn?: number; healPerTick?: number; tags?: string[]; sourceId?: EntityId },
   ): void {
     const comp = world.getComponent<StatusEffectsComponent>(entityId, "statusEffects");
     if (!comp) return;
@@ -578,6 +599,7 @@ export class StatusEffectManager {
           name: customDef.name,
           remainingTurns: customDef.duration,
           modifiers: { ...customDef.modifiers, ...dynamicMods },
+          sourceId: customDef.sourceId,
         });
       } else {
         const existing = comp.effects
@@ -597,6 +619,7 @@ export class StatusEffectManager {
           name: customDef.name,
           remainingTurns: customDef.duration,
           modifiers: { ...customDef.modifiers, ...dynamicMods },
+          sourceId: customDef.sourceId,
         });
       }
     }
@@ -613,39 +636,39 @@ export class StatusEffectManager {
     let bleedResult: BleedTickResult | null = null;
     const health = world.getComponent<HealthComponent>(entityId, "health");
 
-    // Process all periodic effects
+    // Process all periodic effects. Ability-sourced _dmgPerTurn/_healPerTick take precedence over def.periodic.
+    // Phase 5: DoT tick rate mult from source (who applied the DoT).
     let totalPeriodicDamage = 0;
     for (const effect of comp.effects) {
       const def = getStatusEffectDef(effect.id);
+      const customDmg = effect.modifiers._dmgPerTurn;
+      const customHeal = effect.modifiers._healPerTick;
+      const tickRateMult = this.getDotTickRateMult(world, effect.sourceId ?? null);
 
-      if (def?.periodic) {
-        const stacks = effect.modifiers._stacks ?? 1;
-        if (def.periodic.damagePerTick > 0 && health) {
-          totalPeriodicDamage += def.periodic.damagePerTick * stacks;
+      if (health) {
+        let dmg = 0;
+        if (customDmg != null) {
+          dmg = customDmg;
+        } else if (effect.id === "bleed" && !def?.periodic) {
+          dmg = this.rng.nextInt(5, 10);
+        } else if (def?.periodic && def.periodic.damagePerTick > 0) {
+          const stacks = effect.modifiers._stacks ?? 1;
+          dmg = def.periodic.damagePerTick * stacks;
         }
-        if (def.periodic.healPerTick > 0 && health) {
-          health.current = Math.min(health.max, health.current + def.periodic.healPerTick * stacks);
-        }
+        totalPeriodicDamage += dmg * tickRateMult;
       }
 
-      // Legacy bleed handling
-      if (effect.id === "bleed" && !def?.periodic) {
-        if (health) {
-          const customDmg = effect.modifiers._dmgPerTurn;
-          totalPeriodicDamage += customDmg != null ? customDmg : this.rng.nextInt(5, 10);
+      if (health) {
+        let heal = 0;
+        if (customHeal != null) {
+          heal = customHeal;
+        } else if (def?.periodic && def.periodic.healPerTick > 0) {
+          const stacks = effect.modifiers._stacks ?? 1;
+          heal = def.periodic.healPerTick * stacks;
         }
-      }
-
-      // Handle custom dmgPerTurn for dynamic effects
-      if (effect.modifiers._dmgPerTurn != null && effect.id !== "bleed") {
-        if (health) {
-          totalPeriodicDamage += effect.modifiers._dmgPerTurn;
+        if (heal > 0) {
+          health.current = Math.min(health.max, health.current + Math.floor(heal * tickRateMult));
         }
-      }
-
-      // Handle custom healPerTick for dynamic effects (e.g., heal_hot)
-      if (effect.modifiers._healPerTick != null && health) {
-        health.current = Math.min(health.max, health.current + effect.modifiers._healPerTick);
       }
     }
 
@@ -694,6 +717,22 @@ export class StatusEffectManager {
     }
 
     return bleedResult;
+  }
+
+  /**
+   * Get DoT tick rate multiplier for the given source (entity who applied the DoT).
+   * Phase 5: e.g. 1.25 = "Your DoTs tick 25% faster".
+   */
+  getDotTickRateMult(world: World, sourceId: EntityId | null): number {
+    if (!sourceId) return 1;
+    const comp = world.getComponent<StatusEffectsComponent>(sourceId, "statusEffects");
+    if (!comp) return 1;
+    let mult = 1;
+    for (const e of comp.effects) {
+      const m = e.modifiers._dotTickRateMult;
+      if (m != null && m > 0) mult *= m;
+    }
+    return mult;
   }
 
   /** Check if an entity has a specific effect. */
@@ -780,20 +819,47 @@ export class StatusEffectManager {
     return total;
   }
 
-  /** Get the vulnerability bonus damage multiplier (0 if not vulnerable). */
+  /** Get the vulnerability bonus damage multiplier (0 if not vulnerable). Sums _bonusDmgPct from all effects (e.g. vulnerable, frailty_aura). */
   getVulnerabilityBonus(world: World, entityId: EntityId): number {
     const comp = world.getComponent<StatusEffectsComponent>(entityId, "statusEffects");
     if (!comp) return 0;
-    const vuln = comp.effects.find(e => e.id === "vulnerable");
-    return vuln ? (vuln.modifiers._bonusDmgPct ?? 20) / 100 : 0;
+    let total = 0;
+    for (const e of comp.effects) {
+      const pct = e.modifiers._bonusDmgPct;
+      if (pct != null) total += pct / 100;
+    }
+    return total;
   }
 
-  /** Get the damage reduction percentage (0 if no dmg_reduce). */
+  /** Get total AP bonus percent at turn start (e.g. haste = 30 → +30% AP). Sums _apBonusPct from all effects. */
+  getApBonusPercent(world: World, entityId: EntityId): number {
+    const comp = world.getComponent<StatusEffectsComponent>(entityId, "statusEffects");
+    if (!comp) return 0;
+    let total = 0;
+    for (const e of comp.effects) {
+      const fromMod = e.modifiers._apBonusPct;
+      if (fromMod != null) {
+        total += fromMod;
+        continue;
+      }
+      const def = getStatusEffectDef(e.id);
+      if (def?.modifiers._apBonusPct != null) total += def.modifiers._apBonusPct;
+    }
+    return total;
+  }
+
+  /** Get the damage reduction percentage (max of dmg_reduce and any other _reducePct effects, e.g. petrified_bark). */
   getDamageReduction(world: World, entityId: EntityId): number {
     const comp = world.getComponent<StatusEffectsComponent>(entityId, "statusEffects");
     if (!comp) return 0;
-    const reduce = comp.effects.find(e => e.id === "dmg_reduce");
-    return reduce ? (reduce.modifiers._reducePct ?? 20) / 100 : 0;
+    let pct = 0;
+    for (const e of comp.effects) {
+      const fromMod = e.modifiers._reducePct;
+      const fromDef = getStatusEffectDef(e.id)?.modifiers._reducePct;
+      const v = fromMod ?? fromDef ?? 0;
+      if (v > 0) pct = Math.max(pct, v);
+    }
+    return pct / 100;
   }
 
   /** Count total active debuffs on an entity. */
@@ -827,6 +893,23 @@ export class StatusEffectManager {
       const def = getStatusEffectDef(e.id);
       return def?.tags.includes(tag);
     });
+  }
+
+  /**
+   * Extend duration of a status on an entity by extra turns (e.g. "on kill, extend haste by 1").
+   * If the entity has the status, adds turns to the first matching effect; optionally cap by maxTurns.
+   * @returns true if a matching effect was found and extended.
+   */
+  extendDuration(world: World, entityId: EntityId, effectId: string, extraTurns: number, maxTurns?: number): boolean {
+    const comp = world.getComponent<StatusEffectsComponent>(entityId, "statusEffects");
+    if (!comp) return false;
+    const effect = comp.effects.find(e => e.id === effectId);
+    if (!effect) return false;
+    const newTurns = maxTurns != null
+      ? Math.min(effect.remainingTurns + extraTurns, maxTurns)
+      : effect.remainingTurns + extraTurns;
+    effect.remainingTurns = newTurns;
+    return true;
   }
 
   /** Remove a specific effect from an entity. */

@@ -82,16 +82,16 @@ export class ActionBar {
       btn.textContent = skill.name;
       btn.title = skill.description;
 
-      // Tier color border for generated abilities
-      if (skill.isGenerated && skill.generatedAbility) {
-        const tier = skill.generatedAbility.tier;
+      // Tier color border for generated or ruleset abilities
+      const tier = skill.generatedAbility?.tier ?? (skill.rulesetAbility ? 1 : undefined);
+      if (tier !== undefined) {
         btn.style.borderColor = TIER_COLORS[tier] ?? "#cccccc";
         btn.style.borderWidth = "2px";
         btn.style.borderStyle = "solid";
       }
 
       // Cooldown badge for abilities on cooldown
-      if (skill.isGenerated && skill.cooldown > 0) {
+      if (skill.cooldown > 0) {
         const badge = document.createElement("span");
         badge.className = "skill-cooldown-badge";
         badge.textContent = `${skill.cooldown}`;

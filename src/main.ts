@@ -10,10 +10,15 @@ import { generateTalentStars } from "@data/TalentData";
 import { getArmorDef } from "@data/ArmorData";
 import { setItemRegistry } from "@data/ItemResolver";
 import { setAbilityRegistry } from "@data/AbilityResolver";
-import { generateArchetypeTree } from "@data/SkillTreeData";
 import { getClassDef, getAllCharacterClasses } from "@data/ClassData";
 import { deleteSave } from "@save/SaveManager";
-import "@data/classes/DesignDocClasses";
+import {
+  getClass as getRulesetClass,
+  getArchetypeAbilitySlots,
+  buildSkillTreeFromArchetype,
+  setRulesetById,
+} from "@data/ruleset/RulesetLoader";
+import { generateContracts } from "@data/ContractData";
 
 function simpleRng(): number {
   return Math.random();
@@ -27,13 +32,24 @@ function createStarterUnit(
 ): RosterMember {
   const bodyArmor = getArmorDef("linen_tunic");
   const headArmor = getArmorDef("hood");
-
-  // Generate skill tree from archetype structure
-  const archetypeResult = generateArchetypeTree(classId, null, simpleRng);
-  const skillTree = archetypeResult.tree;
-
   const classDef = getClassDef(classId);
   const base = classDef.baseStats;
+
+  const rulesetClass = getRulesetClass(classId);
+  let skillTree: RosterMember["skillTree"];
+  let abilities: string[];
+  let archetypeId: string | undefined;
+
+  if (rulesetClass && rulesetClass.archetypes.length > 0) {
+    const arch = rulesetClass.archetypes[0]!;
+    archetypeId = arch.id;
+    const slots = getArchetypeAbilitySlots(classId, arch.id);
+    abilities = slots.map((s) => s.abilityId);
+    skillTree = buildSkillTreeFromArchetype(classId, arch.id) ?? undefined;
+  } else {
+    abilities = [];
+    skillTree = undefined;
+  }
 
   return {
     name,
@@ -70,21 +86,17 @@ function createStarterUnit(
         : null,
     },
     spriteType: sprite,
-    skillTheme: archetypeResult.themeId,
-    secondarySkillTheme: archetypeResult.secondaryThemeId ?? undefined,
-    archetypeId: archetypeResult.archetypeId,
-    abilities: skillTree.nodes.map(n => n.abilityUid),
+    archetypeId,
+    abilities,
     skillTree,
-    unlockedNodes: [],
+    unlockedNodes: skillTree ? skillTree.nodes.map((n) => n.nodeId) : [],
     nodeStacks: {},
     classPoints: 0,
   };
 }
 
 function createNewGame(): SaveData {
-  // Initialize registries so generated abilities are captured
-  const abilityRegistry: Record<string, import("@data/AbilityData").GeneratedAbility> = {};
-  setAbilityRegistry(abilityRegistry);
+  setAbilityRegistry({});
 
   return {
     version: 1,
@@ -96,17 +108,34 @@ function createNewGame(): SaveData {
     currentScenarioIndex: 0,
     gold: 200,
     stash: [],
-    abilityRegistry,
+    abilityRegistry: {},
   };
 }
 
 async function init() {
+  setRulesetById("default");
+
   const canvas = document.getElementById("gameCanvas") as HTMLCanvasElement;
   if (!canvas) {
     throw new Error("Canvas element #gameCanvas not found");
   }
 
-  const saveData = await loadGame().catch(() => null);
+  const urlParams = new URLSearchParams(window.location.search);
+  const demoBattle = urlParams.get("demoBattle") === "1";
+  const autoRun = urlParams.get("auto") === "1";
+  if (autoRun) {
+    (window as unknown as { __autoRunBattle?: boolean }).__autoRunBattle = true;
+  }
+
+  let saveData: SaveData | null;
+  if (demoBattle) {
+    saveData = createNewGame();
+    const contracts = generateContracts(1, saveData.roster.length, () => Math.random());
+    saveData.pendingContract = contracts[0]!;
+    saveData.availableContracts = contracts;
+  } else {
+    saveData = await loadGame().catch(() => null);
+  }
 
   if (saveData) {
     setItemRegistry(saveData.itemRegistry ?? {});

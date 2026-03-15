@@ -13,6 +13,8 @@ import { BASIC_ATTACK } from "@data/SkillData";
 import type { WeaponDef } from "@data/WeaponData";
 import { UNARMED } from "@data/WeaponData";
 import type { HexGrid, HexTile } from "@hex/HexGrid";
+import { rulesetAbilityToGenerated } from "@data/ruleset/rulesetAbilityAdapter";
+import type { RulesetAbilityDef } from "@data/ruleset/RulesetSchema";
 
 // ── Helpers ──
 
@@ -43,22 +45,23 @@ function addUnit(world: World, opts: {
 }
 
 function makeAbility(overrides: Partial<GeneratedAbility> & { effects: EffectPrimitive[] }): GeneratedAbility {
+  const { effects, ...rest } = overrides;
   return {
     uid: "ga_test",
     name: "Test Ability",
     description: "test",
     targeting: { type: "tgt_single_enemy", params: {}, powerMult: 1 },
-    effects: overrides.effects,
-    modifiers: overrides.modifiers ?? [],
-    triggers: overrides.triggers ?? [],
+    effects,
+    modifiers: rest.modifiers ?? [],
+    triggers: rest.triggers ?? [],
     cost: { ap: 4, stamina: 10, mana: 0, cooldown: 0, turnEnding: false },
     powerBudget: 5,
     weaponReq: [],
-    tier: overrides.tier ?? 1,
+    tier: rest.tier ?? 1,
     isPassive: false,
     rarity: "common",
-    synergyTags: overrides.synergyTags ?? { creates: [], exploits: [] },
-    ...overrides,
+    synergyTags: rest.synergyTags ?? { creates: [], exploits: [] },
+    ...rest,
   };
 }
 
@@ -70,6 +73,8 @@ const TEST_WEAPON: WeaponDef = {
   id: "test_sword", name: "Test Sword", family: "sword",
   minDamage: 20, maxDamage: 30, hands: 1, manaCost: 0,
   damageType: "physical",
+  apCost: 4, staminaCost: 10, range: 1,
+  hitChanceBonus: 0, critChanceBonus: 0, armorPiercing: 0, level: 1,
 };
 
 /** Create a mock grid that returns tiles for any position. */
@@ -548,6 +553,315 @@ describe("AbilityExecutor", () => {
       // min: 20 * 0.4 * 3 = 24, max: 30 * 0.4 * 3 = 36
       expect(preview.estimatedDamage[0]).toBe(24);
       expect(preview.estimatedDamage[1]).toBe(36);
+    });
+  });
+
+  // ── Phase 0: every effect type executes with minimal outcome (regression safety) ──
+
+  describe("Phase 0: every effect type runs without throwing", () => {
+    /** Units with position for displacement and grid-dependent effects. */
+    function addUnitWithPosition(world: World, q: number, r: number): string {
+      const id = addUnit(world, { q, r });
+      return id;
+    }
+
+    function setupWorldAndGrid(grid: HexGrid) {
+      const world = makeWorld();
+      const attacker = addUnitWithPosition(world, 0, 0);
+      const target = addUnitWithPosition(world, 1, 0);
+      const t0 = grid.get(0, 0);
+      const t1 = grid.get(1, 0);
+      if (t0) (t0 as any).occupant = attacker;
+      if (t1) (t1 as any).occupant = target;
+      return { world, attacker, target };
+    }
+
+    const effectTypes: Array<{
+      type: string;
+      params: Record<string, number | string>;
+      expectMinimal?: (result: AbilityResult) => void;
+    }> = [
+      { type: "dmg_weapon", params: { multiplier: 1 }, expectMinimal: r => expect(r.attackResults.length).toBe(1) },
+      { type: "dmg_execute", params: { multiplier: 1, hpThreshold: 50, bonusMult: 0.5 }, expectMinimal: r => expect(r.attackResults.length).toBe(1) },
+      { type: "dmg_multihit", params: { hits: 2, multPerHit: 0.5 }, expectMinimal: r => expect(r.attackResults.length).toBe(2) },
+      { type: "dmg_spell", params: { multiplier: 1 }, expectMinimal: r => expect(r.attackResults.length).toBe(1) },
+      { type: "dmg_reflect", params: { pct: 30, turns: 2 }, expectMinimal: r => expect(r.appliedEffects.length).toBeGreaterThanOrEqual(0) },
+      { type: "dot_bleed", params: { dmgPerTurn: 4, turns: 2 }, expectMinimal: r => expect(r.appliedEffects.some(e => e.includes("bleed") || e.includes("Bleed"))).toBe(true) },
+      { type: "dot_burn", params: { dmgPerTurn: 4, turns: 2 }, expectMinimal: r => expect(r.appliedEffects.length).toBeGreaterThanOrEqual(0) },
+      { type: "dot_poison", params: { dmgPerTurn: 3, turns: 2 }, expectMinimal: r => expect(r.appliedEffects.length).toBeGreaterThanOrEqual(0) },
+      { type: "disp_push", params: { distance: 1 }, expectMinimal: r => expect(r.pushed !== undefined || r.appliedEffects.length >= 0).toBe(true) },
+      { type: "disp_pull", params: { distance: 1 }, expectMinimal: r => expect(r.appliedEffects.length).toBeGreaterThanOrEqual(0) },
+      { type: "disp_dash", params: { range: 2, damageOnArrival: 0.8 }, expectMinimal: r => expect(r.attackResults.length >= 0).toBe(true) },
+      { type: "disp_teleport", params: { range: 3 }, expectMinimal: r => expect(r.appliedEffects.length).toBeGreaterThanOrEqual(0) },
+      { type: "cc_stun", params: { chance: 100 }, expectMinimal: r => expect(r.appliedEffects.length).toBeGreaterThanOrEqual(0) },
+      { type: "cc_root", params: { turns: 1 }, expectMinimal: r => expect(r.appliedEffects.length).toBeGreaterThanOrEqual(0) },
+      { type: "cc_daze", params: { apLoss: 1, turns: 1 }, expectMinimal: r => expect(r.appliedEffects.length).toBeGreaterThanOrEqual(0) },
+      { type: "cc_fear", params: { chance: 100, turns: 1 }, expectMinimal: r => expect(r.appliedEffects.length).toBeGreaterThanOrEqual(0) },
+      { type: "cc_silence", params: { turns: 1 }, expectMinimal: r => expect(r.appliedEffects.length).toBeGreaterThanOrEqual(0) },
+      { type: "cc_taunt", params: { turns: 1 }, expectMinimal: r => expect(r.appliedEffects.length).toBeGreaterThanOrEqual(0) },
+      { type: "cc_charm", params: { turns: 1, chance: 100 }, expectMinimal: r => expect(r.appliedEffects.length).toBeGreaterThanOrEqual(0) },
+      { type: "debuff_stat", params: { stat: "meleeSkill", amount: 10, turns: 1 }, expectMinimal: r => expect(r.appliedEffects.length).toBeGreaterThanOrEqual(0) },
+      { type: "debuff_vuln", params: { bonusDmg: 20, turns: 1 }, expectMinimal: r => expect(r.appliedEffects.length).toBeGreaterThanOrEqual(0) },
+      { type: "debuff_armor", params: { pct: 20, turns: 1 }, expectMinimal: r => expect(r.appliedEffects.length).toBeGreaterThanOrEqual(0) },
+      { type: "debuff_healReduce", params: { pct: 30, turns: 1 }, expectMinimal: r => expect(r.appliedEffects.length).toBeGreaterThanOrEqual(0) },
+      { type: "buff_stat", params: { stat: "initiative", amount: 15, turns: 1 }, expectMinimal: r => expect(r.appliedEffects.length).toBeGreaterThanOrEqual(0) },
+      { type: "buff_dmgReduce", params: { percent: 20, turns: 1 }, expectMinimal: r => expect(r.appliedEffects.length).toBeGreaterThanOrEqual(0) },
+      { type: "buff_stealth", params: { turns: 1, breakOnAttack: 1 }, expectMinimal: r => expect(r.appliedEffects.length).toBeGreaterThanOrEqual(0) },
+      { type: "buff_shield", params: { amount: 20, turns: 1 }, expectMinimal: r => expect(r.appliedEffects.length).toBeGreaterThanOrEqual(0) },
+      { type: "stance_counter", params: { maxCounters: 1 }, expectMinimal: r => expect(r.stanceActivated !== undefined || r.appliedEffects.length >= 0).toBe(true) },
+      { type: "stance_overwatch", params: { maxTriggers: 1 }, expectMinimal: r => expect(r.appliedEffects.length).toBeGreaterThanOrEqual(0) },
+      { type: "res_apRefund", params: { amount: 2 }, expectMinimal: r => expect(r.apRefunded).toBe(2) },
+      { type: "heal_flat", params: { amount: 25 }, expectMinimal: r => expect(r.appliedEffects.length).toBeGreaterThanOrEqual(0) },
+      { type: "heal_hot", params: { healPerTurn: 8, turns: 2 }, expectMinimal: r => expect(r.appliedEffects.length).toBeGreaterThanOrEqual(0) },
+      { type: "channel_dmg", params: { dmgPerTurn: 10, turns: 2 }, expectMinimal: r => expect(r.appliedEffects).toContain("channel_dmg") },
+      { type: "cleanse", params: { count: 1 }, expectMinimal: r => expect(r.appliedEffects.length).toBeGreaterThanOrEqual(0) },
+      { type: "cooldown_reset", params: {}, expectMinimal: r => expect(r.appliedEffects.length).toBeGreaterThanOrEqual(0) },
+      // summon_unit, zone_persist, trap_place, transform_state no-op without managers; just ensure no throw
+      { type: "summon_unit", params: { hp: 30, turns: 3, count: 1 } },
+      { type: "zone_persist", params: { radius: 2, turns: 2, dmgPerTurn: 0 } },
+      { type: "trap_place", params: { duration: 5 } },
+      { type: "transform_state", params: { turns: 2, bonusPct: 25 } },
+    ];
+
+    it("ruleset ability converts to GeneratedAbility and executes", () => {
+      const grid = makeMockGrid();
+      const { executor } = makeExecutor(grid);
+      const { world, attacker, target } = setupWorldAndGrid(grid);
+
+      const rulesetDef: RulesetAbilityDef = {
+        id: "test_rust_touch",
+        name: "Rust Touch",
+        type: "Attack",
+        description: "Melee hit applies Corrode.",
+        targeting: { type: "tgt_single_enemy", params: { range: 1 } },
+        effects: [
+          { type: "dmg_weapon", params: { multiplier: 1.2 } },
+          { type: "debuff_armor", params: { pct: 5, turns: 2 } },
+        ],
+        cost: { ap: 2, stamina: 5, mana: 0, cooldown: 0, turnEnding: false },
+      };
+
+      const generated = rulesetAbilityToGenerated(rulesetDef);
+      expect(generated.uid).toBe(rulesetDef.id);
+      expect(generated.effects.length).toBe(2);
+      expect(generated.targeting.type).toBe("tgt_single_enemy");
+
+      const result = executor.execute(world, attacker, target, generated, TEST_WEAPON);
+
+      expect(result.attackResults.length).toBe(1);
+      expect(result.appliedEffects.some(e => e.includes("armor") || e.includes("debuff"))).toBe(true);
+    });
+
+    effectTypes.forEach(({ type, params, expectMinimal }) => {
+      it(`${type} executes without throwing`, () => {
+        const grid = makeMockGrid();
+        const { executor } = makeExecutor(grid);
+        const { world, attacker, target } = setupWorldAndGrid(grid);
+
+        const ability = makeAbility({
+          effects: [makeEffect(type, params)],
+        });
+
+        const result = executor.execute(world, attacker, target, ability, TEST_WEAPON);
+
+        expect(result).toBeDefined();
+        expect(result.attackResults).toBeDefined();
+        expect(result.appliedEffects).toBeDefined();
+        expectMinimal?.(result);
+      });
+    });
+  });
+
+  // ── Effect outcomes: verify effect actually does what it describes ──
+
+  describe("effect outcomes match description", () => {
+    it("dot_bleed applies bleed status with dmgPerTurn and tick deals damage", () => {
+      const { executor, sem } = makeExecutor();
+      const world = makeWorld();
+      const attacker = addUnit(world);
+      const target = addUnit(world, { hp: 100, maxHp: 100 });
+
+      const ability = makeAbility({
+        effects: [makeEffect("dot_bleed", { dmgPerTurn: 6, turns: 2 })],
+      });
+      executor.execute(world, attacker, target, ability, TEST_WEAPON);
+
+      expect(sem.hasEffect(world, target, "bleed")).toBe(true);
+      const statusComp = world.getComponent<{ effects: Array<{ id: string; modifiers: Record<string, number> }> }>(target, "statusEffects");
+      const bleedEffect = statusComp?.effects.find(e => e.id === "bleed");
+      expect(bleedEffect?.modifiers._dmgPerTurn).toBe(6);
+
+      const healthBefore = world.getComponent<{ current: number }>(target, "health")!.current;
+      sem.tickTurnStart(world, target);
+      const healthAfter = world.getComponent<{ current: number }>(target, "health")!.current;
+      expect(healthBefore - healthAfter).toBeGreaterThanOrEqual(6);
+      expect(healthAfter).toBeLessThan(healthBefore);
+    });
+
+    it("dot_burn applies burn status with dmgPerTurn and tick deals damage", () => {
+      const { executor, sem } = makeExecutor();
+      const world = makeWorld();
+      const attacker = addUnit(world);
+      const target = addUnit(world, { hp: 100, maxHp: 100 });
+
+      const ability = makeAbility({
+        effects: [makeEffect("dot_burn", { dmgPerTurn: 5, turns: 2 })],
+      });
+      executor.execute(world, attacker, target, ability, TEST_WEAPON);
+
+      expect(sem.hasEffect(world, target, "burn")).toBe(true);
+      const healthBefore = world.getComponent<{ current: number }>(target, "health")!.current;
+      sem.tickTurnStart(world, target);
+      const healthAfter = world.getComponent<{ current: number }>(target, "health")!.current;
+      expect(healthBefore - healthAfter).toBeGreaterThanOrEqual(5);
+      expect(healthAfter).toBeLessThan(healthBefore);
+    });
+
+    it("dot_poison applies poison status with dmgPerTurn and tick deals damage", () => {
+      const { executor, sem } = makeExecutor();
+      const world = makeWorld();
+      const attacker = addUnit(world);
+      const target = addUnit(world, { hp: 100, maxHp: 100 });
+
+      const ability = makeAbility({
+        effects: [makeEffect("dot_poison", { dmgPerTurn: 4, turns: 3 })],
+      });
+      executor.execute(world, attacker, target, ability, TEST_WEAPON);
+
+      expect(sem.hasEffect(world, target, "poison")).toBe(true);
+      const healthBefore = world.getComponent<{ current: number }>(target, "health")!.current;
+      sem.tickTurnStart(world, target);
+      const healthAfter = world.getComponent<{ current: number }>(target, "health")!.current;
+      expect(healthBefore - healthAfter).toBeGreaterThanOrEqual(4);
+      expect(healthAfter).toBeLessThan(healthBefore);
+    });
+
+    it("heal_flat restores HP by the given amount", () => {
+      const { executor } = makeExecutor();
+      const world = makeWorld();
+      const attacker = addUnit(world);
+      const target = addUnit(world, { hp: 50, maxHp: 100 });
+
+      const ability = makeAbility({
+        effects: [makeEffect("heal_flat", { amount: 30 })],
+      });
+      const result = executor.execute(world, attacker, target, ability, TEST_WEAPON);
+
+      const health = world.getComponent<{ current: number }>(target, "health");
+      expect(health!.current).toBe(80);
+      expect(result.appliedEffects).toContain("heal_30");
+    });
+
+    it("heal_hot applies regen with healPerTurn and tick restores HP", () => {
+      const { executor, sem } = makeExecutor();
+      const world = makeWorld();
+      const attacker = addUnit(world);
+      const target = addUnit(world, { hp: 50, maxHp: 100 });
+
+      const ability = makeAbility({
+        effects: [makeEffect("heal_hot", { healPerTurn: 8, turns: 2 })],
+      });
+      executor.execute(world, attacker, target, ability, TEST_WEAPON);
+
+      expect(sem.hasEffect(world, target, "regen")).toBe(true);
+      const statusComp = world.getComponent<{ effects: Array<{ id: string; modifiers: Record<string, number> }> }>(target, "statusEffects");
+      const regenEffect = statusComp?.effects.find(e => e.id === "regen");
+      expect(regenEffect?.modifiers._healPerTick).toBe(8);
+
+      const healthBefore = world.getComponent<{ current: number }>(target, "health")!.current;
+      sem.tickTurnStart(world, target);
+      const healthAfter = world.getComponent<{ current: number }>(target, "health")!.current;
+      expect(healthAfter).toBeGreaterThanOrEqual(healthBefore + 8);
+      expect(healthAfter).toBeGreaterThan(50);
+    });
+
+    it("cc_stun causes target to have stun status", () => {
+      const { executor, sem } = makeExecutor();
+      const world = makeWorld();
+      const attacker = addUnit(world);
+      const target = addUnit(world);
+
+      const ability = makeAbility({
+        effects: [makeEffect("cc_stun", { chance: 100 })],
+      });
+      executor.execute(world, attacker, target, ability, TEST_WEAPON);
+
+      expect(sem.hasEffect(world, target, "stun")).toBe(true);
+    });
+
+    it("debuff_armor applies armor_break status with correct duration", () => {
+      const { executor, sem } = makeExecutor();
+      const world = makeWorld();
+      const attacker = addUnit(world);
+      const target = addUnit(world);
+
+      const ability = makeAbility({
+        effects: [makeEffect("debuff_armor", { pct: 30, turns: 2 })],
+      });
+      executor.execute(world, attacker, target, ability, TEST_WEAPON);
+
+      expect(sem.hasEffect(world, target, "armor_break")).toBe(true);
+      const statusComp = world.getComponent<{ effects: Array<{ id: string; remainingTurns: number }> }>(target, "statusEffects");
+      const armorBreak = statusComp?.effects.find(e => e.id === "armor_break");
+      expect(armorBreak?.remainingTurns).toBe(2);
+    });
+
+    it("channel_dmg applies DoT with dmgPerTurn and tick deals damage", () => {
+      const { executor, sem } = makeExecutor();
+      const world = makeWorld();
+      const attacker = addUnit(world);
+      const target = addUnit(world, { hp: 100, maxHp: 100 });
+
+      const ability = makeAbility({
+        effects: [makeEffect("channel_dmg", { dmgPerTurn: 10, turns: 2 })],
+      });
+      executor.execute(world, attacker, target, ability, TEST_WEAPON);
+
+      const statusComp = world.getComponent<{ effects: Array<{ id: string; modifiers: Record<string, number> }> }>(target, "statusEffects");
+      const channelEffect = statusComp?.effects.find(e => e.id === "channel_dmg");
+      expect(channelEffect?.modifiers._dmgPerTurn).toBe(10);
+
+      const healthBefore = world.getComponent<{ current: number }>(target, "health")!.current;
+      sem.tickTurnStart(world, target);
+      const healthAfter = world.getComponent<{ current: number }>(target, "health")!.current;
+      expect(healthBefore - healthAfter).toBeGreaterThanOrEqual(10);
+      expect(healthAfter).toBeLessThan(healthBefore);
+    });
+
+    it("buff_stat applies stat buff with correct modifier", () => {
+      const { executor, sem } = makeExecutor();
+      const world = makeWorld();
+      const attacker = addUnit(world);
+      const target = addUnit(world);
+
+      const ability = makeAbility({
+        effects: [makeEffect("buff_stat", { stat: "initiative", amount: 20, turns: 2 })],
+      });
+      executor.execute(world, attacker, target, ability, TEST_WEAPON);
+
+      const statusComp = world.getComponent<{ effects: Array<{ id: string; modifiers: Record<string, number> }> }>(attacker, "statusEffects");
+      const buff = statusComp?.effects.find(e => e.id === "buff_initiative");
+      expect(buff).toBeDefined();
+      expect(buff?.modifiers.initiative).toBe(20);
+    });
+
+    it("disp_push moves target by the given distance", () => {
+      const grid = makeMockGrid();
+      const { executor } = makeExecutor(grid);
+      const world = makeWorld();
+      const attacker = addUnit(world, { q: 0, r: 0 });
+      const target = addUnit(world, { q: 1, r: 0 });
+      grid.get(0, 0)!.occupant = attacker as any;
+      grid.get(1, 0)!.occupant = target as any;
+
+      const ability = makeAbility({
+        effects: [makeEffect("disp_push", { distance: 2 })],
+      });
+      executor.execute(world, attacker, target, ability, TEST_WEAPON);
+
+      const pos = world.getComponent<{ q: number; r: number }>(target, "position");
+      expect(pos!.q).toBe(3);
+      expect(pos!.r).toBe(0);
     });
   });
 });

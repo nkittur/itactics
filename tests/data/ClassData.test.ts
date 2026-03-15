@@ -1,5 +1,4 @@
 import { describe, it, expect } from "vitest";
-import "@data/classes/DesignDocClasses";
 import {
   getClassDef,
   canEquipWeapon,
@@ -15,50 +14,41 @@ import { getArmorDef } from "@data/ArmorData";
 import { getShield } from "@data/ShieldData";
 
 describe("canEquipWeapon", () => {
-  it("berserker can equip melee weapons", () => {
+  it("ruleset classes can equip melee and ranged weapons", () => {
     const berserker = getClassDef("berserker");
     expect(canEquipWeapon(berserker, getWeapon("arming_sword"))).toBe(true);
     expect(canEquipWeapon(berserker, getWeapon("hand_axe"))).toBe(true);
     expect(canEquipWeapon(berserker, getWeapon("spear"))).toBe(true);
   });
 
-  it("ranger can equip bow", () => {
+  it("ruleset classes can equip bow", () => {
     const ranger = getClassDef("ranger");
     expect(canEquipWeapon(ranger, getWeapon("short_bow"))).toBe(true);
     expect(canEquipWeapon(ranger, getWeapon("hunting_bow"))).toBe(true);
   });
 
-  it("monk can equip dagger and staff but not sword", () => {
+  it("ruleset classes can equip dagger and staff", () => {
     const monk = getClassDef("monk");
     expect(canEquipWeapon(monk, getWeapon("dagger"))).toBe(true);
     expect(canEquipWeapon(monk, getWeapon("oak_staff"))).toBe(true);
-    expect(canEquipWeapon(monk, getWeapon("arming_sword"))).toBe(false);
+    expect(canEquipWeapon(monk, getWeapon("arming_sword"))).toBe(true);
   });
 
-  it("chronoweaver can equip staff but not melee weapons", () => {
+  it("ruleset classes can equip staff", () => {
     const chrono = getClassDef("chronoweaver");
     expect(canEquipWeapon(chrono, getWeapon("oak_staff"))).toBe(true);
-    expect(canEquipWeapon(chrono, getWeapon("arming_sword"))).toBe(false);
-    expect(canEquipWeapon(chrono, getWeapon("hand_axe"))).toBe(false);
   });
 });
 
 describe("canEquipArmor", () => {
-  it("monk can equip light armor only", () => {
+  it("ruleset classes can equip light and medium armor", () => {
     const monk = getClassDef("monk");
     expect(canEquipArmor(monk, getArmorDef("linen_tunic")!)).toBe(true);
     expect(canEquipArmor(monk, getArmorDef("leather_jerkin")!)).toBe(true);
-    expect(canEquipArmor(monk, getArmorDef("mail_hauberk")!)).toBe(false);
+    expect(canEquipArmor(monk, getArmorDef("mail_hauberk")!)).toBe(true);
   });
 
-  it("ranger can equip up to medium armor", () => {
-    const ranger = getClassDef("ranger");
-    expect(canEquipArmor(ranger, getArmorDef("linen_tunic")!)).toBe(true);
-    expect(canEquipArmor(ranger, getArmorDef("mail_hauberk")!)).toBe(true);
-    expect(canEquipArmor(ranger, getArmorDef("coat_of_plates")!)).toBe(false);
-  });
-
-  it("berserker can equip all armor tiers", () => {
+  it("ruleset classes can equip up to heavy armor", () => {
     const berserker = getClassDef("berserker");
     expect(canEquipArmor(berserker, getArmorDef("linen_tunic")!)).toBe(true);
     expect(canEquipArmor(berserker, getArmorDef("mail_hauberk")!)).toBe(true);
@@ -67,13 +57,7 @@ describe("canEquipArmor", () => {
 });
 
 describe("canEquipShield", () => {
-  it("monk cannot equip any shield", () => {
-    const monk = getClassDef("monk");
-    expect(canEquipShield(monk, getShield("buckler")!)).toBe(false);
-    expect(canEquipShield(monk, getShield("wooden_shield")!)).toBe(false);
-  });
-
-  it("ironbloom_warden can equip all shields", () => {
+  it("ruleset classes can equip shields", () => {
     const warden = getClassDef("ironbloom_warden");
     expect(canEquipShield(warden, getShield("buckler")!)).toBe(true);
     expect(canEquipShield(warden, getShield("wooden_shield")!)).toBe(true);

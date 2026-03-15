@@ -26,6 +26,12 @@ export class MovementPointManager {
     return true;
   }
 
+  /** Add MP (e.g. from triggers). Caps at max. */
+  add(amount: number): void {
+    if (amount <= 0) return;
+    this.current = Math.min(this.max, this.current + amount);
+  }
+
   get remaining(): number {
     return this.current;
   }

@@ -5,7 +5,7 @@ import { getShield } from "@data/ShieldData";
 import { getArmorDef } from "@data/ArmorData";
 import { getItemName } from "@data/ItemData";
 import { canEquipWeapon, canEquipShield, canEquipArmor } from "@data/ClassData";
-import { getClassDefNew } from "@data/ClassDefinition";
+import { getClassDefOptional } from "@data/ClassData";
 
 const MAX_BAG = 2;
 
@@ -347,7 +347,7 @@ export class StoreScreen {
     itemId: string,
     category: StoreCategory,
   ): { canEquip: boolean; reason?: string } {
-    const classDef = member.classId ? getClassDefNew(member.classId) ?? null : null;
+    const classDef = member.classId ? getClassDefOptional(member.classId) ?? null : null;
 
     switch (category) {
       case "weapon": {

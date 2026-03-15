@@ -1,0 +1,644 @@
+SKILL TREE TYPE TAG MISMATCH AUDIT — FINAL
+============================================================================================================================================
+
+Total skills:       3744
+Total skills fixed: 567
+  Round 1 fixes:    462
+  Round 2 fixes:    105
+
+REMAINING UNFIXED 'CRITICAL' SCORES: 148 (all verified as FALSE POSITIVES by LLM review)
+  These are skills where keywords suggest a mismatch but the type tag is actually correct.
+  Examples: Passives that reduce ENEMY armor (offensive), Actives that summon+damage (damage is primary).
+
+TYPE TAG CHANGES APPLIED:
+  Passive -> Passive/Utility                         118 skills
+  Passive -> Passive/Defense                          68 skills
+  Buff -> Buff/Defense                                37 skills
+  Passive -> Passive/Heal                             33 skills
+  Passive -> Reactive                                 30 skills
+  Passive -> Passive/Immunity                         30 skills
+  Buff -> Buff/Shield                                 27 skills
+  Active -> Summon                                    24 skills
+  Passive -> Passive/Evasion                          22 skills
+  Passive -> Passive/Resistance                       20 skills
+  Active -> Heal                                      19 skills
+  Passive -> Passive/Shield                           18 skills
+  Buff -> Buff/Risk                                   11 skills
+  Active -> Active/Defense                            11 skills
+  Buff -> Buff/Immunity                                8 skills
+  Reactive -> Reactive/Defense                         7 skills
+  Buff -> Buff/Movement                                7 skills
+  Buff -> Buff/Evasion                                 7 skills
+  Passive -> Passive/Movement                          6 skills
+  Buff -> Buff/Resistance                              6 skills
+  Buff -> Buff/Heal                                    5 skills
+  Buff -> Active                                       4 skills
+  Active -> Active/Shield                              4 skills
+  Active -> Buff/Risk                                  3 skills
+  Active -> Debuff                                     3 skills
+  Passive -> Buff/Risk                                 2 skills
+  Reactive -> Reactive/Heal                            2 skills
+  Passive -> Debuff                                    2 skills
+  Channel -> Channel/Heal                              2 skills
+  Passive -> Active                                    2 skills
+  Cleanse -> Active                                    2 skills
+  Passive -> Heal                                      1 skills
+  Toggle -> Toggle/Defense                             1 skills
+  Active -> Buff                                       1 skills
+  Active -> Reactive/Defense                           1 skills
+  Buff -> Toggle                                       1 skills
+  Active -> Buff/Heal                                  1 skills
+  Buff -> Passive/Utility                              1 skills
+  Heal -> CC                                           1 skills
+  Passive -> Active/Shield                             1 skills
+  Active -> Buff/Defense                               1 skills
+  Passive -> Reactive/Defense                          1 skills
+  Buff -> Buff/Utility                                 1 skills
+  Passive -> Transform                                 1 skills
+  Heal -> Passive                                      1 skills
+  Buff -> Reactive                                     1 skills
+  Active -> Utility                                    1 skills
+  Utility -> Active/Defense                            1 skills
+  Stealth -> Active                                    1 skills
+  Buff -> Reactive/Heal                                1 skills
+  Cleanse -> Heal                                      1 skills
+  Heal -> Active                                       1 skills
+  Passive -> Reactive/Heal                             1 skills
+  Passive -> Aura                                      1 skills
+  Summon -> Active                                     1 skills
+  Active -> Movement                                   1 skills
+  Attack -> Debuff                                     1 skills
+  Active -> CC                                         1 skills
+
+============================================================================================================================================
+ALL FIXED SKILLS (567 total)
+============================================================================================================================================
+ CLASS                               ARCHETYPE              SKILL                            OLD TAG                NEW TAG                ROUND HOW FIXED
+--------------------------------------------------------------------------------------------------------------------------------------------
+                                                            Time Slip                        Passive                Passive/Evasion        R1    10% dodge chance; engine defaults to +damage instead of evasion
+                                                            Overclock                        Buff                   Buff/Risk              R1    Halves cast times BUT 10% extra mana drain; engine won't apply drawback
+                                                            Blur                             Passive                Passive/Evasion        R1    20% evasion while hasted; engine defaults to +damage instead of evasion
+                                                            Schrodinger                      Passive                Passive/Heal           R1    50% chance to heal to 30% HP instead of dying; engine defaults to +damage
+                                                            Fork Reality                     Active                 Summon                 R1    Creates a clone that copies attacks; engine needs to spawn entity
+                                                            Barkskin                         Buff                   Buff/Defense           R1    +20% damage reduction for 6s; engine defaults to +damage
+                                                            Thorn Coat                       Passive                Reactive               R2    Reflects damage back to attacker when hit; requires on-hit trigger logic
+                                                            Ironwood                         Passive                Passive/Defense        R1    Barkskin grants +15% max HP; engine defaults to +damage
+                                                            Living Fortress                  Passive                Passive/Defense        Rboth Transforms golem into fortress with barriers and cover
+                                                            Petrified Bark                   Passive                Passive/Defense        R1    Below 30% HP gain 50% DR; engine defaults to +damage
+                                                            Photosynthesis                   Passive                Passive/Heal           R1    Regen 1% max HP/s; engine defaults to +damage
+                                                            Deep Roots                       Passive                Passive/Defense        R1    Rejuvenate grants +10% DR; engine defaults to +damage
+                                                            Sap Blood                        Passive                Passive/Heal           R1    15% lifesteal; engine defaults to +damage
+                                                            Regrowth                         Passive                Passive/Shield         R1    Overheal stored as shield; engine defaults to +damage
+                                                            Symbiosis                        Passive                Passive/Heal           R2    Grants +15% to all healing done; directly modifies healing behavior
+                                                            Ancient Growth                   Passive                Passive/Heal           R2    Makes HoTs critically heal; directly modifies healing behavior
+                                                            Bloom Cascade                    Active                 Heal                   R2    Sole effect is burst healing all allies
+                                                            Overtone                         Passive                Passive/Defense        R1    Resonance stacks reduce target damage by 3%; engine defaults to +damage
+                                                            Glass Cannon                     Passive                Buff/Risk              R1    +25% damage dealt AND +15% damage taken; engine misses damage-taken penalty
+                                                            Whisper Step                     Passive                Passive/Movement       R1    +20% movement speed while stealthed; engine defaults to +damage
+                                                            Anechoic                         Passive                Passive/Immunity       R1    Immune to AoE detection; engine defaults to +damage
+                                                            Salvage                          Passive                Heal                   Rboth Primary effect is self-healing for 30% of construct's max HP
+                                                            Crucible                         Buff                   Buff/Defense           R1    Ally gains +20% DR for 8s; engine defaults to +damage
+                                                            Forge Bond                       Buff                   Buff/Heal              R1    Two allies share 15% healing; engine defaults to +damage
+                                                            Phoenix Ash                      Passive                Passive/Heal           R1    Heals on low HP targets doubled; engine defaults to +damage
+                                                            Hearth                           Passive                Passive/Defense        R1    Allies in fire terrain can't be crit, +25% CC resist; engine defaults to +damage
+                                                            Shepherd's Call                  Passive                Passive/Utility        R2    Buffs summon stats; HP bonus on summons not producible by +damage default
+                                                            Eldritch Pack                    Passive                Passive/Utility        R2    Grants summons +8% attack speed per additional summon
+                                                            Hive Mind                        Passive                Passive/Utility        R2    Summons share HP pool and absorb health on death; survivability mechanic
+                                                            Warchanter's Vigor               Passive                Passive/Heal           R2    Allies regenerate 1% HP per 5s; HP regen not damage
+                                                            Field Suture                     Passive                Passive/Defense        R1    Undead +20% HP, no degradation; engine defaults to +damage
+                                                            Redundant Systems                Passive                Passive/Defense        Rboth Auto-grants backup barrier on ally barrier break
+                                                            Bone Plating                     Passive                Passive/Defense        R1    +8% physical DR permanently; engine defaults to +damage
+                                                            Dead Nerve Cluster               Passive                Passive/Immunity       R1    Immune to pain-based CC; engine defaults to +damage
+                                                            Reflex Nerve Web                 Passive                Passive/Evasion        R1    +20% dodge chance; engine defaults to +damage
+                                                            Adaptive Carapace                Reactive               Reactive/Defense       R1    Grow +15% resistance to new damage types; engine runs generic trigger
+                                                            Spectral Shell                   Buff                   Buff/Shield            R1    Absorb next damage instance; engine defaults to +damage
+                                                            Tailwind                         Buff                   Buff/Movement          R1    Ally moves 40% faster; engine defaults to +damage
+                                                            Wind Walk                        Toggle                 Toggle/Defense         R1    Take 20% less physical damage while toggled; engine misses DR
+                                                            Weather Reader                   Passive                Passive/Immunity       R1    No penalties in own weather zones; engine defaults to +damage
+                                                            Thunderhead                      Active                 Summon                 R2    Summons persistent autonomous storm cloud for 20s
+                                                            Arctic Footing                   Passive                Passive/Movement       R1    Full speed on ice terrain; engine defaults to +damage
+                                                            Defiant Ichor                    Passive                Passive/Immunity       R1    Below 15% HP gain 5s damage immunity; engine defaults to +damage
+                                                            Red Mist                         Passive                Passive/Heal           R1    Stacking 2% lifesteal per sacrifice; engine defaults to +damage
+                                                            Blood Bond                       Passive                Passive/Heal           R2    Heals on linked ally are 20% more effective
+                                                            Sanguine Transfusion             Active                 Heal                   R2    Transfers HP to ally as healing; purely heal
+                                                            Vital Lattice                    Buff                   Buff/Defense           R1    3 linked allies share damage equally; engine defaults to +damage
+                                                            Emergency Infusion               Reactive               Reactive/Heal          R1    Auto-transfer 20% HP to ally below 10%; engine runs generic trigger
+                                                            Vitae Overflow                   Passive                Passive/Shield         R1    Excess healing stored as shield; engine defaults to +damage
+                                                            Mass Transfusion                 Active                 Heal                   R2    AoE healing to all allies in radius
+                                                            Blood Economy                    Passive                Passive/Heal           R1    HP sacrificed generates healing for allies; engine defaults to +damage
+                                                            Deepening Dark                   Passive                Passive/Utility        R1    Dream Poison amplifies fear by 15%; engine defaults to +damage
+                                                            Terror Cascade                   Passive                Passive/Utility        R1    Frightened targets who die cause Panic; engine defaults to +damage
+                                                            Unending Night                   Passive                Passive/Utility        R1    Dream Poison DoTs never expire; engine defaults to +damage
+                                                            Dream Guard                      Buff                   Buff/Shield            R1    Negates next damage and drowses attacker; engine defaults to +damage
+                                                            Dense Field                      Passive                Buff/Risk              R1    -10% movement speed but +20% melee damage; engine misses speed penalty
+                                                            Nanobot Lattice                  Buff                   Buff/Defense           R1    20% DR and bleed/poison immunity; engine defaults to +damage
+                                                            Triage Protocol                  Active                 Heal                   R2    Heals up to 3 allies and removes debuffs
+                                                            Regenerative Core                Passive                Passive/Heal           R1    Allies restored to 15% HP instead of dying; engine defaults to +damage
+                                                            Adaptive Shielding               Reactive               Reactive/Defense       R1    Auto-deploy barrier absorbing 40% overflow; engine runs generic trigger
+                                                            Distributed Repair               Passive                Passive/Heal           R2    Adds debuff clearing and healing amplification
+                                                            Overclock                        Buff                   Buff/Risk              R1    Halves cast times BUT 10% extra mana drain; engine won't apply drawback
+                                                            Exponential Growth               Active                 Summon                 R2    Each active drone spawns a copy; creates new summon entities
+                                                            Kinetic Siphon                   Passive                Passive/Utility        R2    Recovers Psi Energy when enemies pushed/thrown; resource regen
+                                                            Psi Ward                         Buff                   Buff/Shield            R1    Psychic barrier absorbs 150% Psi Power damage; engine defaults to +damage
+                                                            Mental Fortress                  Passive                Passive/Immunity       R1    Immune to Fear, Disorient, Mind Wipe; engine defaults to +damage
+                                                            Shared Bulwark                   Buff                   Buff/Shield            R1    Psychic barriers on self and 2 allies; engine defaults to +damage
+                                                            Iron Mind                        Passive                Passive/Utility        R1    Psi Power increases 3% per Psi Ward absorption; engine defaults to +damage
+                                                            Resonant Barrier                 Passive                Passive/Defense        R1    Enemies attacking barrier take 30% feedback; engine defaults to +damage
+                                                            Inviolate Mind                   Buff                   Buff/Immunity          R1    12s total immunity to damage, CC, knockback; engine defaults to +damage
+                                                            Shadow Bond                      Passive                Passive/Utility        R1    Shades auto-flank, can't be surprised; engine defaults to +damage
+                                                            Dark Adaptation                  Passive                Passive/Evasion        R1    20% miss chance in darkness; engine defaults to +damage
+                                                            Creeping Dark                    Passive                Passive/Utility        R1    Shadow zones expand, enemies regen 50% slower; engine defaults to +damage
+                                                            Grand Prism                      Active                 Summon                 R1    Summons a massive floating Grand Prism crystal for 12s
+                                                            Crystal Shell                    Buff                   Buff/Shield            R1    Absorbs damage equal to 200% weapon stat; engine defaults to +damage
+                                                            Mineral Hardening                Passive                Passive/Defense        R1    Physical DR permanently increases by 2%; engine defaults to +damage
+                                                            Refraction Plate                 Passive                Passive/Resistance     R1    Beam/laser/radiant attacks deal 50% less damage; engine defaults to +damage
+                                                            Diamond Shell                    Buff                   Buff/Shield            R1    Absorbs 400% weapon stat damage; engine defaults to +damage
+                                                            Resonant Armor                   Passive                Reactive               Rboth Releases damage burst after absorbing threshold; triggered by damage
+                                                            Living Stone                     Passive                Passive/Immunity       R1    Immunity to bleed, poison, disease; engine defaults to +damage
+                                                            Impervious Lattice               Buff                   Buff/Immunity          R1    Immune to all forced movement and CC; engine defaults to +damage
+                                                            Apex Pack                        Active                 Buff                   R2    Temporarily doubles companion limit and empowers all companions
+                                                            Bestial Instinct                 Passive                Passive/Evasion        R1    +15% evasion; engine defaults to +damage
+                                                            Soul Tether                      Passive                Passive/Heal           R1    Spend 20% HP to keep companion alive at 1 HP; engine defaults to +damage
+                                                            Chimeric Adaptation              Passive                Passive/Utility        R2    Permanently gains minor traits from merges; multi-stat utility
+                                                            Shared Resolve                   Passive                Passive/Defense        R1    +20% DR for 8s; engine defaults to +damage
+                                                            Evolve: Armored                  Passive                Passive/Defense        R1    30% DR, immunity to bleed/poison; engine defaults to +damage
+                                                            Legendary Bond                   Passive                Passive/Defense        R1    Companion shares 50% of your DR and resistances; engine defaults to +damage
+                                                            Rune Sense                       Passive                Passive/Utility        R2    Provides awareness of rune status; information utility
+                                                            Reinforcing Glyph                Buff                   Buff/Defense           R1    Reduces incoming damage by 15% for 30s; engine defaults to +damage
+                                                            Overcharge                       Buff                   Buff/Risk              R1    200% bonus damage but explosion hits allies; engine won't apply friendly fire
+                                                            Coral Growth                     Passive                Passive/Utility        R2    Coral formations grow and develop varied features
+                                                            Ocean's Bounty                   Passive                Passive/Heal           R1    3% max HP regen per second; engine defaults to +damage
+                                                            Mirage Passive                   Passive                Passive/Evasion        R1    10% miss chance beyond 10m; engine defaults to +damage
+                                                            Dust Devil                       Active                 Summon                 R1    Summons a small whirlwind entity for 6s
+                                                            Storm Sight                      Passive                Passive/Immunity       R1    Immune to sand-based blindness and Erosion; engine defaults to +damage
+                                                            Fortifying Tonic                 Buff                   Buff/Defense           R1    25% DR for 10s; engine defaults to +damage
+                                                            Stimulant Flask                  Buff                   Buff/Movement          R1    30% attack speed and 20% movement speed; engine defaults to +damage
+                                                            Immunizing Agent                 Buff                   Buff/Immunity          R1    Immune to disease, poison, Contagion for 12s; engine defaults to +damage
+                                                            Grand Tincture                   Buff                   Buff/Heal              R2    Applies all flask buffs including healing, fortification
+                                                            Combat Stimulant                 Active                 Buff/Risk              R1    40% attack speed +20% damage but 5% HP self-damage; engine misses drawback
+                                                            Toxic Blood                      Active                 Reactive/Defense       R1    Melee attackers take poison damage; triggered reactive, not generic active
+                                                            Adaptive Immunity                Passive                Passive/Resistance     R1    30% resistance to specific effect permanently; engine defaults to +damage
+                                                            String Network                   Passive                Passive/Defense        R1    Damage distributed among dolls reducing each; engine defaults to +damage
+                                                            String Puppet                    Passive                Passive/Utility        R2    Destroyed dolls grant nearby dolls +15% to all stats
+                                                            Doll Army                        Active                 Summon                 R2    Instantly summons 6 Basic Dolls
+                                                            Afterimage                       Passive                Passive/Evasion        R1    25% chance attacks hit afterimage; engine defaults to +damage
+                                                            Reinforced Anchor                Passive                Passive/Defense        R1    15% DR and knockback immunity; engine defaults to +damage
+                                                            Bulwark                          Passive                Passive/Defense        R1    Allies behind you gain 20% DR; engine defaults to +damage
+                                                            Reflective Plating               Passive                Passive/Defense        R1    15% of absorbed damage reflected back; engine defaults to +damage
+                                                            Ablative Armor                   Passive                Passive/Defense        R1    Retain 15% DR from mech plating; engine defaults to +damage
+                                                            Fortress Walk                    Passive                Passive/Immunity       R1    Immune to forced movement; engine defaults to +damage
+                                                            Reactive Plating                 Passive                Passive/Defense        R1    Reflecting 50% of crit bonus damage; engine defaults to +damage
+                                                            Overclock                        Buff                   Toggle                 R1    Halves cast times BUT 10% extra mana drain; engine won't apply drawback
+                                                            Thermal Armor                    Passive                Passive/Defense        R1    DR equal to 0.3% per Heat point; engine defaults to +damage
+                                                            Ink Reserve                      Passive                Passive/Utility        R2    Passive Ink regeneration; resource generation
+                                                            The Grand Illustration           Active                 Summon                 R2    Creates 8 Masterwork quality creatures simultaneously
+                                                            Write: SHIELD                    Buff                   Buff/Shield            R1    Protective barrier absorbing damage; engine defaults to +damage
+                                                            Compound Words                   Passive                Passive/Utility        R2    Two-word combinations for enhanced effects; combination mechanic
+                                                            Write: HASTE                     Buff                   Buff/Movement          R1    40% attack and movement speed; engine defaults to +damage
+                                                            Stoic Endurance                  Passive                Passive/Defense        R1    +10% bonus max HP; engine defaults to +damage
+                                                            Selfless Aegis                   Buff                   Buff/Shield            R1    Divine shield absorbing large damage; engine defaults to +damage
+                                                            Radiant Suffering                Passive                Passive/Heal           R1    Healing 50% more effective; engine defaults to +damage
+                                                            Holy Transference                Buff                   Buff/Shield            R1    30% of your HP as temporary bonus HP pool; engine defaults to +damage
+                                                            Undying Oath                     Passive                Passive/Defense        R1    Survive at 1 HP instead of dying; engine defaults to +damage
+                                                            Voracious                        Passive                Passive/Heal           R2    Increases lifesteal to 12% below 50% HP; self-heal modifier
+                                                            Overfed                          Passive                Passive/Shield         R1    Overheal accumulates as temp shield; engine defaults to +damage
+                                                            Hunger Madness                   Active                 Buff/Risk              R1    Triple speed but hits friend or foe; engine misses friendly fire risk
+                                                            Spectral Bonding                 Passive                Passive/Heal           R1    Each spectral blade heals 2 HP; engine defaults to +damage
+                                                            The Ghost Armory                 Active                 Summon                 R2    Summons 10 spectral blades that independently hunt targets
+                                                            Behemoth Passive                 Passive                Passive/Immunity       R2    Immunity to knockback and 30% CC duration reduction
+                                                            Behemoth Endurance               Passive                Passive/Defense        R1    +20% additional DR; engine defaults to +damage
+                                                            Size Advantage                   Passive                Passive/Defense        R2    Enemies suffer 10% miss chance and -10% damage; reduces incoming damage
+                                                            Unstoppable Charge               Passive                Passive/Immunity       R1    Cannot be stopped by CC; engine defaults to +damage
+                                                            Swarm Cohesion                   Passive                Passive/Immunity       R1    Immune to physical attacks; engine defaults to +damage
+                                                            Selective Phasing                Passive                Passive/Utility        R1    Selectively interact with objects while phased; engine defaults to +damage
+                                                            Extended Phase                   Passive                Passive/Utility        R1    Extended phasing with resource cost change; engine defaults to +damage
+                                                            Heal Chain                       Active                 Buff/Heal              R2    Entangles two allies so healing splits 50/50
+                                                            Chronicle Buffer                 Passive                Passive/Heal           R1    Auto-rewind to 4s ago restoring HP; engine defaults to +damage
+                                                            Paradox Insurance                Passive                Passive/Defense        R1    Survive killing blow via Anchor Point; engine defaults to +damage
+                                                            Quickstep Protocol               Buff                   Buff/Movement          R1    20% movement and attack speed; engine defaults to +damage
+                                                            Temporal Static                  Passive                Passive/Defense        R1    Slowed enemies deal 10% less damage; engine defaults to +damage
+                                                            Haste Matrix                     Buff                   Buff/Movement          R1    +30% attack speed, +20% move speed; engine defaults to +damage
+                                                            Overcharge                       Buff                   Active                 R1    200% bonus damage but explosion hits allies; engine won't apply friendly fire
+                                                            Repulsor Plate                   Buff                   Buff/Defense           R1    Deflects ranged attack; engine defaults to +damage
+                                                            Iron Skin Charge                 Passive                Passive/Utility        R2    Absorb metal from strikes to gain Iron Charges; resource generation
+                                                            Magnetic Aegis                   Active                 Active/Shield          R1    Shield absorbing 200 damage; engine won't create absorb barrier
+                                                            Ferrous Barrier                  Active                 Active/Defense         R2    Raises wall blocking projectiles; defensive barrier
+                                                            Charge Siphon                    Passive                Passive/Utility        R1    Gain Iron Charges resource; engine defaults to +damage
+                                                            Fortress Shell                   Active                 Active/Shield          R1    Massive barrier absorbing 1500 damage; engine won't create shield
+                                                            Reactive Lattice                 Passive                Reactive               R1    Triggered effect on shielded hit; Passive is wrong activation model
+                                                            Ember Vessel                     Buff                   Buff/Risk              R1    Fire damage BUT 2% max HP/sec self-damage; engine won't apply drawback
+                                                            Demonic Reflex                   Passive                Passive/Defense        R1    10% DR; engine defaults to +damage
+                                                            Soul Overflow                    Passive                Reactive               R1    Fire burst triggered on possession expiry; Passive is wrong activation
+                                                            Infernal Marrow                  Passive                Reactive               R1    Stored damage released on possession end; Passive is wrong activation
+                                                            Soul Farm                        Passive                Passive/Heal           R1    Restore 5% HP on demon kills; engine defaults to +damage
+                                                            Fine Print                       Passive                Passive/Utility        R1    Reduce bargain HP cost by 5%; engine defaults to +damage
+                                                            Demon's Margin                   Passive                Passive/Heal           R1    Stored HP returned as heal after 5 bargains; engine defaults to +damage
+                                                            Crooked Ledger                   Passive                Passive/Utility        R1    Bargain HP costs reduced by 30%; engine defaults to +damage
+                                                            Celestial Hover                  Passive                Passive/Defense        R1    Immune to ground AoE, 10% DR from projectiles; engine defaults to +damage
+                                                            Radiant Draft                    Buff                   Buff/Movement          R1    Grant allies temporary flight; engine defaults to +damage
+                                                            Grace Ward                       Buff                   Buff/Shield            R1    Absorbs next 200 damage; engine defaults to +damage
+                                                            Sacred Ground                    Passive                Passive/Heal           R1    Restores 2% HP/sec to self and allies; engine defaults to +damage
+                                                            Bastion of Heaven                Active                 Heal                   R2    Creates sanctuary that heals allies 5% max HP/sec
+                                                            Merciful Aegis                   Passive                Passive/Shield         R1    Auto-applies Grace Ward shield to low HP allies; engine defaults to +damage
+                                                            Martyr's Resolve                 Passive                Passive/Immunity       R1    Survive killing blow at 1 HP with immunity; engine defaults to +damage
+                                                            Covenant Shield                  Active                 Active/Defense         R1    Redirects damage from allies to self at 50%; engine won't apply defense
+                                                            Echo Mastery                     Passive                Passive/Utility        R1    Use hero skill as free bonus action; engine defaults to +damage
+                                                            Frightful Presence               Passive                Passive/Evasion        R1    Enemies have 15% chance to miss; engine defaults to +damage
+                                                            Echo Chamber                     Passive                Debuff                 R1    Stolen abilities usable twice; engine defaults to +damage
+                                                            Soul Drain                       Channel                Channel/Heal           R1    Drain HP and convert 50% to healing; engine won't apply heal
+                                                            Attunement                       Passive                Passive/Heal           R1    Regen 1% HP/sec in zone; engine defaults to +damage
+                                                            Layline Tap                      Passive                Passive/Utility        R2    Circle gains damage and healing for allies on kills
+                                                            Reagent Pouch                    Passive                Passive/Utility        R1    Begin combat with 6 Reagent Tokens; engine defaults to +damage
+                                                            Efficient Synthesis              Passive                Passive/Utility        R1    Receive 1 token refund on counter-mix; engine defaults to +damage
+                                                            Short Fuse                       Passive                Passive/Utility        R1    Grenades detonate instantly within 5m; engine defaults to +damage
+                                                            Iron Hide Serum                  Buff                   Buff/Defense           R1    +20% physical DR; engine defaults to +damage
+                                                            Adrenaline Spike                 Buff                   Buff/Risk              R1    Gain speed but withdrawal afterward; engine won't apply drawback
+                                                            Metabolic Surge                  Buff                   Passive/Utility        R1    +50% attack speed +20% damage BUT 8% HP exhaustion; engine won't apply drawback
+                                                            Hemotoxin Cocktail               Buff                   Buff/Risk              R1    Attacks inject DoT BUT lose 3% HP per attack; engine won't apply self-harm
+                                                            Adaptive Serum                   Passive                Passive/Utility        R1    Reduces side effect severity by 10% per potion; engine defaults to +damage
+                                                            Ectofluid Extract                Buff                   Buff/Risk              R1    Dodge through objects BUT 20% damage vulnerability; engine won't apply vulnerabi
+                                                            Bladework Rhythm                 Passive                Passive/Defense        R1    Wider parry window per successive parry; engine defaults to +damage
+                                                            Iron Wrist                       Passive                Passive/Defense        R1    Can parry ranged and magical attacks; engine defaults to +damage
+                                                            Unbroken Guard                   Passive                Passive/Immunity       R1    Cannot be staggered, knocked down, or interrupted; engine defaults to +damage
+                                                            Tell-Read                        Passive                Passive/Utility        R1    Read enemy attack telegraphs; engine defaults to +damage
+                                                            Form Flow                        Passive                Passive/Utility        R1    Generate Form Tokens on stance switch; engine defaults to +damage
+                                                            Transition Mastery               Passive                Passive/Utility        R1    Restore tokens and reduce cooldowns on transitions; engine defaults to +damage
+                                                            Vital Hemorrhage                 Passive                Passive/Heal           R1    1% HP regen at 50+ Fury; engine defaults to +damage
+                                                            Death's Door Mastery             Passive                Passive/Immunity       R1    Immune to fear, CC, knockback below 20% HP; engine defaults to +damage
+                                                            Pack Breaker                     Passive                Passive/Utility        R1    Fear spreads to adjacent enemies; engine defaults to +damage
+                                                            Imposing Stature                 Passive                Passive/Utility        R1    Aura radius increase + brief stun on entry; engine defaults to +damage
+                                                            Berserker's Legend               Passive                Passive/Utility        R1    Enemies start with reduced morale; engine defaults to +damage
+                                                            Weighted Links                   Passive                Passive/Utility        R1    Chain effect duration stacks +0.5s each; engine defaults to +damage
+                                                            Chain Mastery                    Passive                Passive/Utility        R1    Auto-trigger Constriction when conditions met; engine defaults to +damage
+                                                            Mirror Scan                      Passive                Passive/Utility        R1    Scan and reveal enemy abilities; engine defaults to +damage
+                                                            Double Take                      Passive                Passive/Utility        R1    Hold 2 copied abilities, 30% longer; engine defaults to +damage
+                                                            Repertoire                       Passive                Passive/Utility        R1    Hold 4 copied abilities + cooldown reset; engine defaults to +damage
+                                                            Adaptive Skin                    Passive                Passive/Resistance     R1    5% resistance to each damage type; engine defaults to +damage
+                                                            Pain Data                        Passive                Passive/Resistance     R1    +3% resistance to logged damage types; engine defaults to +damage
+                                                            Reactive Tissue                  Passive                Passive/Resistance     R1    Gain 8% resistance on big hits; engine defaults to +damage
+                                                            Stress Response                  Buff                   Buff/Resistance        R1    Double all resistances for 6s; engine defaults to +damage
+                                                            Immunological                    Passive                Passive/Immunity       R1    Status effects 30% reduced duration on repeat; engine defaults to +damage
+                                                            Hardened                         Passive                Passive/Defense        R1    Convert resistance to flat DR; engine defaults to +damage
+                                                            The Body Learns                  Passive                Passive/Resistance     R1    Resistances persist between encounters; engine defaults to +damage
+                                                            Overclock Adaptation             Buff                   Buff/Resistance        R1    Every hit triggers resistance gain; engine defaults to +damage
+                                                            Total Immunity                   Passive                Passive/Immunity       R1    Immune to secondary effects at 40%+ resistance; engine defaults to +damage
+                                                            Sample Slot                      Passive                Passive/Utility        R1    Begin with 3 trait sample slots; engine defaults to +damage
+                                                            Biomass                          Passive                Passive/Utility        R1    Increase trait slots to 5; engine defaults to +damage
+                                                            Perfect Specimen                 Passive                Passive/Utility        R1    Absorb one active ability from killed enemy; engine defaults to +damage
+                                                            Living Archive                   Passive                Passive/Utility        R1    Expand trait slots to 10; engine defaults to +damage
+                                                            The Wandering Star               Passive                Passive/Utility        R1    Gain free roaming Stellar Node; engine defaults to +damage
+                                                            The Hunter Pattern               Active                 Summon                 R1    Summons spectral constellation hunter that attacks
+                                                            Celestial Roof                   Active                 Active/Shield          R2    Creates dome preventing entry while allies regen HP
+                                                            Deep Map                         Passive                Passive/Utility        R1    Max nodes to 5 + auto-detect formations; engine defaults to +damage
+                                                            Null Field                       Passive                Passive/Evasion        R1    15% chance projectiles annihilated; engine defaults to +damage
+                                                            Dark Matter Siphon               Channel                Channel/Heal           R1    Drain enemy HP, gain as temp shield; engine won't apply heal/shield
+                                                            Capacitative Skin                Passive                Passive/Defense        R1    20% DR below 30% Mana; engine defaults to +damage
+                                                            Surge Immunity                   Passive                Passive/Utility        R1    Cast via HP when Mana hits 0; engine defaults to +damage
+                                                            Charge Absorption                Passive                Passive/Utility        R1    Absorb 10% of damage as stored Charge; engine defaults to +damage
+                                                            Overcharge Shell                 Buff                   Buff/Shield            R1    Convert charge into damage-absorbing shield; engine defaults to +damage
+                                                            Charge Siphon                    Passive                Active                 R1    Gain Iron Charges resource; engine defaults to +damage
+                                                            Trickle Feed                     Passive                Passive/Utility        R1    Gain 5 Charge/sec, Charge as Mana substitute; engine defaults to +damage
+                                                            Vapor Body                       Passive                Passive/Immunity       R1    Immune to physical attacks in smoke form; engine defaults to +damage
+                                                            Extended Form                    Passive                Passive/Utility        R1    Increase Disperse duration to 3s; engine defaults to +damage
+                                                            Smoke Veil                       Buff                   Buff/Evasion           R1    15% evasion against ranged; engine defaults to +damage
+                                                            Asphyxiate                       Passive                Passive/Utility        R1    Enemies at 3+ stacks can't channel; engine defaults to +damage
+                                                            Respiratory Failure              Passive                Passive/Utility        R1    Enemies at 5+ stacks lose vocal abilities; engine defaults to +damage
+                                                            Smoke Double                     Active                 Summon                 R2    Spawns stationary smoke clone entity that draws AI targeting
+                                                            Mirror Mind                      Passive                Passive/Defense        R1    Smoke Doubles inherit 15% of your armor; engine defaults to +damage
+                                                            The Three                        Active                 Summon                 R2    Spawns 3 Smoke Doubles simultaneously around target
+                                                            Army of Phantoms                 Active                 Summon                 R2    Spawns 5 Smoke Doubles across 20m radius
+                                                            Rough Ground                     Passive                Passive/Utility        R1    Fractured terrain slows + staggers; engine defaults to +damage
+                                                            Tectonic Authority               Passive                Passive/Immunity       R1    Immune to own terrain effects; engine defaults to +damage
+                                                            Molten Core                      Passive                Passive/Utility        R1    Lava slows enemies after 6s; engine defaults to +damage
+                                                            Volcanic Armor                   Buff                   Buff/Defense           R1    25% DR + melee attackers take fire; engine defaults to +damage
+                                                            Stone Skin                       Buff                   Buff/Defense           R1    20% DR + knockback immunity; engine defaults to +damage
+                                                            Ancient Patience                 Passive                Passive/Heal           R1    Regen 1% HP/sec during Stone Skin; engine defaults to +damage
+                                                            Stone Sentinel                   Passive                Passive/Utility        R1    Petrification stacks slow and reduce cast speed; engine defaults to +damage
+                                                            Fossil Shield                    Buff                   Buff/Shield            R1    Block next 3 attacks entirely; engine defaults to +damage
+                                                            Calcification                    Heal                   CC                     R1    Force Petrification stacks or root; this is CC, not healing
+                                                            Sixth Sense                      Passive                Passive/Utility        R1    Visual cue before enemy attacks; engine defaults to +damage
+                                                            Future Memory                    Passive                Passive/Defense        R1    Reduce damage from seen abilities by 15%; engine defaults to +damage
+                                                            Prediction                       Buff                   Buff/Evasion           R1    Auto-dodge predicted ability; engine defaults to +damage
+                                                            Perfect Evasion                  Passive                Passive/Evasion        R1    Extend Sixth Sense dodge to allies; engine defaults to +damage
+                                                            Foretell Wound                   Buff                   Buff/Defense           R1    15-30% DR shield; engine defaults to +damage
+                                                            Mass Prophecy                    Buff                   Buff/Defense           R1    +10% DR and +10% healing received; engine defaults to +damage
+                                                            Probability Field                Passive                Passive/Evasion        R1    5% enemy miss chance per attack; engine defaults to +damage
+                                                            Serendipity                      Passive                Passive/Immunity       R1    Lethal attack auto-misses once per fight; engine defaults to +damage
+                                                            Bone Plate                       Passive                Passive/Shield         R1    Bone plating absorbing 50 damage; engine defaults to +damage
+                                                            Harvest Bone                     Passive                Passive/Shield         R1    Restore/grow Bone Plate from kills; engine defaults to +damage
+                                                            Calcify                          Buff                   Buff/Defense           R1    +30% DR + knockback immunity for 5s; engine defaults to +damage
+                                                            Ossified                         Passive                Passive/Resistance     R1    +5% all resistances per 100 Bone Plate; engine defaults to +damage
+                                                            Living Armor                     Passive                Active/Shield          R1    Barriers auto-regenerate and replace; engine defaults to +damage
+                                                            The Bone Crown                   Passive                Passive/Utility        R1    Enemies flinch/stagger + morale check; engine defaults to +damage
+                                                            Marrow Vaults                    Passive                Passive/Shield         R1    Second emergency Bone Plate layer; engine defaults to +damage
+                                                            Bone Link                        Passive                Passive/Utility        R1    Reduce Raise Dead Mana cost; engine defaults to +damage
+                                                            Undying Loyalty                  Passive                Passive/Utility        R1    Re-raise skeleton for free within 10s; engine defaults to +damage
+                                                            Endless Host                     Passive                Passive/Utility        R2    Swarm auto-regenerates tokens; summon persistence
+                                                            Shell Polish                     Passive                Passive/Defense        R1    3% DR per beetle alive; engine defaults to +damage
+                                                            Molt and Harden                  Active                 Buff/Defense           R2    Commands beetle to regrow 200% armor and heal to full
+                                                            Swarm Throne                     Passive                Passive/Defense        R2    With 3+ beetles, gain 15% personal damage reduction
+                                                            Symbiotic Harvest                Passive                Passive/Utility        R2    Infested target death recovers resources and grants movement speed
+                                                            Sanguine Feast                   Passive                Passive/Heal           R1    0.5% HP per Bleed tick; engine defaults to +damage
+                                                            Ghost Iron Coat                  Buff                   Buff/Shield            R1    Spectral armor absorbing 200 damage; engine defaults to +damage
+                                                            Veil Weave                       Buff                   Buff/Defense           R1    15% DR for ally; engine defaults to +damage
+                                                            Grand Imbue                      Buff                   Buff/Defense           R2    Grants damage + 20% damage reduction; DR component lost under default Buff
+                                                            Lifeline                         Buff                   Buff/Heal              R2    Binds soul to ally; 20% healing shared
+                                                            Resonance                        Passive                Passive/Utility        R2    Each tether reduces ability cooldowns; utility
+                                                            Overclock                        Buff                   Buff/Risk              R1    Halves cast times BUT 10% extra mana drain; engine won't apply drawback
+                                                            Mana Condenser                   Passive                Passive/Utility        R2    Faster mana regen and mana restore at zero; resource management
+                                                            Install: Shield OS               Buff                   Buff/Shield            R1    Reflective shield absorbing 300 damage; engine defaults to +damage
+                                                            Install: Medic OS                Buff                   Buff/Heal              R2    Converts construct into healer; repairs constructs for 50 HP/sec
+                                                            Air Sense                        Passive                Passive/Evasion        R1    10% evasion + pre-attack warning; engine defaults to +damage
+                                                            Feather Form                     Buff                   Buff/Evasion           R1    +20% evasion, +40% speed, CC negation; engine defaults to +damage
+                                                            Eternal Current                  Passive                Passive/Evasion        R1    Evasion contributes to magic DR; engine defaults to +damage
+                                                            The Great Cyclone                Active                 Summon                 R2    Merges tornados and summons additional ones for colossal tornado
+                                                            Photon Ward                      Buff                   Buff/Shield            R1    Light shield absorbing 150 damage; engine defaults to +damage
+                                                            Luminous Shell                   Buff                   Buff/Shield            R1    Light barrier negating first big hit; engine defaults to +damage
+                                                            Aurora Band                      Buff                   Buff/Defense           R1    30% of ally damage redirected to shield; engine defaults to +damage
+                                                            Prismatic Fortress               Buff                   Buff/Shield            R1    Prismatic shell immune to all damage; engine defaults to +damage
+                                                            Void Aegis                       Passive                Passive/Immunity       R1    Immune to Silence, Interrupt, Mana Drain; engine defaults to +damage
+                                                            Hungry Void                      Passive                Passive/Defense        R1    15% magic damage absorbed as essence; engine defaults to +damage
+                                                            Void Stomach                     Passive                Passive/Defense        R1    Increase magic DR by 5%; engine defaults to +damage
+                                                            Void Metabolism                  Passive                Passive/Shield         R1    Excess absorption converts to temp HP; engine defaults to +damage
+                                                            Void Plate                       Buff                   Buff/Shield            R1    Void armor absorbing 200 magic damage; engine defaults to +damage
+                                                            Nothing Between                  Passive                Passive/Resistance     R1    Physical armor contributes to magic DR; engine defaults to +damage
+                                                            Void Carapace                    Buff                   Buff/Defense           R1    20% less all damage for 10s; engine defaults to +damage
+                                                            Void Form                        Buff                   Buff/Evasion           R1    Immune to targeted spells, 30% evasion; engine defaults to +damage
+                                                            Void Sentinel                    Passive                Passive/Shield         R2    Auto-generates Null Charges and reconstructs void armor; shield maintenance
+                                                            Forge Armor                      Buff                   Buff/Shield            R2    Flash-forges crystal armor absorbing 400 damage; damage-absorption shield
+                                                            Trick Step                       Passive                Passive/Evasion        R1    10% evasion for 3s after copy destroyed; engine defaults to +damage
+                                                            Reactive Reduction               Passive                Reactive/Defense       R2    Triggered on ally crit; consumes ingredient for protective glaze
+                                                            Camp Fire                        Active                 Heal                   R2    Conjures campfire regenerating allies 2% HP/s; purely healing
+                                                            Broth of Fortitude               Buff                   Buff/Defense           R1    +15% max HP and +10% physical resistance; engine defaults to +damage
+                                                            Afterimage                       Passive                Passive/Evasion        R1    25% chance attacks hit afterimage; engine defaults to +damage
+                                                            Slipstream                       Passive                Passive/Movement       R1    +40% movement speed after teleport; engine defaults to +damage
+                                                            Redirect                         Passive                Reactive               R2    Mirror images 40% chance to intercept attacks; functionally evasion
+                                                            Decoy Placement                  Active                 Active/Defense         R2    Swaps with decoy that absorbs 2 attacks; deals no damage
+                                                            Penumbra                         Buff                   Buff/Immunity          R1    Ally immune to coated element for 10s; engine defaults to +damage
+                                                            Perfect Eclipse                  Passive                Passive/Utility        R2    Triggers CC on enemies; not bonus damage
+                                                            Invoke Taurus                    Buff                   Buff/Defense           R1    +20% physical resistance, +10% max HP; engine defaults to +damage
+                                                            Daemon Factory                   Active                 Summon                 R2    Summon daemons at double rate; entire effect is producing summons
+                                                            Graft Dermis                     Buff                   Buff/Defense           R1    20% physical DR; engine defaults to +damage
+                                                            Graft Heart                      Buff                   Buff/Shield            R2    Grants +25% max HP and auto-generates 10% HP shield
+                                                            Rejection Risk                   Passive                Passive/Utility        R2    Grafts have empower/reject chance; modifies graft system
+                                                            Graft Spine                      Buff                   Buff/Immunity          R1    Immune to knockback, +30% CC resistance; engine defaults to +damage
+                                                            Harden Flesh                     Buff                   Buff/Defense           R1    25% physical DR for 6s; engine defaults to +damage
+                                                            Mass Shift                       Buff                   Buff/Evasion           R1    +30% speed, +15% dodge; engine defaults to +damage
+                                                            Carapace                         Buff                   Buff/Defense           R1    +35% physical resistance, reflect melee; engine defaults to +damage
+                                                            Metabolic Surge                  Buff                   Buff/Risk              R1    +50% attack speed +20% damage BUT 8% HP exhaustion; engine won't apply drawback
+                                                            Biological Fortitude             Passive                Passive/Resistance     R1    Reduce DoT durations by 35%; engine defaults to +damage
+                                                            Overheal                         Passive                Passive/Shield         R1    Excess healing converts to temp HP; engine defaults to +damage
+                                                            Viral Recovery                   Active                 Heal                   R2    Incoming hits trigger 15% max HP heal and status purge on ally
+                                                            Adaptive Biology                 Passive                Passive/Resistance     R1    +8% resistance per new damage type; engine defaults to +damage
+                                                            Lady Luck's Eye                  Passive                Passive/Utility        R1    20% chance to refund resource cost; engine defaults to +damage
+                                                            Bankroll                         Passive                Passive/Utility        R1    Below 30% HP, Reckless Bet costs no HP; engine defaults to +damage
+                                                            Card Counter                     Passive                Passive/Utility        R1    After 26 cards, draws only pull face cards; engine defaults to +damage
+                                                            Favorable Reading                Buff                   Buff/Utility           R1    Next 2 random outcomes weighted toward success; engine defaults to +damage
+                                                            Reinforced Mind                  Passive                Passive/Utility        R2    Constructs gain +50% HP and immunity to non-magical disruption
+                                                            Holy Harvest                     Passive                Passive/Heal           R1    Restores 3% HP per corrupted buff; engine defaults to +damage
+                                                            Sculptor's Eye                   Passive                Passive/Defense        R2    Walls curve around allies, structures gain +40% durability
+                                                            Living Stone                     Passive                Transform              R1    Immunity to bleed, poison, disease; engine defaults to +damage
+                                                            Rename                           Buff                   Active                 R1    Grants random status (haste/shield/regen/accuracy), not +damage
+                                                            Syllable of Truth                Passive                Passive/Utility        R2    Prevents enemy invisibility/teleport; anti-escape utility
+                                                            Dissolve                         Active                 Active/Defense         R2    Unwrites a projectile mid-flight; defensive projectile negation
+                                                            Debt Collector                   Passive                Debuff                 R1    Triggers when damaged at 7+ Debt; Passive is wrong activation
+                                                            Brine Coat                       Buff                   Buff/Resistance        R1    15% fire resistance; engine defaults to +damage
+                                                            Kraken's Reach                   Active                 Summon                 R2    Summons 3 independent tentacles that autonomously strike
+                                                            Stone Wall                       Active                 Active/Defense         R2    Raises wall blocking movement and projectiles
+                                                            Fortify                          Buff                   Buff/Defense           R1    Structure HP +50% and construction immunity; engine defaults to +damage
+                                                            Labyrinth                        Active                 Active/Defense         R2    Raises maze walls creating cover and chokepoints
+                                                            Living Architecture              Passive                Passive/Defense        R2    Walls self-repair and allies near walls gain 10% DR
+                                                            Master Shaper                    Passive                Passive/Utility        R2    Structures gain +50% HP and persist permanently
+                                                            Quartz Shell                     Buff                   Buff/Resistance        R1    20% physical resistance for 8s; engine defaults to +damage
+                                                            Calcification                    Heal                   Passive                R1    Force Petrification stacks or root; this is CC, not healing
+                                                            Ice Plate                        Buff                   Buff/Shield            R1    Shield worth 15% max HP; engine defaults to +damage
+                                                            Frost Shell                      Reactive               Reactive/Defense       R1    Reduce triggering hit damage by 10%; Reactive needs defense spec
+                                                            Permashield                      Passive                Passive/Shield         R1    Second shield layer on Ice Plate; engine defaults to +damage
+                                                            Glacial Resolve                  Passive                Passive/Defense        R1    +2% DR per stack; engine defaults to +damage
+                                                            Cold Density                     Passive                Passive/Resistance     R1    15% resistance to fire, lightning, cold; engine defaults to +damage
+                                                            Cryogenic Plate                  Buff                   Buff/Defense           R1    Thorns damage to melee attackers; engine defaults to +damage for user
+                                                            Permafrost Core                  Passive                Passive/Shield         R1    Prevents one-shot shield destruction; engine defaults to +damage
+                                                            Arctic Fortress                  Active                 Active/Defense         R1    Immune to all damage and CC; engine won't apply immunity
+                                                            Diamond Ice                      Passive                Passive/Defense        R1    Immunity to piercing, 30% physical DR; engine defaults to +damage
+                                                            Permafrost Skin                  Passive                Passive/Immunity       R1    Cheat-death granting damage immunity; engine defaults to +damage
+                                                            Solar Ward                       Buff                   Buff/Shield            R1    Shield worth 20% max HP; engine defaults to +damage
+                                                            Corona Shield                    Buff                   Buff/Defense           R1    Thorns to shield attackers; engine defaults to +damage for user
+                                                            Supernova Mantle                 Buff                   Buff/Defense           R1    All incoming damage reduced by 20%; engine defaults to +damage
+                                                            Celestial Link                   Passive                Passive/Movement       R2    Each constellation node grants +3% movement speed
+                                                            Astral Armor                     Passive                Passive/Evasion        R1    15% chance per node to deflect projectiles; engine defaults to +damage
+                                                            Between Spaces                   Passive                Passive/Evasion        R1    20% dodge chance; engine defaults to +damage
+                                                            Mirror Skin                      Passive                Passive/Resistance     R1    10% innate magic resistance; engine defaults to +damage
+                                                            Lullaby of Focus                 Buff                   Buff/Immunity          R1    Clears mental debuffs (confusion, fear, charm); engine defaults to +damage
+                                                            Ballad of Endurance              Buff                   Buff/Immunity          R1    Immunity to next CC effect; engine defaults to +damage
+                                                            Resonant Verse                   Passive                Passive/Utility        R2    Resonance stacks amplify next Heal or Buff by 5% per stack
+                                                            Berserker's Anthem               Buff                   Buff/Risk              R1    Take 15% more damage; engine won't apply drawback
+                                                            Steel Body                       Passive                Passive/Defense        R1    15% physical DR in Iron Stance; engine defaults to +damage
+                                                            Redirect                         Passive                Reactive               R2    Mirror images 40% chance to intercept attacks; functionally evasion
+                                                            Like Water                       Passive                Passive/Defense        R1    CC 30% reduced duration, -10% incoming damage; engine defaults to +damage
+                                                            Perfect Flow                     Passive                Passive/Immunity       R1    Cannot be slowed, knocked back, rooted; engine defaults to +damage
+                                                            Shared Vitality                  Passive                Passive/Heal           R1    20% of healing transfers between summoner/eidolon; engine defaults to +damage
+                                                            Eidolon Resilience               Passive                Passive/Heal           R1    Eidolon regenerates 2% per second; engine defaults to +damage
+                                                            Recall and Reform                Active                 Summon                 R2    Recalls Eidolon and resummons at full HP
+                                                            Elemental Rotation               Active                 Summon                 R2    Rapidly cycles through summoning all 4 elementals
+                                                            Expendable                       Passive                Passive/Utility        R2    Summon deaths generate Horde Charges for free resummons
+                                                            Horde Resilience                 Passive                Passive/Defense        R1    +15% DR with 5+ summons; engine defaults to +damage
+                                                            Upgrade Horde                    Active                 Summon                 R2    Sacrifices 4 Imps to summon 1 Elite Minion
+                                                            Endless Horde                    Active                 Summon                 R2    For 15s dead summons instantly and freely replaced
+                                                            Legion                           Active                 Summon                 R2    Summons 20 Imps, 4 Elite Minions, and 1 Champion
+                                                            High Altitude                    Passive                Passive/Defense        R1    +15% DR while airborne; engine defaults to +damage
+                                                            Mount Wyvern                     Active                 Summon                 R2    Summons and mounts wyvern
+                                                            Aerial Superiority               Passive                Passive/Defense        R1    +20% DR and movement impairment ignored; engine defaults to +damage
+                                                            Rider's Instinct                 Passive                Passive/Defense        R1    Reduce wyvern damage taken by 25%; engine defaults to +damage
+                                                            Dragon Scales                    Buff                   Buff/Defense           R1    +15% physical DR; engine defaults to +damage
+                                                            Draconic Blood                   Passive                Passive/Resistance     R1    +10% resistance to all elements; engine defaults to +damage
+                                                            Scale Armor                      Buff                   Buff/Defense           R1    +25% DR and thorns; engine defaults to +damage
+                                                            Redirect                         Passive                Passive/Evasion        R2    Mirror images 40% chance to intercept attacks; functionally evasion
+                                                            Mirror Shield                    Buff                   Buff/Defense           R1    20% physical damage reflected; engine defaults to +damage for user
+                                                            Reflective Surface               Passive                Passive/Defense        R1    Reflects 5% of incoming damage; engine defaults to +damage
+                                                            Polished Defense                 Buff                   Buff/Defense           R1    Physical reflection increases to 35%; engine defaults to +damage
+                                                            Mirror Coat                      Buff                   Buff/Defense           R1    Ally reflects 25% damage received; engine defaults to +damage
+                                                            Full Reflection                  Buff                   Buff/Defense           R1    50% of incoming damage reflected; engine defaults to +damage
+                                                            Amplified Return                 Passive                Passive/Defense        R1    Reflected damage now 120% return; engine defaults to +damage
+                                                            Reactive Shell                   Reactive               Reactive/Defense       R1    Adapt 10% resistance on hit; Reactive needs defense spec
+                                                            Baseline Adaptation              Passive                Passive/Resistance     R1    5% physical damage resistance; engine defaults to +damage
+                                                            Rapid Adaptation                 Passive                Passive/Resistance     R1    Resistance increases 3% per hit; engine defaults to +damage
+                                                            Shell Harden                     Buff                   Buff/Resistance        R1    Double all resistance values; engine defaults to +damage
+                                                            Absorb and Counter               Reactive               Reactive/Defense       R1    Absorb 30% of damage; Reactive needs defense spec
+                                                            Total Adaptation                 Active                 Active/Defense         R2    Raises all damage resistances to 60% for 15s
+                                                            Perfect Organism                 Active                 Active/Defense         R2    Raises all resistances to max with 40% base DR
+                                                            Fed State                        Passive                Passive/Resistance     R1    +10% resistance alongside +10% damage; engine defaults to +damage only
+                                                            Ravenous                         Buff                   Buff/Heal              R1    Consuming restores 15% max HP; engine defaults to +damage
+                                                            Apex Hunger                      Passive                Passive/Defense        R1    +1% DR per stack above 20; engine defaults to +damage
+                                                            Crash Immunity                   Passive                Passive/Immunity       R1    Survive lethal instability; engine defaults to +damage
+                                                            State Transfer                   Active                 Heal                   R2    Heals ally to stored HP total
+                                                            State Fortress                   Passive                Passive/Immunity       R2    Save states immune to deletion by enemy abilities
+                                                            Checkpoint                       Active                 Heal                   R2    Revives/respawns killed allies at 40% HP
+                                                            Mana Shield                      Buff                   Buff/Shield            R1    Barrier absorbing moderate damage; engine defaults to +damage
+                                                            Pain Tolerance                   Passive                Passive/Defense        R2    Reduces self-damage from overcasting by 15%
+                                                            Overcaster's Will                Passive                Passive/Immunity       R2    Cannot be reduced below 1 HP by overcasting
+                                                            Ancestral Vigil                  Passive                Passive/Defense        R1    +10% DR; engine defaults to +damage
+                                                            Battle Chant                     Buff                   Buff/Resistance        R1    +10% resistance to all damage types; engine defaults to +damage only
+                                                            Ancestral Council                Active                 Summon                 R2    Summons 3 ancestor spirits with specializations
+                                                            Spirit World Sense               Passive                Passive/Utility        R2    360-degree awareness and surprise immunity; detection utility
+                                                            Prepared Ground                  Buff                   Active                 R1    Recalls traps and refunds cooldowns; not a stat bonus
+                                                            Eye of the Deep                  Passive                Passive/Utility        R2    Buffs summoned creature stats and grants vision
+                                                            Hungry Void                      Passive                Active                 R1    15% magic damage absorbed as essence; engine defaults to +damage
+                                                            Gibbering Mass                   Active                 Summon                 R2    Summons persistent shrieking mass entity with aura
+                                                            Pact Shield                      Reactive               Reactive/Defense       R1    Barrier absorbing 20% max HP; Reactive needs defense spec
+                                                            Dense Footwork                   Passive                Passive/Resistance     R1    +15% resistance to displacement; engine defaults to +damage
+                                                            Iron Density                     Passive                Passive/Defense        R1    +20% armor rating; engine defaults to +damage
+                                                            Inertia Lock                     Passive                Passive/Defense        R1    Enemies deal 15% less damage after pull; engine defaults to +damage
+                                                            Dense Mantle                     Passive                Passive/Defense        R1    Armor doubled while stationary; engine defaults to +damage
+                                                            Collapsed Star                   Passive                Passive/Defense        R1    90% DR with 4+ enemies nearby; engine defaults to +damage
+                                                            Reactive Coat                    Buff                   Reactive               R1    Applies stacks to melee attackers when struck; triggered reactive
+                                                            Future Sight                     Passive                Passive/Evasion        R2    Increases dodge window by 0.3s; improves evasion
+                                                            Phantom Future                   Buff                   Buff/Evasion           R1    Auto-dodge all attacks for 4s; engine defaults to +damage
+                                                            Absolute Foresight               Buff                   Buff/Evasion           R1    Perfect dodge window for 10s; engine defaults to +damage
+                                                            Stone Wall                       Active                 Utility                R2    Raises wall blocking movement and projectiles
+                                                            Fortify                          Buff                   Buff/Defense           R1    Structure HP +50% and construction immunity; engine defaults to +damage
+                                                            Reinforced Bunker                Utility                Active/Defense         R1    Allies gain 30% DR inside; not non-combat utility
+                                                            Seismic Foundation               Passive                Passive/Utility        R2    Structures gain +25% HP and displacement immunity
+                                                            Layered Defense                  Passive                Passive/Defense        R1    +15% DR shared between structures; engine defaults to +damage
+                                                            Redundant System                 Passive                Passive/Utility        R2    Auto-re-arms destroyed blueprint triggers
+                                                            Salvage                          Passive                Passive/Shield         Rboth Primary effect is self-healing for 30% of construct's max HP
+                                                            Chaos Absorption                 Passive                Passive/Utility        R2    Generates Chaos Flux on resisted/dodged abilities; resource gen
+                                                            Abyssal Density                  Passive                Passive/Resistance     R1    30% resistance to slows and roots; engine defaults to +damage
+                                                            Leviathan Sight                  Passive                Passive/Utility        R2    Grants summons +20% damage +30% HP and shared vision
+                                                            Trace Light                      Passive                Passive/Utility        R1    Reveals enemies through stealth/smoke; engine defaults to +damage
+                                                            Small Print Surge                Passive                Passive/Movement       R1    Stacking 3% speed bonus; engine defaults to +damage
+                                                            Jurisdictional Gap               Stealth                Active                 R1    Stealth is not a valid engine type; this is an activated ability
+                                                            Sworn Testimony                  Buff                   Reactive/Heal          R1    Triggers heal when ally is damaged; engine defaults to +damage
+                                                            Firewall                         Buff                   Buff/Shield            R1    Data-barrier absorbing 20% max HP; engine defaults to +damage
+                                                            Hash Lock                        Passive                Passive/Shield         R2    Increases ally barrier integrity per hit
+                                                            256-Bit Armor                    Buff                   Buff/Risk              R1    25% DR + debuff immunity BUT -15% movement; engine won't apply drawback
+                                                            Redundant Systems                Passive                Passive/Shield         Rboth Auto-grants backup barrier on ally barrier break
+                                                            Handshake Protocol               Active                 Active/Shield          R2    Links two allies to share healing and barriers
+                                                            Asymmetric Key                   Buff                   Buff/Shield            R1    Two-key barrier mechanic; engine defaults to +damage
+                                                            Malleable Body                   Passive                Passive/Defense        R1    Golem takes half damage (DR); engine defaults to +damage
+                                                            Clay Snap                        Reactive               Reactive/Heal          R1    Triggers healing when golem below 30% HP; Reactive needs heal spec
+                                                            Sculptor's Bond                  Passive                Passive/Heal           R1    5% of golem damage as lifesteal; engine defaults to +damage
+                                                            Living Clay                      Passive                Passive/Heal           R1    Golem regens 3% HP/sec; engine defaults to +damage
+                                                            Forge Plate                      Buff                   Buff/Shield            R1    Barrier equal to 15% max HP; engine defaults to +damage
+                                                            Magnetized Armor                 Passive                Passive/Defense        R1    Intercepts ranged at 50% reduced damage; engine defaults to +damage
+                                                            Indestructible                   Passive                Passive/Defense        R1    Survive killing blow at 1 HP + immunity; engine defaults to +damage
+                                                            Living Fortress                  Passive                Passive/Defense        Rboth Transforms golem into fortress with barriers and cover
+                                                            Crystal Resonance                Passive                Reactive               R1    Triggers on matching elemental hit; Passive is wrong activation
+                                                            Prismatic Refraction             Passive                Reactive               R1    Triggers on hostile spell hit; Passive is wrong activation
+                                                            Gem Mastery                      Passive                Passive/Utility        R1    Allows two gems simultaneously; engine defaults to +damage
+                                                            Tangled Threads                  Passive                Reactive               R1    Triggers on Red Thread expiry; Passive is wrong activation
+                                                            Resonant Thread                  Passive                Passive/Heal           R1    3% of thread damage as HP; engine defaults to +damage
+                                                            Life Thread                      Active                 Heal                   R2    Connects two allies to share 60% of healing
+                                                            Cut on Impact                    Passive                Reactive               R1    Triggers when thread cleansed; Passive is wrong activation
+                                                            Moirai's Knot                    Passive                Passive/Utility        R1    Reduced cooldowns at 3+ threads; engine defaults to +damage
+                                                            Weft Thread                      Buff                   Buff/Movement          R1    +15% speed; engine defaults to +damage
+                                                            Plain Pattern                    Passive                Passive/Defense        R1    +10% DR alongside damage; engine defaults to +damage only
+                                                            Master Weaver                    Passive                Passive/Utility        R1    Increase strand capacity to 6; engine defaults to +damage
+                                                            Clean Cut                        Cleanse                Active                 R1    Cleanse is not a valid engine type
+                                                            Frayed Edge                      Passive                Passive/Utility        R1    Reduce cooldown by 2s; engine defaults to +damage
+                                                            Tailored Removal                 Cleanse                Active                 R1    Cleanse is not a valid engine type
+                                                            Grand Cleanse                    Cleanse                Heal                   R1    Cleanse is not valid; removes debuffs and heals 8% per debuff
+                                                            Tide Sense                       Passive                Passive/Evasion        R1    5% dodge from behind; engine defaults to +damage
+                                                            Surf the Flow                    Passive                Reactive               R1    Triggers after push/pull; Passive is wrong activation
+                                                            Current Master                   Passive                Passive/Evasion        R1    20% miss chance for melee attackers; engine defaults to +damage
+                                                            Coral Plate                      Buff                   Buff/Shield            R1    Barrier absorbing 20% max HP; engine defaults to +damage
+                                                            Reef Growth                      Passive                Passive/Shield         R1    Barriers regenerate 2% HP/s; engine defaults to +damage
+                                                            Living Shell                     Buff                   Buff/Defense           R1    30% DR; engine defaults to +damage
+                                                            Calcification                    Heal                   Active                 R1    Force Petrification stacks or root; this is CC, not healing
+                                                            Living Armor                     Passive                Passive/Shield         R1    Barriers auto-regenerate and replace; engine defaults to +damage
+                                                            Pressure Adapted                 Passive                Passive/Defense        R1    10-25% DR; engine defaults to +damage
+                                                            Abyssal Skin                     Passive                Passive/Resistance     R1    15-30% elemental resistance; engine defaults to +damage
+                                                            Ancient Gills                    Passive                Passive/Immunity       R1    Immune to air debuffs; engine defaults to +damage
+                                                            Asbestos Skin                    Passive                Passive/Resistance     R1    Reduces fire damage by 20%; engine defaults to +damage
+                                                            Fuel Reserve                     Passive                Passive/Utility        R1    Increases Ember stack cap; engine defaults to +damage
+                                                            Pyroproof                        Passive                Passive/Immunity       R1    Complete fire immunity at 6+ stacks; engine defaults to +damage
+                                                            Human Furnace                    Passive                Passive/Immunity       R1    Permanent fire and cold immunity; engine defaults to +damage
+                                                            Performer's Grip                 Passive                Passive/Defense        R1    3% DR per orbiting fireball; engine defaults to +damage
+                                                            Hot Hands                        Passive                Passive/Movement       R1    +20% move speed at 3+ fireballs; engine defaults to +damage
+                                                            Expand the Act                   Passive                Passive/Utility        R1    Increase max fireballs from 2 to 5; engine defaults to +damage
+                                                            Cascade                          Passive                Reactive               R1    Triggered fireball bounce; Passive is wrong activation
+                                                            Heated Footwork                  Passive                Passive/Utility        R1    Heat charge resource system; engine defaults to +damage
+                                                            Dance in the Flame               Buff                   Buff/Immunity          R1    Immune to fire while in fire; engine defaults to +damage
+                                                            Choreography Bonus               Passive                Reactive               R1    Triggers free Inferno Nova after combo; Passive is wrong activation
+                                                            Thorn Skin                       Passive                Reactive               R1    Melee attackers take damage; Passive is wrong activation
+                                                            Reactive Barbs                   Passive                Reactive               R1    Triggers when ally hit; Passive is wrong activation
+                                                            Thorn Mantle                     Buff                   Buff/Defense           R1    10% DR alongside thorn retaliation; engine defaults to +damage
+                                                            Barbed Retort                    Passive                Reactive               R1    Triggers on thorn retaliation; Passive is wrong activation
+                                                            Thousand Thorns                  Passive                Passive/Utility        R1    Extends thorn triggers to ranged; engine defaults to +damage
+                                                            Network Pulse                    Active                 Heal                   R1    Heals all connected allies 8% HP; engine won't heal
+                                                            Soil Sense                       Passive                Passive/Utility        R1    Enemy position awareness; engine defaults to +damage
+                                                            Nutrient Flow                    Active                 Heal                   R1    3% HP/s regen for allies 10s; engine won't heal
+                                                            Expand Network                   Passive                Passive/Utility        R1    Root node capacity 3 to 5; engine defaults to +damage
+                                                            Mycelial Relay                   Active                 Heal                   R2    Links allies for buff copying and healing split
+                                                            Fungal Bloom                     Active                 Heal                   R2    Root node releases stacking heal spores to allies
+                                                            Interconnected                   Passive                Passive/Utility        R1    Auto-redirects healing, auto-slows; engine defaults to +damage
+                                                            Nature's Endurance               Passive                Passive/Shield         R1    +10-25% bonus max HP; engine defaults to +damage
+                                                            Bark Skin                        Buff                   Buff/Defense           R1    25% DR + 3% HP regen; engine defaults to +damage
+                                                            Ancient Resilience               Passive                Reactive/Heal          R1    Triggers healing below 30% HP; Passive is wrong activation
+                                                            Passive Recording                Passive                Passive/Utility        R1    Records movement/attacks for other skills; engine defaults to +damage
+                                                            Rewind Ally                      Active                 Heal                   R1    Restores ally HP to 3s ago; engine won't heal
+                                                            Loop                             Passive                Passive/Utility        R1    20% chance Echo skills auto-repeat; engine defaults to +damage
+                                                            Perfect Memory                   Passive                Passive/Utility        R1    Extends Rewind window to 8s; engine defaults to +damage
+                                                            Resonant Frequency               Passive                Reactive               R1    Triggers at 5 Resonance stacks; Passive is wrong activation
+                                                            Waveform Mastery                 Passive                Passive/Utility        R1    Resonance stacks splash in 4m; engine defaults to +damage
+                                                            Memory Imprint                   Passive                Passive/Utility        R1    Stores ally skills for Echo Soldiers; engine defaults to +damage
+                                                            Combat Memory                    Passive                Passive/Utility        R1    Stores enemy skills; engine defaults to +damage
+                                                            Echo Army                        Passive                Passive/Utility        R1    Summon cap to 6 + coordination; engine defaults to +damage
+                                                            Hazmat Adaptation                Passive                Passive/Immunity       R1    Immune to poison, gas, bio debuffs; engine defaults to +damage
+                                                            Atmospheric Bleed                Passive                Passive/Utility        R1    Extends zone duration; engine defaults to +damage
+                                                            Nerve Gas Burst                  Active                 Debuff                 R1    Reduces accuracy 25%, movement 20%; engine won't debuff
+                                                            Adaptive Cell                    Passive                Passive/Utility        R1    Disease gains mutation charges; engine defaults to +damage
+                                                            Contagion Vector                 Passive                Reactive               R1    Triggers on infected enemy death; Passive is wrong activation
+                                                            Evolutionary Pressure            Passive                Reactive               R1    Triggers when disease cleansed; Passive is wrong activation
+                                                            Containment Protocol             Passive                Passive/Defense        R1    Enemies in zones deal 10% less damage; engine defaults to +damage
+                                                            Light Fingers                    Passive                Passive/Utility        R1    Tempo stacks reduce cooldowns; engine defaults to +damage
+                                                            Fence the Time                   Passive                Passive/Utility        R1    Stolen buffs 20% more efficient; engine defaults to +damage
+                                                            Invisible Take                   Passive                Passive/Utility        R1    Thefts don't generate threat; engine defaults to +damage
+                                                            Read the Tell                    Passive                Passive/Utility        R1    See enemy action telegraphs; engine defaults to +damage
+                                                            Echo Chamber                     Passive                Passive/Utility        R1    Stolen abilities usable twice; engine defaults to +damage
+                                                            Precognition Pocket              Passive                Reactive               R1    Auto-triggers interception; Passive is wrong activation
+                                                            Minor Debt                       Passive                Passive/Utility        R1    Debt token resource system; engine defaults to +damage
+                                                            Credit Line                      Active                 Buff/Risk              R1    +25% stats then -15% withdrawal; engine won't apply drawback
+                                                            Futures Contract                 Buff                   Active                 R1    Buff timing manipulation, not +damage
+                                                            Debt Collector                   Passive                Reactive               R1    Triggers when damaged at 7+ Debt; Passive is wrong activation
+                                                            Iron Draw                        Passive                Aura                   R1    Slows enemies moving away; area effect, not self-buff
+                                                            Reactive Armor                   Passive                Reactive               R1    Pushes back melee attackers; Passive is wrong activation
+                                                            Deflection Mastery               Passive                Passive/Utility        R1    Modifies deflected projectile behavior; engine defaults to +damage
+                                                            Polarity Read                    Passive                Passive/Utility        R1    Polarity tag visibility; engine defaults to +damage
+                                                            Chain Polarity                   Passive                Reactive               R1    Triggers on tagged enemy collision; Passive is wrong activation
+                                                            Scroll Mastery                   Passive                Passive/Utility        R1    Scroll capacity 3 to 6; engine defaults to +damage
+                                                            Efficient Inscription            Passive                Passive/Utility        R1    40% faster scroll prep; engine defaults to +damage
+                                                            Master Inscription               Passive                Passive/Utility        R1    Two augment runes per scroll; engine defaults to +damage
+                                                            Linguistic Affinity              Passive                Passive/Utility        R1    Constructs 20% more durable; engine defaults to +damage
+                                                            Manifesto                        Summon                 Active                 R1    Empowers existing constructs, doesn't summon new ones
+                                                            Editorial Eye                    Passive                Passive/Utility        R1    Perceives impactful descriptor; engine defaults to +damage
+                                                            Track Changes                    Passive                Reactive               R1    Triggers on edit resist; Passive is wrong activation
+                                                            Powder Coat                      Passive                Reactive               R1    Triggers coating spread on impact; Passive is wrong activation
+                                                            Scale Accumulation               Passive                Passive/Utility        R1    Coating potency increases 20% per re-coat; engine defaults to +damage
+                                                            Minor Cocoon                     Active                 Heal                   R1    Regens 15% HP and cleanses debuff; engine won't heal
+                                                            Larval Resilience                Passive                Passive/Evasion        R1    10% chance to negate a hit; engine defaults to +damage
+                                                            Chrysalis Sense                  Passive                Passive/Utility        R1    Visual indicator for cocoon timing; engine defaults to +damage
+                                                            Healing Chrysalis                Active                 Heal                   R1    Regens 35% max HP; engine won't heal
+                                                            Metamorphic Step                 Active                 Movement               R1    Teleports via micro-cocoon; engine won't move
+                                                            Ally Cocoon                      Active                 Heal                   R1    Shields ally and heals 25% HP; engine won't heal
+                                                            Emergence Burst                  Passive                Reactive               R1    Triggers damage on cocoon exit; Passive is wrong activation
+                                                            Mass Cocoon                      Active                 Heal                   R1    Heals all allies 20% HP; engine won't heal
+                                                            The Calling Light                Active                 Summon                 R2    Summons massive Celestial Moths at each lamp location
+                                                            Hairline Fracture                Passive                Reactive               R1    Triggers Shatter at 5 fracture charges; Passive is wrong activation
+                                                            Resonant Cascade                 Passive                Reactive               R1    Triggers shockwave on Shatter; Passive is wrong activation
+                                                            Frequency Fingerprint            Passive                Passive/Utility        R1    Stores enemy scan data permanently; engine defaults to +damage
+                                                            Wave Capacitor                   Passive                Passive/Utility        R1    Energy storage from absorbed attacks; engine defaults to +damage
+                                                            Adaptive Counter                 Passive                Passive/Defense        R1    Auto-nullifies successive hits 30-70%; engine defaults to +damage
+                                                            Null Dome                        Active                 Active/Defense         R1    Nullifies ranged attacks, -25% melee; engine won't apply defense
+                                                            Resonant Armor                   Passive                Passive/Immunity       Rboth Releases damage burst after absorbing threshold; triggered by damage
+                                                            Grand Harmonic Aegis             Active                 Active/Defense         R1    Massive shield dampening 50% physical; engine won't apply defense
+                                                            Low Frequency Pulse              Attack                 Debuff                 R1    Reduces enemy effectiveness 15%; not damage
+                                                            Mass Unease                      Active                 Debuff                 R1    Reduces all enemy stats 15%; engine won't debuff
+                                                            Panic Cascade                    Active                 CC                     R1    Causes enemies to flee; engine won't apply CC
+                                                            Bio-Disruption Field             Active                 Debuff                 R1    Applies nausea, organ disruption; engine won't debuff
+                                                            Thorn Skin                       Passive                Reactive               R1    Melee attackers take damage; Passive is wrong activation
+                                                            Quick Bloom                      Passive                Passive/Utility        R1    Reduces Bloom activation times 30%; engine defaults to +damage
+                                                            Barbed Carapace                  Buff                   Buff/Defense           R1    25% DR via hardened carapace; engine defaults to +damage
+                                                            Adaptive Bloom                   Reactive               Reactive/Defense       R1    Triggers 30% resistance to damage type; Reactive needs defense spec
+                                                            Graft Integration                Passive                Passive/Utility        R1    Reduces graft time, prevents conflicts; engine defaults to +damage
+                                                            Shared Trauma                    Passive                Passive/Heal           R2    10% of damage to graft donors becomes healing for you
+                                                            Stellar Empathy                  Passive                Passive/Heal           R2    20% of healing received distributed between linked allies

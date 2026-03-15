@@ -1,10 +1,24 @@
-import type { EffectType, TargetingType } from "../AbilityData";
+import type { EffectType, TargetingType, TriggerType, TriggerCondition } from "../AbilityData";
+
+/** Optional trigger for passives (e.g. onKill → res_apRefund). */
+export interface AbilityEffectMappingTrigger {
+  type: TriggerType;
+  triggeredEffect: { type: EffectType; params: Record<string, number | string> };
+  /** If set, trigger only fires when condition is true (e.g. "while hasted"). */
+  condition?: TriggerCondition;
+}
 
 export interface AbilityEffectMapping {
   effects: EffectType[];
   targeting: TargetingType;
   conditions: { creates: string[]; exploits: string[] };
   effectParamOverrides?: Record<string, Record<string, number | string>>;
+  /** Override default cost (e.g. cooldown for Blink Step, Crumble). */
+  costOverrides?: Partial<{ ap: number; stamina: number; mana: number; cooldown: number; turnEnding: boolean }>;
+  /** For passives: when to fire and what effect to apply. */
+  trigger?: AbilityEffectMappingTrigger;
+  /** If true, after executing (e.g. Flicker Strike), move caster back to pre-cast position. */
+  returnToStoredPositionAfterExecute?: true;
 }
 
 /** LLM-mapped effect mappings keyed by ability name (lowercase). */
@@ -14,46 +28,62 @@ export const ABILITY_EFFECT_MAPPINGS: Record<string, AbilityEffectMapping> = {
   // Chronoweaver — Accelerant
   // ═══════════════════════════════════════════════════════════════════════════
 
+  /** Haste self for 2 turns, +30% action rate. Initiative ~30 approximates 30% faster. */
+  /** +30% action speed for 2 turns → apply haste status (grants +30% AP at turn start, initiative, movement). */
   "quicken": {
-    effects: ["buff_stat"],
+    effects: ["apply_status"],
     targeting: "tgt_self",
     conditions: { creates: ["haste"], exploits: [] },
-    effectParamOverrides: { buff_stat: { stat: "initiative" } },
+    effectParamOverrides: { apply_status: { statusId: "haste", turns: 2 } },
   },
 
+  /** Short-range teleport, 3 turns cooldown. */
   "blink step": {
     effects: ["disp_teleport"],
     targeting: "tgt_self",
     conditions: { creates: [], exploits: [] },
     effectParamOverrides: { disp_teleport: { range: 4 } },
+    costOverrides: { cooldown: 3 },
   },
 
+  /** Apply Quicken (haste 2 turns) to self and the targeted ally. */
   "shared haste": {
-    effects: ["buff_stat"],
+    effects: ["apply_status_self", "apply_status"],
     targeting: "tgt_single_ally",
     conditions: { creates: ["haste"], exploits: [] },
-    effectParamOverrides: { buff_stat: { stat: "initiative" } },
+    effectParamOverrides: {
+      apply_status_self: { statusId: "haste", turns: 2 },
+      apply_status: { statusId: "haste", turns: 2 },
+    },
   },
 
+  /** Teleport to target, strike, teleport back to start. */
   "flicker strike": {
     effects: ["disp_teleport", "dmg_weapon"],
     targeting: "tgt_single_enemy",
     conditions: { creates: [], exploits: [] },
     effectParamOverrides: { disp_teleport: { range: 6 } },
+    returnToStoredPositionAfterExecute: true,
   },
 
+  /** Double action points for 1 turn (grant AP = base AP per turn), then at end of turn self-stun for 1 turn. */
   "overclock": {
-    effects: ["buff_stat", "cc_stun"],
+    effects: ["grant_ap", "cc_stun"],
     targeting: "tgt_self",
-    conditions: { creates: ["haste", "stun_self"], exploits: [] },
-    effectParamOverrides: { buff_stat: { stat: "initiative" } },
+    conditions: { creates: ["stun_self"], exploits: [] },
+    effectParamOverrides: {
+      grant_ap: { amount: 9 },
+      cc_stun: { turns: 1, delay: "end_of_turn" },
+    },
   },
 
+  /** Party-wide haste, +50% AP for 3 turns (temporal_surge status); 10 turns cooldown. */
   "temporal surge": {
-    effects: ["buff_stat"],
+    effects: ["apply_status"],
     targeting: "tgt_all_allies",
     conditions: { creates: ["haste"], exploits: [] },
-    effectParamOverrides: { buff_stat: { stat: "initiative" } },
+    effectParamOverrides: { apply_status: { statusId: "temporal_surge", turns: 3 } },
+    costOverrides: { cooldown: 10 },
   },
 
   "infinite loop": {
@@ -61,6 +91,18 @@ export const ABILITY_EFFECT_MAPPINGS: Record<string, AbilityEffectMapping> = {
     targeting: "tgt_self",
     conditions: { creates: ["infinite_loop"], exploits: [] },
     effectParamOverrides: { transform_state: { turns: 2, bonusPct: 100 } },
+  },
+
+  /** While hasted, on dodge deal flat damage to the attacker (afterimage). */
+  "afterimage": {
+    effects: [],
+    targeting: "tgt_self",
+    conditions: { creates: [], exploits: [] },
+    trigger: {
+      type: "trg_onDodge",
+      triggeredEffect: { type: "dmg_to_attacker", params: { amount: 20 } },
+      condition: { type: "has_status", statusId: "haste" },
+    },
   },
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -93,20 +135,24 @@ export const ABILITY_EFFECT_MAPPINGS: Record<string, AbilityEffectMapping> = {
     conditions: { creates: [], exploits: ["dot_bleed", "dot_burn", "dot_poison"] },
   },
 
+  /** 3 hexes zone: enemies inside gain Decay (DoT), 2 turns. */
   "entropic field": {
     effects: ["zone_persist"],
     targeting: "tgt_aoe_radius3",
     conditions: { creates: ["decay"], exploits: [] },
-    effectParamOverrides: { zone_persist: { radius: 3, turns: 2, dmgPerTurn: 0 } },
+    effectParamOverrides: { zone_persist: { radius: 3, turns: 2, dmgPerTurn: 5 } },
   },
 
+  /** Destroy 50% of target's remaining armor; 6 turns cooldown. */
   "crumble": {
     effects: ["debuff_armor"],
     targeting: "tgt_single_enemy",
     conditions: { creates: ["armor_break"], exploits: [] },
     effectParamOverrides: { debuff_armor: { pct: 50, turns: 1 } },
+    costOverrides: { cooldown: 6 },
   },
 
+  /** All DoTs on target spread to enemies within 4 hexes (engine: radius 3). */
   "pandemic": {
     effects: ["dot_poison"],
     targeting: "tgt_aoe_radius3",
@@ -156,6 +202,16 @@ export const ABILITY_EFFECT_MAPPINGS: Record<string, AbilityEffectMapping> = {
     conditions: { creates: [], exploits: [] },
   },
 
+  "blood rush": {
+    effects: [],
+    targeting: "tgt_self",
+    conditions: { creates: ["ap_on_kill"], exploits: [] },
+    trigger: {
+      type: "trg_onKill",
+      triggeredEffect: { type: "res_apRefund", params: { amount: 3 } },
+    },
+  },
+
   "time bomb": {
     effects: ["zone_persist", "dmg_spell"],
     targeting: "tgt_aoe_radius2",
@@ -188,17 +244,24 @@ export const ABILITY_EFFECT_MAPPINGS: Record<string, AbilityEffectMapping> = {
   // Ironbloom Warden — Thornwall
   // ═══════════════════════════════════════════════════════════════════════════
 
+  /** +20% damage reduction for 2 turns. */
   "barkskin": {
     effects: ["buff_dmgReduce"],
     targeting: "tgt_self",
     conditions: { creates: ["barkskin"], exploits: [] },
+    effectParamOverrides: { buff_dmgReduce: { percent: 20, turns: 2 } },
   },
 
+  /** Immobile but +30% damage reduction, +threat (taunt). */
   "root stance": {
     effects: ["buff_dmgReduce", "debuff_stat", "cc_taunt"],
     targeting: "tgt_self",
     conditions: { creates: ["rooted_stance"], exploits: [] },
-    effectParamOverrides: { debuff_stat: { stat: "movementPoints" }, cc_taunt: { turns: 2 } },
+    effectParamOverrides: {
+      buff_dmgReduce: { percent: 30, turns: 2 },
+      debuff_stat: { stat: "movementPoints", amount: 999, turns: 2 },
+      cc_taunt: { turns: 2 },
+    },
   },
 
   "splinter burst": {
@@ -207,36 +270,56 @@ export const ABILITY_EFFECT_MAPPINGS: Record<string, AbilityEffectMapping> = {
     conditions: { creates: [], exploits: ["barkskin"] },
   },
 
+  /** Below 30% HP, gain 50% damage reduction (each turn when condition met). */
+  "petrified bark": {
+    effects: [],
+    targeting: "tgt_self",
+    conditions: { creates: [], exploits: [] },
+    trigger: {
+      type: "trg_turnStart",
+      triggeredEffect: { type: "apply_status", params: { statusId: "petrified_bark", turns: 1 } },
+      condition: { type: "below_hp_percent", percent: 30 },
+    },
+  },
+
+  /** Line of thorns (3 hexes): damage + slow 50% for 1 turn. */
   "entangling wall": {
     effects: ["zone_persist", "debuff_stat"],
     targeting: "tgt_aoe_line",
     conditions: { creates: ["thorn_wall"], exploits: [] },
-    effectParamOverrides: { zone_persist: { radius: 1, turns: 3, dmgPerTurn: 0 }, debuff_stat: { stat: "movementPoints" } },
+    effectParamOverrides: {
+      zone_persist: { radius: 1, turns: 3, dmgPerTurn: 6 },
+      debuff_stat: { stat: "movementPoints", amount: 4, turns: 1 },
+    },
   },
 
+  /** 3 turns: immobile, +80% DR, massive thorn damage. 15 turns cooldown. */
   "world tree": {
     effects: ["buff_dmgReduce", "dmg_reflect", "transform_state"],
     targeting: "tgt_self",
     conditions: { creates: ["world_tree", "rooted_stance"], exploits: [] },
     effectParamOverrides: { dmg_reflect: { pct: 100, turns: 3 }, transform_state: { turns: 3, bonusPct: 80 } },
+    costOverrides: { cooldown: 15 },
   },
 
   // ═══════════════════════════════════════════════════════════════════════════
   // Ironbloom Warden — Overgrowth
   // ═══════════════════════════════════════════════════════════════════════════
 
+  /** HoT on self or ally, heals over 3 turns. */
   "rejuvenate": {
     effects: ["heal_hot"],
     targeting: "tgt_single_ally",
     conditions: { creates: ["rejuvenate_hot"], exploits: [] },
-    effectParamOverrides: { heal_hot: { healPerTurn: 0, turns: 3 } },
+    effectParamOverrides: { heal_hot: { healPerTurn: 10, turns: 3 } },
   },
 
+  /** Plant a seedling that pulses minor heals in 2 hexes for 3 turns. */
   "seedling": {
     effects: ["summon_unit", "heal_hot"],
     targeting: "tgt_aoe_radius2",
     conditions: { creates: ["seedling"], exploits: [] },
-    effectParamOverrides: { summon_unit: { hp: 0, turns: 3, count: 1 }, heal_hot: { healPerTurn: 0, turns: 3 } },
+    effectParamOverrides: { summon_unit: { hp: 0, turns: 3, count: 1 }, heal_hot: { healPerTurn: 6, turns: 3 } },
   },
 
   "overgrowth": {
@@ -245,11 +328,12 @@ export const ABILITY_EFFECT_MAPPINGS: Record<string, AbilityEffectMapping> = {
     conditions: { creates: [], exploits: ["seedling"] },
   },
 
+  /** AoE heal-over-time in 3 hexes radius, 3 turns duration. */
   "verdant tide": {
     effects: ["heal_hot"],
     targeting: "tgt_aoe_radius3",
     conditions: { creates: ["verdant_tide_hot"], exploits: [] },
-    effectParamOverrides: { heal_hot: { healPerTurn: 0, turns: 3 } },
+    effectParamOverrides: { heal_hot: { healPerTurn: 8, turns: 3 } },
   },
 
   "bloom cascade": {
@@ -259,28 +343,95 @@ export const ABILITY_EFFECT_MAPPINGS: Record<string, AbilityEffectMapping> = {
     effectParamOverrides: { heal_flat: { amount: 0 } },
   },
 
+  /** Cascade: Kills during haste extend haste by 1 turn. Only fires when killer has haste. */
+  "cascade": {
+    effects: [],
+    targeting: "tgt_self",
+    conditions: { creates: [], exploits: [] },
+    trigger: {
+      type: "trg_onKill",
+      triggeredEffect: { type: "extend_status", params: { statusId: "haste", turns: 1 } },
+      condition: { type: "has_status", statusId: "haste" },
+    },
+  },
+
+  /** 10% chance to dodge. Approx: +10 dodge each turn (flat stat). */
+  "time slip": {
+    effects: [],
+    targeting: "tgt_self",
+    conditions: { creates: [], exploits: [] },
+    trigger: {
+      type: "trg_turnStart",
+      triggeredEffect: { type: "buff_stat", params: { stat: "dodge", amount: 10, turns: 1 } },
+    },
+  },
+
+  /** While hasted, gain 20% evasion. Condition: only when entity has haste. */
+  "blur": {
+    effects: [],
+    targeting: "tgt_self",
+    conditions: { creates: [], exploits: [] },
+    trigger: {
+      type: "trg_turnStart",
+      triggeredEffect: { type: "buff_stat", params: { stat: "dodge", amount: 20, turns: 1 } },
+      condition: { type: "has_status", statusId: "haste" },
+    },
+  },
+
+  /** Your DoTs tick 25% faster. Engine: apply accelerate_rot status each turn. */
+  "accelerate rot": {
+    effects: [],
+    targeting: "tgt_self",
+    conditions: { creates: [], exploits: [] },
+    trigger: {
+      type: "trg_turnStart",
+      triggeredEffect: { type: "apply_status", params: { statusId: "accelerate_rot", turns: 1 } },
+    },
+  },
+
+  /** 4 turns: allies regen, enemies slowed, seedlings. 15 turns cooldown. */
   "gaia's embrace": {
     effects: ["heal_hot", "debuff_stat", "summon_unit", "zone_persist"],
     targeting: "tgt_all_allies",
     conditions: { creates: ["gaia_embrace", "seedling"], exploits: [] },
-    effectParamOverrides: { debuff_stat: { stat: "movementPoints" }, summon_unit: { hp: 0, turns: 4, count: 1 }, zone_persist: { radius: 99, turns: 4, dmgPerTurn: 0 }, heal_hot: { healPerTurn: 0, turns: 4 } },
+    effectParamOverrides: {
+      debuff_stat: { stat: "movementPoints", amount: 2, turns: 4 },
+      summon_unit: { hp: 0, turns: 4, count: 1 },
+      zone_persist: { radius: 99, turns: 4, dmgPerTurn: 0 },
+      heal_hot: { healPerTurn: 5, turns: 4 },
+    },
+    costOverrides: { cooldown: 15 },
   },
 
   // ═══════════════════════════════════════════════════════════════════════════
   // Ironbloom Warden — Rot Herald
   // ═══════════════════════════════════════════════════════════════════════════
 
+  /** Ranged attack that applies Poison (DoT, 2 turns). */
   "spore shot": {
     effects: ["dmg_weapon", "dot_poison"],
     targeting: "tgt_single_enemy",
     conditions: { creates: ["poison"], exploits: [] },
+    effectParamOverrides: { dot_poison: { turns: 2 } },
   },
 
+  /** Attackers gain Poison on melee hit (apply to attacker when you take damage). */
+  "toxic skin": {
+    effects: [],
+    targeting: "tgt_self",
+    conditions: { creates: [], exploits: [] },
+    trigger: {
+      type: "trg_onTakeDamage",
+      triggeredEffect: { type: "apply_status_to_attacker", params: { statusId: "poison", turns: 2 } },
+    },
+  },
+
+  /** Plant a fungal node that poisons enemies in 2 hexes radius. */
   "fungal growth": {
     effects: ["summon_unit", "zone_persist"],
     targeting: "tgt_aoe_radius2",
     conditions: { creates: ["fungal_node"], exploits: [] },
-    effectParamOverrides: { summon_unit: { hp: 0, turns: 0, count: 1 }, zone_persist: { radius: 2, turns: 0, dmgPerTurn: 0 } },
+    effectParamOverrides: { summon_unit: { hp: 0, turns: 4, count: 1 }, zone_persist: { radius: 2, turns: 4, dmgPerTurn: 4 } },
   },
 
   "decompose": {
@@ -289,11 +440,16 @@ export const ABILITY_EFFECT_MAPPINGS: Record<string, AbilityEffectMapping> = {
     conditions: { creates: [], exploits: ["dot_poison"] },
   },
 
+  /** Triangle zone: constant poison damage, 40% healing reduction. */
   "plague garden": {
     effects: ["zone_persist", "debuff_healReduce", "summon_unit"],
     targeting: "tgt_aoe_radius2",
     conditions: { creates: ["fungal_node", "plague_zone", "heal_reduction"], exploits: [] },
-    effectParamOverrides: { zone_persist: { radius: 2, turns: 0, dmgPerTurn: 0 }, debuff_healReduce: { pct: 40, turns: 0 }, summon_unit: { hp: 0, turns: 0, count: 3 } },
+    effectParamOverrides: {
+      zone_persist: { radius: 2, turns: 3, dmgPerTurn: 5 },
+      debuff_healReduce: { pct: 40, turns: 3 },
+      summon_unit: { hp: 0, turns: 3, count: 3 },
+    },
   },
 
   "parasitic vine": {
@@ -1444,6 +1600,34 @@ export const ABILITY_EFFECT_MAPPINGS: Record<string, AbilityEffectMapping> = {
     effects: ["dmg_spell"],
     targeting: "tgt_aoe_radius2",
     conditions: { creates: [], exploits: [] },
+  },
+
+  "thorn coat": {
+    effects: [],
+    targeting: "tgt_self",
+    conditions: { creates: ["reflect"], exploits: [] },
+    trigger: {
+      type: "trg_onTakeDamage",
+      triggeredEffect: { type: "dmg_reflect", params: { percent: 10 } },
+    },
+  },
+
+  /** When hit, 25% chance to root attacker for 1 turn. Note: we implement 100% chance; no RNG. */
+  "briar lash": {
+    effects: [],
+    targeting: "tgt_self",
+    conditions: { creates: [], exploits: [] },
+    trigger: {
+      type: "trg_onTakeDamage",
+      triggeredEffect: { type: "cc_root", params: { turns: 1 } },
+    },
+  },
+
+  "frailty aura": {
+    effects: ["debuff_vuln"],
+    targeting: "tgt_aoe_radius3",
+    conditions: { creates: ["frailty"], exploits: [] },
+    effectParamOverrides: { debuff_vuln: { bonusDmg: 8, turns: 1 } },
   },
 
   "focused beam": {

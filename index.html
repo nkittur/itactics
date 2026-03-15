@@ -248,6 +248,12 @@
       color: #8899bb;
       font-size: 16px;
     }
+    .damage-popup.cp-popup {
+      color: #eec844;
+      font-size: 18px;
+      font-weight: 700;
+      text-shadow: 0 0 6px black, 0 0 4px #886622;
+    }
     @keyframes dmgFloat {
       0% { opacity: 1; transform: translate(-50%, -100%); }
       100% { opacity: 0; transform: translate(-50%, -250%); }
@@ -1201,6 +1207,14 @@
     /* ── Skill Tree ── */
     .skill-tree-container { padding: 4px 0; }
     .skill-tree-wrapper { position: relative; }
+    .skill-tree-tiers .skill-tier-label {
+      font-weight: 600;
+      color: #b0b8d0;
+      margin-top: 10px;
+      margin-bottom: 4px;
+    }
+    .skill-tree-tiers .skill-tier-label:first-child { margin-top: 0; }
+    .skill-tier-req { font-weight: normal; color: #7888aa; font-size: 0.9em; }
     .tree-svg-lines {
       position: absolute; inset: 0;
       pointer-events: none; overflow: visible;

@@ -133,30 +133,6 @@ export interface ClassDef {
   icon: string;
 }
 
-// ── Class Registry ──
-
-const classDefs = new Map<string, ClassDef>();
-
-export function registerClassDef(def: ClassDef): void {
-  classDefs.set(def.id, def);
-}
-
-export function getClassDefNew(id: string): ClassDef | undefined {
-  return classDefs.get(id);
-}
-
-export function getAllClassDefs(): ClassDef[] {
-  return [...classDefs.values()];
-}
-
-export function getClassesByCategory(category: string): ClassDef[] {
-  return [...classDefs.values()].filter(c => c.category === category);
-}
-
-export function getClassesByTag(tag: string): ClassDef[] {
-  return [...classDefs.values()].filter(c => c.tags.includes(tag));
-}
-
 // ── Archetype Unlock Tracking ──
 
 export interface ArchetypeProgress {

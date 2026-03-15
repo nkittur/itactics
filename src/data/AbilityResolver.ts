@@ -1,5 +1,7 @@
 import type { GeneratedAbility } from "./AbilityData";
 import { isGeneratedAbilityId } from "./AbilityData";
+import { getAbility } from "./ruleset/RulesetLoader";
+import { rulesetAbilityToGenerated } from "./ruleset/rulesetAbilityAdapter";
 
 let abilityRegistry: Record<string, GeneratedAbility> = {};
 
@@ -11,10 +13,12 @@ export function getAbilityRegistry(): Record<string, GeneratedAbility> {
   return abilityRegistry;
 }
 
-/** Resolve a generated ability by its UID. Returns undefined for unknown IDs. */
+/** Resolve a generated ability by its UID. Uses registry first; falls back to ruleset. */
 export function resolveAbility(id: string): GeneratedAbility | undefined {
-  if (!isGeneratedAbilityId(id)) return undefined;
-  return abilityRegistry[id];
+  if (abilityRegistry[id]) return abilityRegistry[id];
+  const rulesetDef = getAbility(id);
+  if (rulesetDef) return rulesetAbilityToGenerated(rulesetDef);
+  return undefined;
 }
 
 /** Register a generated ability in the runtime registry. */

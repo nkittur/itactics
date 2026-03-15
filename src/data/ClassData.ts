@@ -1,22 +1,15 @@
 /**
- * ClassData.ts — Adapter over the new ClassDefinition system.
- *
- * All 18+ classes are registered via ClassRegistry.ts (imported at startup).
- * This file provides backward-compatible functions that the rest of the
- * codebase uses (getClassDef, canEquipWeapon, etc.).
+ * ClassData.ts — Class lookup and equipment helpers.
+ * All classes come from the loaded ruleset (skill_trees.txt). No legacy registry.
  */
 
-import {
-  getClassDefNew,
-  getAllClassDefs,
-  type ClassDef,
-  type ClassInnatePasive,
-} from "./ClassDefinition";
+import type { ClassDef, ClassInnatePasive } from "./ClassDefinition";
 import type { WeaponFamily, WeaponDef } from "./WeaponData";
 import type { ArmorWeight, ArmorDef } from "./ArmorData";
 import type { ShieldDef } from "./ShieldData";
+import { getClass as getRulesetClass, getClasses as getRulesetClasses } from "./ruleset/RulesetLoader";
 
-// CharacterClass is now a string — any registered class ID is valid.
+// CharacterClass is now a string — any registered or ruleset class ID is valid.
 export type CharacterClass = string;
 
 export type ShieldAccess = "none" | "buckler" | "all";
@@ -30,16 +23,71 @@ const ARMOR_WEIGHT_ORDER: Record<ArmorWeight, number> = {
   heavy: 2,
 };
 
-// ── Core lookup ──
+/** Default base stats for all ruleset classes. */
+const DEFAULT_RULESET_BASE_STATS: ClassDef["baseStats"] = {
+  hitpoints: 100,
+  stamina: 100,
+  mana: 20,
+  resolve: 50,
+  initiative: 40,
+  meleeSkill: 50,
+  rangedSkill: 30,
+  dodge: 20,
+  magicResist: 5,
+  critChance: 5,
+  critMultiplier: 1.5,
+  movementPoints: 8,
+};
 
+function rulesetClassToClassDef(rulesetClass: ReturnType<typeof getRulesetClass>): ClassDef {
+  if (!rulesetClass) throw new Error("rulesetClass required");
+  return {
+    id: rulesetClass.id,
+    name: rulesetClass.name,
+    description: rulesetClass.fantasy,
+    role: rulesetClass.subtitle,
+    category: "hybrid",
+    tags: [],
+    baseStats: DEFAULT_RULESET_BASE_STATS,
+    statGrowth: {},
+    resources: [{ resourceId: "stamina", maxOverride: 100 }],
+    weaponFamilies: ["dagger", "sword", "axe", "mace", "spear", "staff", "wand", "bow", "crossbow", "throwing", "flail", "cleaver", "polearm"],
+    shieldAccess: "all",
+    maxArmorWeight: "heavy",
+    baseMP: 8,
+    innatePassives: [],
+    archetypes: rulesetClass.archetypes.map((a) => ({
+      id: a.id,
+      name: a.name,
+      description: a.identity,
+      playstyle: a.mechanic,
+      tags: [],
+      synergies: [],
+      skillTree: [],
+    })) as unknown as ClassDef["archetypes"],
+    themeColor: "#888888",
+    icon: "class_default",
+  };
+}
+
+// ── Core lookup (ruleset only) ──
+
+/** Get class definition; throws if class id not in current ruleset. */
 export function getClassDef(classId: string): ClassDef {
-  const def = getClassDefNew(classId);
-  if (!def) throw new Error(`Unknown class: ${classId}`);
-  return def;
+  const rulesetClass = getRulesetClass(classId);
+  if (!rulesetClass) throw new Error(`Unknown class: ${classId}`);
+  return rulesetClassToClassDef(rulesetClass);
+}
+
+/** Get class definition or undefined if not in ruleset. */
+export function getClassDefOptional(classId: string): ClassDef | undefined {
+  const rulesetClass = getRulesetClass(classId);
+  if (!rulesetClass) return undefined;
+  return rulesetClassToClassDef(rulesetClass);
 }
 
 export function getAllCharacterClasses(): string[] {
-  return getAllClassDefs().map(c => c.id);
+  return getRulesetClasses().map((c) => c.id);
 }
 
 // ── Equipment checks ──
@@ -107,7 +155,7 @@ export function getClassArmorMPReduction(classDef: ClassDef): number {
 // ── Display helpers ──
 
 export function getClassAbbrev(classId: string): string {
-  const def = getClassDefNew(classId);
+  const def = getClassDefOptional(classId);
   if (!def) return classId.slice(0, 3).toUpperCase();
   // Generate 3-char abbreviation from class name
   const name = def.name;

@@ -11,11 +11,12 @@ import { resolveWeapon, resolveShield, resolveArmor, resolveItemName, setItemReg
 import { isGeneratedItemId } from "@data/GeneratedItemData";
 import { generateShopInventory, shopRefreshCost, qualityColor, qualityLabel } from "@data/ItemGenerator";
 import { resolveAbility, getAbilityRegistry, setAbilityRegistry } from "@data/AbilityResolver";
-import { THEMES } from "@data/ThemeData";
+import { getArchetype, getPlayableClasses } from "@data/ruleset/RulesetLoader";
 import { detectUnitSynergies, detectTeamSynergies } from "@data/SynergyDetector";
 import { ALL_STAT_KEYS, statDisplayName, type StatKey } from "@data/TalentData";
 import type { SkillTree, SkillTreeNode } from "@data/SkillTreeData";
-import { getClassDefNew } from "@data/ClassDefinition";
+import { REQUIRED_PREV_TIER_UNLOCKS } from "@data/SkillTreeData";
+import { getClassDefOptional } from "@data/ClassData";
 import { formatAbilityEffects } from "@data/AbilityFormatter";
 
 type Tab = "roster" | "shop" | "recruit" | "contracts";
@@ -282,7 +283,7 @@ export class ManagementScreen {
       const classId = type === "roster"
         ? (item as RosterMember).classId ?? "fighter"
         : (item as RecruitDef).classId;
-      const className = getClassDefNew(classId)?.name ?? classId;
+      const className = getClassDefOptional(classId)?.name ?? classId;
       card.appendChild(el("div", "unit-grid-class", `${className} Lv${item.level}`));
 
       // Cost badge (recruit only)
@@ -324,20 +325,20 @@ export class ManagementScreen {
 
     const info = el("div", "detail-info");
     info.appendChild(el("div", "detail-name", unit.name));
-    const className = getClassDefNew(unit.classId)?.name ?? unit.classId;
+    const className = getClassDefOptional(unit.classId)?.name ?? unit.classId;
     info.appendChild(el("div", "detail-class", `${className} Lv${unit.level}`));
     // Show archetype name if available
     if (unit.archetypeId) {
-      const classDef2 = getClassDefNew(unit.classId);
+      const classDef2 = getClassDefOptional(unit.classId);
       const archDef = classDef2?.archetypes.find(a => a.id === unit.archetypeId);
       if (archDef) {
         info.appendChild(el("div", "detail-archetype", archDef.name));
       }
     }
     if (unit.skillTheme) {
-      const primaryName = THEMES[unit.skillTheme]?.name ?? unit.skillTheme;
+      const primaryName = (unit.classId && unit.skillTheme ? getArchetype(unit.classId, unit.skillTheme)?.name : null) ?? unit.skillTheme;
       const secondaryName = unit.secondarySkillTheme
-        ? (THEMES[unit.secondarySkillTheme]?.name ?? unit.secondarySkillTheme)
+        ? (unit.classId ? getArchetype(unit.classId, unit.secondarySkillTheme)?.name : null) ?? unit.secondarySkillTheme
         : null;
       const themeLabel = secondaryName ? `${primaryName} / ${secondaryName}` : primaryName;
       info.appendChild(el("span", "detail-theme-badge", themeLabel));
@@ -444,16 +445,24 @@ export class ManagementScreen {
     const cpHeader = el("div", "cp-header", `Class Points: ${unit.classPoints}`);
     container.appendChild(cpHeader);
 
-    // Tree wrapper (positioned for SVG lines)
-    const treeWrapper = el("div", "skill-tree-wrapper");
-    const nodeElements = new Map<string, HTMLElement>();
+    // Tier-based layout (no tree edges): Class → Tiers 1–5, each tier shows skills in a row
+    const treeWrapper = el("div", "skill-tree-wrapper skill-tree-tiers");
+    const countUnlockedInTier = (t: number) =>
+      unit.skillTree!.nodes.filter(n => n.tier === t && unit.unlockedNodes.has(n.nodeId)).length;
 
-    // Render tiers 1-4
     for (const tier of [1, 2, 3, 4, 5] as const) {
       const tierNodes = unit.skillTree.nodes
         .filter(n => n.tier === tier)
         .sort((a, b) => a.col - b.col);
       if (tierNodes.length === 0) continue;
+
+      const requiredPrev = REQUIRED_PREV_TIER_UNLOCKS[tier];
+      const unlockedPrev = tier > 1 ? countUnlockedInTier(tier - 1) : 0;
+      const tierLabel = el("div", "skill-tier-label", `Tier ${tier}`);
+      if (tier > 1) {
+        tierLabel.appendChild(el("span", "skill-tier-req", ` (requires ${requiredPrev} skill${requiredPrev !== 1 ? "s" : ""} in Tier ${tier - 1})`));
+      }
+      treeWrapper.appendChild(tierLabel);
 
       const tierRow = el("div", "skill-tree-tier");
       for (const node of tierNodes) {
@@ -461,9 +470,9 @@ export class ManagementScreen {
         if (!ability) continue;
 
         const isUnlocked = unit.unlockedNodes.has(node.nodeId);
-        const prereqsMet = node.prerequisites.every(p => unit.unlockedNodes.has(p));
+        const prereqsMet = requiredPrev <= unlockedPrev;
         const canAfford = unit.classPoints >= node.cpCost;
-        const isAvailable = !isUnlocked && prereqsMet;
+        const isAvailable = !isUnlocked && prereqsMet && canAfford;
         const currentStacks = unit.nodeStacks[node.nodeId] ?? (isUnlocked ? 1 : 0);
         const canStack = node.stackable && isUnlocked && currentStacks < node.maxStacks && canAfford;
 
@@ -474,103 +483,38 @@ export class ManagementScreen {
         else nodeEl.classList.add("locked");
 
         nodeEl.classList.add(node.isActive ? "node-active" : "node-passive");
-        if (node.dualParent) nodeEl.classList.add("dual-parent");
 
-        // Name (colored by rarity)
         const nameEl = el("div", "tree-node-name", ability.name);
         const rarityColor = RARITY_COLORS[ability.rarity] ?? "#9d9d9d";
         nameEl.style.color = rarityColor;
         nodeEl.appendChild(nameEl);
 
-        // Type badge with rarity
         const typeText = `${rarityLabel(ability.rarity)} ${node.isActive ? "Active" : "Passive"}`;
         const typeEl = el("span", "tree-node-type", typeText);
         if (ability.rarity !== "common") typeEl.style.color = rarityColor;
         nodeEl.appendChild(typeEl);
 
-        // Stack indicator for stackable nodes
         if (node.stackable) {
           nodeEl.appendChild(el("div", "tree-node-stacks", `${currentStacks}/${node.maxStacks}`));
         }
 
-        // Cost or status
         if (isUnlocked && !(node.stackable && currentStacks < node.maxStacks)) {
           nodeEl.appendChild(el("div", "tree-node-status", "\u2713"));
         } else {
-          nodeEl.appendChild(el("div", "tree-node-cost", `${node.cpCost}`));
+          nodeEl.appendChild(el("div", "tree-node-cost", `${node.cpCost} CP`));
         }
 
-        // Prerequisites label
-        if (node.prerequisites.length > 0) {
-          const prereqLabel = node.prerequisites.map(pid => {
-            const pn = unit.skillTree!.nodes.find(n => n.nodeId === pid);
-            if (!pn) return "?";
-            const pa = resolveAbility(pn.abilityUid);
-            return pa?.name ?? "?";
-          }).join(", ");
-          const fromEl = el("div", "tree-node-from", "\u2191 " + prereqLabel);
-          nodeEl.appendChild(fromEl);
-        }
-
-        // Tap handler
         nodeEl.addEventListener("pointerup", (e) => {
           e.stopPropagation();
-          this.showNodeDetail(unit, node, ability, isUnlocked, isAvailable, canAfford, canStack, currentStacks);
+          this.showNodeDetail(unit, node, ability, isUnlocked, isAvailable, canAfford, canStack, currentStacks, prereqsMet);
         });
 
         tierRow.appendChild(nodeEl);
-        nodeElements.set(node.nodeId, nodeEl);
       }
-
       treeWrapper.appendChild(tierRow);
     }
 
     container.appendChild(treeWrapper);
-
-    // Draw SVG connector lines after layout
-    requestAnimationFrame(() => {
-      const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-      svg.classList.add("tree-svg-lines");
-      const wrapperRect = treeWrapper.getBoundingClientRect();
-
-      for (const [parentId, childId] of unit.skillTree!.edges) {
-        const parentEl = nodeElements.get(parentId);
-        const childEl = nodeElements.get(childId);
-        if (!parentEl || !childEl) continue;
-
-        const pr = parentEl.getBoundingClientRect();
-        const cr = childEl.getBoundingClientRect();
-
-        const x1 = pr.left + pr.width / 2 - wrapperRect.left;
-        const y1 = pr.top + pr.height - wrapperRect.top;
-        const x2 = cr.left + cr.width / 2 - wrapperRect.left;
-        const y2 = cr.top - wrapperRect.top;
-
-        const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
-        line.setAttribute("x1", String(x1));
-        line.setAttribute("y1", String(y1));
-        line.setAttribute("x2", String(x2));
-        line.setAttribute("y2", String(y2));
-
-        // Color based on unlock state
-        const childNode = unit.skillTree!.nodes.find(n => n.nodeId === childId);
-        const bothUnlocked = unit.unlockedNodes.has(parentId) && unit.unlockedNodes.has(childId);
-        const parentUnlocked = unit.unlockedNodes.has(parentId);
-        if (bothUnlocked) {
-          line.setAttribute("stroke", "#4a4");
-        } else if (parentUnlocked) {
-          line.setAttribute("stroke", "#886");
-        } else {
-          line.setAttribute("stroke", "#334");
-        }
-        line.setAttribute("stroke-width", "2");
-        svg.appendChild(line);
-      }
-
-      svg.style.width = wrapperRect.width + "px";
-      svg.style.height = wrapperRect.height + "px";
-      treeWrapper.insertBefore(svg, treeWrapper.firstChild);
-    });
 
     // Unit synergies (from all unlocked abilities)
     const unlockedAbilityIds = unit.skillTree.nodes
@@ -596,6 +540,7 @@ export class ManagementScreen {
     canAfford: boolean,
     canStack: boolean,
     currentStacks: number,
+    prereqsMet?: boolean,
   ): void {
     if (!ability) return;
 
@@ -636,16 +581,13 @@ export class ManagementScreen {
       panel.appendChild(el("div", "node-detail-cost", costParts.join(" | ")));
     }
 
-    // Prerequisites
-    if (node.prerequisites.length > 0 && !isUnlocked) {
-      const prereqNames = node.prerequisites.map(pid => {
-        const pn = unit.skillTree!.nodes.find(n => n.nodeId === pid);
-        if (!pn) return pid;
-        const pa = resolveAbility(pn.abilityUid);
-        const met = unit.unlockedNodes.has(pid);
-        return `${met ? "\u2713" : "\u2717"} ${pa?.name ?? pid}`;
-      });
-      panel.appendChild(el("div", "node-detail-prereqs", "Requires: " + prereqNames.join(", ")));
+    // Tier prerequisite (N skills in previous tier)
+    if (node.tier > 1 && !isUnlocked) {
+      const req = REQUIRED_PREV_TIER_UNLOCKS[node.tier];
+      const reqText = prereqsMet
+        ? `\u2713 Requires ${req} skill${req !== 1 ? "s" : ""} in Tier ${node.tier - 1}`
+        : `Requires ${req} skill${req !== 1 ? "s" : ""} in Tier ${node.tier - 1}`;
+      panel.appendChild(el("div", "node-detail-prereqs", reqText));
     }
 
     // Unlock / Stack button (roster only)
@@ -670,7 +612,7 @@ export class ManagementScreen {
           backdrop.remove();
         });
         panel.appendChild(btn);
-      } else if (!isUnlocked && !canAfford && isAvailable) {
+      } else if (!isUnlocked && prereqsMet && !canAfford) {
         panel.appendChild(el("div", "node-detail-cant-afford", `Need ${node.cpCost} CP (have ${unit.classPoints})`));
       }
     }
@@ -763,7 +705,7 @@ export class ManagementScreen {
     }
 
     // Class equipment icons
-    const classDef = getClassDefNew(unit.classId);
+    const classDef = getClassDefOptional(unit.classId);
     if (classDef) {
       const badgeRow = el("div", "equip-badge-row");
       badgeRow.appendChild(el("span", "equip-badge-label", "Can equip: "));
@@ -970,7 +912,7 @@ export class ManagementScreen {
 
   private canEquipOnUnit(m: RosterMember, itemId: string, category: StoreCategory): boolean {
     if (!m.classId) return false;
-    const classDef = getClassDefNew(m.classId);
+    const classDef = getClassDefOptional(m.classId);
     if (!classDef) return false;
     switch (category) {
       case "weapon": return canEquipWeapon(classDef, resolveWeapon(itemId));
@@ -998,7 +940,7 @@ export class ManagementScreen {
     const ALL_CLASSES = getAllCharacterClasses();
     const result: string[] = [];
     for (const classId of ALL_CLASSES) {
-      const classDef = getClassDefNew(classId);
+      const classDef = getClassDefOptional(classId);
       if (!classDef) continue;
       let canEquip = false;
       switch (gen.slotType) {

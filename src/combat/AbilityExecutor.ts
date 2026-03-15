@@ -1,6 +1,6 @@
 import type { World } from "@entities/World";
 import type { EntityId } from "@entities/Entity";
-import type { GeneratedAbility, EffectPrimitive } from "@data/AbilityData";
+import type { GeneratedAbility, EffectPrimitive, EffectType } from "@data/AbilityData";
 import type { WeaponDef } from "@data/WeaponData";
 import { UNARMED } from "@data/WeaponData";
 import { resolveWeapon } from "@data/ItemResolver";
@@ -23,6 +23,13 @@ import type { AbilityCooldownsComponent } from "@entities/components/AbilityCool
 import { resetCooldowns, reduceCooldowns } from "@entities/components/AbilityCooldowns";
 import type { ActiveStancesComponent } from "@entities/components/ActiveStances";
 
+/** One delayed effect to apply at end of caster's turn (e.g. Overclock self-stun). */
+export interface DelayedEffect {
+  targetEntityId: EntityId;
+  effectType: EffectType;
+  params: Record<string, number | string>;
+}
+
 /** Result of executing a generated ability. */
 export interface AbilityResult {
   attackResults: AttackResult[];
@@ -32,6 +39,10 @@ export interface AbilityResult {
   apRefunded?: number;
   summoned?: EntityId;
   zoneCreated?: string;
+  /** Effects to apply at end of caster's turn (e.g. "then 1 turn self-stun"). */
+  delayedEffects?: DelayedEffect[];
+  /** Grant this many AP to caster this turn (uncapped, for e.g. Overclock double AP). */
+  grantAp?: number;
 }
 
 /** Preview for a generated ability (non-destructive). */
@@ -222,6 +233,15 @@ export class AbilityExecutor {
     result: AbilityResult,
     exploitBonus: number,
   ): void {
+    if (effect.params && (effect.params as Record<string, unknown>).delay === "end_of_turn") {
+      const { delay: _d, ...params } = effect.params as Record<string, number | string>;
+      (result.delayedEffects ??= []).push({
+        targetEntityId: targetId,
+        effectType: effect.type,
+        params: { ...params },
+      });
+      return;
+    }
     switch (effect.type) {
       case "dmg_weapon":
         this.executeDmgWeapon(world, attackerId, targetId, effect, ability, weapon, result, exploitBonus);
@@ -236,13 +256,13 @@ export class AbilityExecutor {
         this.executeDmgSpell(world, attackerId, targetId, effect, ability, weapon, result, exploitBonus);
         break;
       case "dot_bleed":
-        this.executeDotBleed(world, targetId, effect, result);
+        this.executeDotBleed(world, attackerId, targetId, effect, result);
         break;
       case "dot_burn":
-        this.executeDotBurn(world, targetId, effect, result);
+        this.executeDotBurn(world, attackerId, targetId, effect, result);
         break;
       case "dot_poison":
-        this.executeDotPoison(world, targetId, effect, result);
+        this.executeDotPoison(world, attackerId, targetId, effect, result);
         break;
       case "disp_push":
         this.executeDispPush(world, attackerId, targetId, effect, result);
@@ -278,6 +298,32 @@ export class AbilityExecutor {
         const apAmt = (effect.params.amount as number) ?? 2;
         result.apRefunded = (result.apRefunded ?? 0) + apAmt;
         result.appliedEffects.push(`ap_refund_${apAmt}`);
+        break;
+      }
+      case "grant_ap": {
+        const apAmt = (effect.params.amount as number) ?? 0;
+        if (apAmt > 0) {
+          result.grantAp = (result.grantAp ?? 0) + apAmt;
+          result.appliedEffects.push(`grant_ap_${apAmt}`);
+        }
+        break;
+      }
+      case "apply_status": {
+        const statusId = (effect.params.statusId as string) ?? "";
+        const turns = (effect.params.turns as number) ?? 1;
+        if (statusId) {
+          this.statusEffects.apply(world, targetId, statusId, turns, attackerId);
+          result.appliedEffects.push(`apply_status_${statusId}_${turns}`);
+        }
+        break;
+      }
+      case "apply_status_self": {
+        const statusId = (effect.params.statusId as string) ?? "";
+        const turns = (effect.params.turns as number) ?? 1;
+        if (statusId) {
+          this.statusEffects.apply(world, attackerId, statusId, turns, attackerId);
+          result.appliedEffects.push(`apply_status_self_${statusId}_${turns}`);
+        }
         break;
       }
       case "heal_pctDmg":
@@ -320,7 +366,7 @@ export class AbilityExecutor {
         this.executeBuffShield(world, attackerId, effect, result);
         break;
       case "disp_teleport":
-        this.executeDispTeleport(world, attackerId, effect, result);
+        this.executeDispTeleport(world, attackerId, targetId, effect, result);
         break;
       case "disp_dash":
         this.executeDispDash(world, attackerId, targetId, effect, ability, weapon, result);
@@ -444,13 +490,13 @@ export class AbilityExecutor {
   }
 
   private executeDotBleed(
-    world: World, targetId: EntityId, effect: EffectPrimitive, result: AbilityResult,
+    world: World, attackerId: EntityId, targetId: EntityId, effect: EffectPrimitive, result: AbilityResult,
   ): void {
     const dmgPerTurn = (effect.params.dmgPerTurn as number) ?? 8;
     const turns = (effect.params.turns as number) ?? 3;
     this.statusEffects.applyDynamic(world, targetId, {
       id: "bleed", name: "Bleeding", duration: turns,
-      modifiers: {}, maxStacks: 5, dmgPerTurn,
+      modifiers: {}, maxStacks: 5, dmgPerTurn, sourceId: attackerId,
     });
     result.appliedEffects.push("bleed");
   }
@@ -488,19 +534,19 @@ export class AbilityExecutor {
   }
 
   private executeDotBurn(
-    world: World, targetId: EntityId, effect: EffectPrimitive, result: AbilityResult,
+    world: World, attackerId: EntityId, targetId: EntityId, effect: EffectPrimitive, result: AbilityResult,
   ): void {
     const dmgPerTurn = (effect.params.dmgPerTurn as number) ?? 5;
     const turns = (effect.params.turns as number) ?? 2;
     this.statusEffects.applyDynamic(world, targetId, {
       id: "burn", name: "Burning", duration: turns,
-      modifiers: {}, maxStacks: 3, dmgPerTurn,
+      modifiers: {}, maxStacks: 3, dmgPerTurn, sourceId: attackerId,
     });
     result.appliedEffects.push("burn");
   }
 
   private executeDotPoison(
-    world: World, targetId: EntityId, effect: EffectPrimitive, result: AbilityResult,
+    world: World, attackerId: EntityId, targetId: EntityId, effect: EffectPrimitive, result: AbilityResult,
   ): void {
     const dmgPerTurn = (effect.params.dmgPerTurn as number) ?? 4;
     const turns = (effect.params.turns as number) ?? 3;
@@ -508,7 +554,7 @@ export class AbilityExecutor {
     this.statusEffects.applyDynamic(world, targetId, {
       id: "poison", name: "Poisoned", duration: turns,
       modifiers: statReduce > 0 ? { meleeSkill: -statReduce } : {},
-      maxStacks: 3, dmgPerTurn,
+      maxStacks: 3, dmgPerTurn, sourceId: attackerId,
     });
     result.appliedEffects.push("poison");
   }
@@ -789,11 +835,10 @@ export class AbilityExecutor {
     result.appliedEffects.push(`shield_${amount}`);
   }
 
-  /** disp_teleport: Move entity to a random empty tile within range. */
+  /** disp_teleport: Move entity to target hex, or a random empty tile within range. When targetId is provided (e.g. Flicker Strike), prefer empty hex adjacent to target. */
   private executeDispTeleport(
-    world: World, entityId: EntityId, effect: EffectPrimitive, result: AbilityResult,
+    world: World, entityId: EntityId, targetId: EntityId, effect: EffectPrimitive, result: AbilityResult,
   ): void {
-    // Support explicit coordinates OR range-based random teleport
     const targetQ = (effect.params.targetQ as number);
     const targetR = (effect.params.targetR as number);
     const range = (effect.params.range as number) ?? 3;
@@ -808,23 +853,39 @@ export class AbilityExecutor {
       destQ = targetQ;
       destR = targetR;
     } else {
-      // Find all empty tiles within range and pick one randomly
-      const candidates: { q: number; r: number }[] = [];
-      for (let dq = -range; dq <= range; dq++) {
-        for (let dr = Math.max(-range, -dq - range); dr <= Math.min(range, -dq + range); dr++) {
-          const q = pos.q + dq;
-          const r = pos.r + dr;
-          if (dq === 0 && dr === 0) continue;
-          const tile = this.grid.get(q, r);
-          if (tile && !tile.occupant && tile.movementCost < Infinity) {
-            candidates.push({ q, r });
-          }
+      let found = false;
+      if (targetId !== entityId) {
+        const targetPos = world.getComponent<PositionComponent>(targetId, "position");
+        if (targetPos) {
+          const neighbors = hexNeighbors(targetPos.q, targetPos.r);
+        const emptyAdjacent = neighbors.filter((n) => {
+          const tile = this.grid.get(n.q, n.r);
+          return tile && !tile.occupant && tile.movementCost < Infinity;
+        });
+        if (emptyAdjacent.length > 0) {
+          const pick = emptyAdjacent[Math.floor(this.rng.nextFloat() * emptyAdjacent.length)]!;
+          destQ = pick.q;
+          destR = pick.r;
+          found = true;
+        }
         }
       }
-      if (candidates.length === 0) return;
-      const pick = candidates[Math.floor(this.rng.nextFloat() * candidates.length)]!;
-      destQ = pick.q;
-      destR = pick.r;
+      if (!found) {
+        const candidates: { q: number; r: number }[] = [];
+        for (let dq = -range; dq <= range; dq++) {
+          for (let dr = Math.max(-range, -dq - range); dr <= Math.min(range, -dq + range); dr++) {
+            const q = pos.q + dq;
+            const r = pos.r + dr;
+            if (dq === 0 && dr === 0) continue;
+            const tile = this.grid.get(q, r);
+            if (tile && !tile.occupant && tile.movementCost < Infinity) candidates.push({ q, r });
+          }
+        }
+        if (candidates.length === 0) return;
+        const pick = candidates[Math.floor(this.rng.nextFloat() * candidates.length)]!;
+        destQ = pick.q;
+        destR = pick.r;
+      }
     }
 
     const destTile = this.grid.get(destQ, destR);
@@ -1037,7 +1098,7 @@ export class AbilityExecutor {
     // Apply a DoT-like status to the target representing channel damage
     this.statusEffects.applyDynamic(world, targetId, {
       id: "channel_dmg", name: "Channeled", duration: turns,
-      modifiers: {}, dmgPerTurn,
+      modifiers: {}, dmgPerTurn, sourceId: attackerId,
     });
     result.appliedEffects.push("channel_dmg");
   }

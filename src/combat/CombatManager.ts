@@ -16,30 +16,34 @@ import type { ArmorComponent } from "@entities/components/Armor";
 import { StatusEffectManager, type BleedTickResult } from "./StatusEffectManager";
 import { MoraleManager, type MoraleCheckResult } from "./MoraleManager";
 import { SkillExecutor } from "./SkillExecutor";
-import { AbilityExecutor, type AbilityResult } from "./AbilityExecutor";
+import { AbilityExecutor, type AbilityResult, type DelayedEffect } from "./AbilityExecutor";
 import { PassiveResolver, type PassiveResult } from "./PassiveResolver";
+import type { TriggerGrants } from "@data/AbilityData";
 import type { ActiveStancesComponent } from "@entities/components/ActiveStances";
 import { UNARMED, type WeaponDef } from "@data/WeaponData";
 import { resolveWeapon, resolveShield } from "@data/ItemResolver";
 import { BASIC_ATTACK, getSkillsForWeapon, skillAPCost, skillStaminaCost, skillRange, type SkillDef } from "@data/SkillData";
 import type { CombatSkill } from "@data/CombatSkill";
-import { wrapSkillDef, wrapGeneratedAbility } from "@data/CombatSkill";
+import { wrapSkillDef, wrapGeneratedAbility, getExecutableAbility } from "@data/CombatSkill";
 import { resolveAbility } from "@data/AbilityResolver";
+import { getAbility } from "@data/ruleset/RulesetLoader";
+import { wrapRulesetAbility } from "@data/CombatSkill";
 import type { AbilitiesComponent } from "@entities/components/Abilities";
 import type { AbilityCooldownsComponent } from "@entities/components/AbilityCooldowns";
 import type { StatusEffectsComponent } from "@entities/components/StatusEffects";
 import type { CharacterClassComponent } from "@entities/components/CharacterClass";
 import { getClassAPDiscount, getClassArmorMPReduction, canEquipWeapon, canEquipShield } from "@data/ClassData";
-import { getClassDefNew } from "@data/ClassDefinition";
+import { getClassDefOptional } from "@data/ClassData";
 import { getConsumable } from "@data/ItemData";
 import { decideTacticalAction, type TacticalAction } from "./TacticalAI";
 import { hasLineOfSight } from "@hex/HexLineOfSight";
 import { RNG } from "@utils/RNG";
 import { EventBus } from "@core/EventBus";
+import { refreshAuras } from "@combat/AuraManager";
 import { ResourceManager } from "./ResourceManager";
 import { hexDistance, hexNeighbors } from "@hex/HexMath";
 import { findPath, reachableHexes } from "@hex/HexPathfinding";
-import { createActionTracker, trackAction, trackKill, type BattleActionTracker } from "./CPCalculator";
+import { createActionTracker, trackAction, trackKill, CP_PER_ACTION, type BattleActionTracker } from "./CPCalculator";
 
 export type CombatPhase = "deployment" | "playerTurn" | "enemyTurn" | "battleEnd";
 export type PlayerTurnState = "awaitingInput" | "skillTargeting" | "animating";
@@ -101,6 +105,77 @@ export class CombatManager {
   /** Tracks the last ability used per entity (for combo chain sequencing). */
   private _lastAbilityUsed = new Map<EntityId, string>();
 
+  /**
+   * AP available immediately for a unit (e.g. from on-dodge res_apRefund).
+   * Use getReactionAp / spendReactionAp so reaction abilities can use this before the unit's turn.
+   * Any unspent amount is merged into normal AP when that unit's turn starts.
+   */
+  private reactionApByEntity = new Map<EntityId, number>();
+
+  /** Effects to apply at end of a unit's turn (e.g. Overclock self-stun). sourceEntityId = whose turn. */
+  private pendingDelayedEffects: Array<DelayedEffect & { sourceEntityId: EntityId }> = [];
+
+  /** AP available right now for reactions (e.g. after dodging). Use spendReactionAp when they use a reaction. */
+  getReactionAp(entityId: EntityId): number {
+    return this.reactionApByEntity.get(entityId) ?? 0;
+  }
+
+  /** Spend AP from the entity's reaction pool. Returns true if they had enough. */
+  spendReactionAp(entityId: EntityId, amount: number): boolean {
+    const cur = this.reactionApByEntity.get(entityId) ?? 0;
+    if (cur < amount) return false;
+    const next = cur - amount;
+    if (next <= 0) this.reactionApByEntity.delete(entityId);
+    else this.reactionApByEntity.set(entityId, next);
+    return true;
+  }
+
+  /** MP available immediately for reactions (e.g. after dodging). Unspent is merged at turn start. */
+  private reactionMpByEntity = new Map<EntityId, number>();
+  getReactionMp(entityId: EntityId): number {
+    return this.reactionMpByEntity.get(entityId) ?? 0;
+  }
+  spendReactionMp(entityId: EntityId, amount: number): boolean {
+    const cur = this.reactionMpByEntity.get(entityId) ?? 0;
+    if (cur < amount) return false;
+    const next = cur - amount;
+    if (next <= 0) this.reactionMpByEntity.delete(entityId);
+    else this.reactionMpByEntity.set(entityId, next);
+    return true;
+  }
+
+  /** Apply trigger grants immediately: HP/mana/stamina to components; AP/MP to current unit or reaction pools. */
+  private applyTriggerGrants(entityId: EntityId, grants: TriggerGrants, isCurrentUnit: boolean): void {
+    const health = this.world.getComponent<HealthComponent>(entityId, "health");
+    if (health && (grants.hp ?? 0) > 0) {
+      health.current = Math.min(health.max, health.current + (grants.hp ?? 0));
+    }
+    const mana = this.world.getComponent<ManaComponent>(entityId, "mana");
+    if (mana && (grants.mana ?? 0) > 0) {
+      mana.current = Math.min(mana.max, mana.current + (grants.mana ?? 0));
+    }
+    const stamina = this.world.getComponent<StaminaComponent>(entityId, "stamina");
+    if (stamina && (grants.stamina ?? 0) > 0) {
+      stamina.current = Math.min(stamina.max, stamina.current + (grants.stamina ?? 0));
+    }
+    const ap = grants.ap ?? 0;
+    if (ap > 0) {
+      if (isCurrentUnit) this.apManager.refund(ap);
+      else {
+        const cur = this.reactionApByEntity.get(entityId) ?? 0;
+        this.reactionApByEntity.set(entityId, cur + ap);
+      }
+    }
+    const mp = grants.mp ?? 0;
+    if (mp > 0) {
+      if (isCurrentUnit) this.mpManager.add(mp);
+      else {
+        const cur = this.reactionMpByEntity.get(entityId) ?? 0;
+        this.reactionMpByEntity.set(entityId, cur + mp);
+      }
+    }
+  }
+
   /** Get the last ability used by an entity. */
   getLastAbilityUsed(entityId: EntityId): string | undefined {
     return this._lastAbilityUsed.get(entityId);
@@ -114,6 +189,7 @@ export class CombatManager {
     result: AttackResult,
     attackerId: EntityId,
     defenderId: EntityId,
+    skillName?: string,
   ) => void;
   onUnitMoved?: (
     entityId: EntityId,
@@ -140,6 +216,8 @@ export class CombatManager {
   ) => void;
   onStanceActivated?: (entityId: EntityId, stanceId: string) => void;
   onPassiveTriggered?: (entityId: EntityId, passiveName: string, effect: string) => void;
+  /** Called when a player unit earns CP from an action (move, attack, ability). */
+  onCPEarned?: (entityId: EntityId, amount: number) => void;
 
   constructor(
     private world: World,
@@ -212,17 +290,23 @@ export class CombatManager {
     const staticSkills = getSkillsForWeapon(weaponId);
     const result: CombatSkill[] = staticSkills.map(s => wrapSkillDef(s, weapon));
 
-    // Generated abilities from AbilitiesComponent
+    // Abilities from AbilitiesComponent (ruleset or legacy generated)
     const abilities = this.world.getComponent<AbilitiesComponent>(this.selectedUnit, "abilities");
     const cooldowns = this.world.getComponent<AbilityCooldownsComponent>(this.selectedUnit, "abilityCooldowns");
     if (abilities) {
       for (const uid of abilities.abilityIds) {
+        const rulesetDef = getAbility(uid);
+        if (rulesetDef) {
+          if (rulesetDef.type.toLowerCase().includes("passive") || rulesetDef.type === "Aura") continue;
+          if (cooldowns && (cooldowns.cooldowns[uid] ?? 0) > 0) continue;
+          if (rulesetDef.weaponReq && rulesetDef.weaponReq.length > 0 && !rulesetDef.weaponReq.includes(weapon.family)) continue;
+          result.push(wrapRulesetAbility(rulesetDef, weapon));
+          continue;
+        }
         const ability = resolveAbility(uid);
         if (!ability) continue;
         if (ability.isPassive) continue;
-        // Check cooldown
         if (cooldowns && (cooldowns.cooldowns[uid] ?? 0) > 0) continue;
-        // Check weapon requirement
         if (ability.weaponReq.length > 0 && !ability.weaponReq.includes(weapon.family)) continue;
         result.push(wrapGeneratedAbility(ability, weapon));
       }
@@ -278,7 +362,7 @@ export class CombatManager {
     if (!pos) return hexes;
 
     const cs = this.pendingSkill;
-    const apCost = cs.isGenerated
+    const apCost = getExecutableAbility(cs)
       ? cs.apCost
       : this.getEffectiveAPCost(this.selectedUnit, cs.skillDef!, this.getWeaponDef(this.selectedUnit));
     if (!this.apManager.canAfford(apCost)) return hexes;
@@ -457,6 +541,17 @@ export class CombatManager {
 
   // ── Private action methods ──
 
+  private isPlayerUnit(entityId: EntityId): boolean {
+    const team = this.world.getComponent<{ type: "team"; team: string }>(entityId, "team");
+    return team?.team === "player";
+  }
+
+  private awardCPIfPlayer(entityId: EntityId, amount: number): void {
+    if (!this.isPlayerUnit(entityId)) return;
+    trackAction(this._actionTracker, entityId);
+    this.onCPEarned?.(entityId, amount);
+  }
+
   /** Execute a move action for the given entity to (q, r). */
   private executeMove(entityId: EntityId, q: number, r: number): void {
     const pos = this.world.getComponent<PositionComponent>(entityId, "position");
@@ -497,7 +592,11 @@ export class CombatManager {
     for (const attackerId of zocAttackers) {
       const result = this.damageCalc.resolveMelee(this.world, attackerId, entityId);
       this.onZoCAttack?.(result, attackerId, entityId);
-
+      if (!result.hit) {
+        this.fireOnDodgePassives(entityId, attackerId, "melee");
+      } else if (result.hpDamage > 0) {
+        this.fireOnTakeDamagePassives(entityId, attackerId, result.hpDamage);
+      }
       if (result.targetKilled) {
         // Unit died from ZoC — cancel the move
         this.handleDeath(entityId, attackerId);
@@ -534,6 +633,8 @@ export class CombatManager {
     // Spend MP (not AP) and stamina
     this.mpManager.spend(totalMPSpent);
     this.addStamina(entityId, staminaCost);
+
+    this.awardCPIfPlayer(entityId, CP_PER_ACTION);
 
     // Update occupancy
     const oldTile = this.grid.get(pos.q, pos.r);
@@ -592,12 +693,23 @@ export class CombatManager {
     this.undoInfo = null;
     this.selectedSkill = null;
     this.pendingSkill = null;
-
     this.onUnitTeleported?.(entityId, oldQ, oldR);
-
-    // Recalculate and show overlays
     this.calculateMoveRange(entityId);
     this.setPlayerState("awaitingInput");
+  }
+
+  /** Set entity position and grid occupancy (e.g. for Flicker Strike return). */
+  private setEntityPosition(entityId: EntityId, q: number, r: number, elevation?: number): void {
+    const pos = this.world.getComponent<PositionComponent>(entityId, "position");
+    if (!pos) return;
+    const currentTile = this.grid.get(pos.q, pos.r);
+    if (currentTile) currentTile.occupant = null;
+    const newTile = this.grid.get(q, r);
+    if (newTile) newTile.occupant = entityId;
+    pos.q = q;
+    pos.r = r;
+    if (elevation !== undefined) pos.elevation = elevation;
+    else if (newTile) pos.elevation = newTile.elevation;
   }
 
   /** Execute an attack action using the active skill. */
@@ -605,8 +717,8 @@ export class CombatManager {
     const activeCombatSkill = this.getActiveCombatSkill();
     const weapon = this.getWeaponDef(attackerId);
 
-    // Route generated abilities through AbilityExecutor
-    if (activeCombatSkill?.isGenerated && activeCombatSkill.generatedAbility) {
+    // Route generated or ruleset abilities through AbilityExecutor
+    if (activeCombatSkill && getExecutableAbility(activeCombatSkill)) {
       this.executeGeneratedAbility(attackerId, defenderId, activeCombatSkill);
       return;
     }
@@ -624,8 +736,7 @@ export class CombatManager {
     this.addStamina(attackerId, fatCost);
     if (weapon.manaCost > 0) this.spendMana(attackerId, weapon.manaCost);
 
-    // Track action for CP
-    trackAction(this._actionTracker, attackerId);
+    this.awardCPIfPlayer(attackerId, CP_PER_ACTION);
 
     // Can't undo after attacking
     this.undoInfo = null;
@@ -642,7 +753,11 @@ export class CombatManager {
       result = this.damageCalc.resolveSkillAttack(this.world, attackerId, defenderId, skill);
     }
 
-    this.onAttackResult?.(result, attackerId, defenderId);
+    this.onAttackResult?.(result, attackerId, defenderId, skill?.name);
+
+    if (!result.hit) {
+      this.fireOnDodgePassives(defenderId, attackerId, skill?.name ?? "melee");
+    }
 
     // Notify about applied status effects
     for (const eff of result.appliedEffects) {
@@ -662,6 +777,9 @@ export class CombatManager {
           this.statusEffects.apply(this.world, defenderId, "fleeing");
         }
       }
+      if (result.hpDamage > 0) {
+        this.fireOnTakeDamagePassives(defenderId, attackerId, result.hpDamage);
+      }
     }
 
     this.pendingContinuation = () => {
@@ -673,9 +791,9 @@ export class CombatManager {
     this.onActionComplete?.();
   }
 
-  /** Execute a generated ability through AbilityExecutor. */
+  /** Execute a generated or ruleset ability through AbilityExecutor. */
   private executeGeneratedAbility(attackerId: EntityId, defenderId: EntityId, cs: CombatSkill): void {
-    const ability = cs.generatedAbility!;
+    const ability = getExecutableAbility(cs)!;
     const weapon = this.getWeaponDef(attackerId);
 
     if (!this.apManager.canAfford(cs.apCost)) return;
@@ -686,8 +804,7 @@ export class CombatManager {
     if (cs.manaCost > 0) this.spendMana(attackerId, cs.manaCost);
     this.undoInfo = null;
 
-    // Track action for CP
-    trackAction(this._actionTracker, attackerId);
+    this.awardCPIfPlayer(attackerId, CP_PER_ACTION);
 
     // HP self-cost (Phase 2)
     if (ability.cost.hpCost && ability.cost.hpCost > 0) {
@@ -704,11 +821,62 @@ export class CombatManager {
       }
     }
 
-    const abilityResult = this.abilityExecutor.execute(this.world, attackerId, defenderId, ability, weapon);
+    let storedPosition: { q: number; r: number; elevation: number } | null = null;
+    if (ability.returnToStoredPositionAfterExecute) {
+      const pos = this.world.getComponent<PositionComponent>(attackerId, "position");
+      if (pos) storedPosition = { q: pos.q, r: pos.r, elevation: pos.elevation };
+    }
+
+    let abilityResult: ReturnType<typeof this.abilityExecutor.execute>;
+    if (ability.targeting.type === "tgt_all_allies" && !this.isEnemyEntity(attackerId)) {
+      const allies = this.getPlayerUnits();
+      abilityResult = {
+        attackResults: [],
+        appliedEffects: [],
+        delayedEffects: [],
+        apRefunded: 0,
+        grantAp: 0,
+      };
+      for (const allyId of allies) {
+        const r = this.abilityExecutor.execute(this.world, attackerId, allyId, ability, weapon);
+        abilityResult.attackResults.push(...(r.attackResults ?? []));
+        abilityResult.appliedEffects.push(...(r.appliedEffects ?? []));
+        (abilityResult.delayedEffects ??= []).push(...(r.delayedEffects ?? []));
+        abilityResult.apRefunded! += r.apRefunded ?? 0;
+        abilityResult.grantAp = (abilityResult.grantAp ?? 0) + (r.grantAp ?? 0);
+        for (const ar of r.attackResults ?? []) {
+          this.onAttackResult?.(ar, attackerId, allyId, cs.name);
+          if (!ar.hit) this.fireOnDodgePassives(allyId, attackerId, cs.name);
+          else if (ar.hpDamage > 0) this.fireOnTakeDamagePassives(allyId, attackerId, ar.hpDamage);
+        }
+        for (const eff of r.appliedEffects ?? []) this.onStatusApplied?.(allyId, eff);
+        const th = this.world.getComponent<HealthComponent>(allyId, "health");
+        if (th && th.current <= 0) {
+          this.handleDeath(allyId, attackerId);
+          this.triggerAllyMoraleChecks(allyId);
+          this.triggerEnemyKillBoost(attackerId);
+          this.fireOnKillPassives(attackerId, allyId);
+        }
+      }
+    } else {
+      abilityResult = this.abilityExecutor.execute(this.world, attackerId, defenderId, ability, weapon);
+    }
+
+    const isAllAllies = ability.targeting.type === "tgt_all_allies" && !this.isEnemyEntity(attackerId);
+
+    if (abilityResult.delayedEffects?.length) {
+      for (const d of abilityResult.delayedEffects) {
+        this.pendingDelayedEffects.push({ ...d, sourceEntityId: attackerId });
+      }
+    }
 
     // Apply AP refund from res_apRefund effects
     if (abilityResult.apRefunded && abilityResult.apRefunded > 0) {
       this.apManager.refund(abilityResult.apRefunded);
+    }
+    // Grant AP this turn (e.g. Overclock double AP — uncapped)
+    if (abilityResult.grantAp && abilityResult.grantAp > 0) {
+      this.apManager.addAp(abilityResult.grantAp);
     }
 
     // Track last ability used for combo chains (Phase 8)
@@ -721,15 +889,22 @@ export class CombatManager {
       }
     }
 
-    // Notify UI about each attack result
-    for (const ar of abilityResult.attackResults) {
-      this.onAttackResult?.(ar, attackerId, defenderId);
-    }
-    for (const eff of abilityResult.appliedEffects) {
-      this.onStatusApplied?.(defenderId, eff);
-    }
-    if (abilityResult.stanceActivated) {
-      this.onStanceActivated?.(attackerId, abilityResult.stanceActivated);
+    if (!isAllAllies) {
+      // Notify UI about each attack result; emit dodge and fire on-dodge/on-take-damage passives
+      for (const ar of abilityResult.attackResults) {
+        this.onAttackResult?.(ar, attackerId, defenderId, cs.name);
+        if (!ar.hit) {
+          this.fireOnDodgePassives(defenderId, attackerId, cs.name);
+        } else if (ar.hpDamage > 0) {
+          this.fireOnTakeDamagePassives(defenderId, attackerId, ar.hpDamage);
+        }
+      }
+      for (const eff of abilityResult.appliedEffects) {
+        this.onStatusApplied?.(defenderId, eff);
+      }
+      if (abilityResult.stanceActivated) {
+        this.onStanceActivated?.(attackerId, abilityResult.stanceActivated);
+      }
     }
 
     // Start cooldown
@@ -737,25 +912,31 @@ export class CombatManager {
       this.startAbilityCooldown(attackerId, ability.uid, ability.cost.cooldown);
     }
 
-    // Check kills
-    const targetHealth = this.world.getComponent<HealthComponent>(defenderId, "health");
-    if (targetHealth && targetHealth.current <= 0) {
-      this.handleDeath(defenderId, attackerId);
-      this.triggerAllyMoraleChecks(defenderId);
-      this.triggerEnemyKillBoost(attackerId);
-      this.fireOnKillPassives(attackerId, defenderId);
-    } else {
-      // Morale check from total damage
-      const totalHpDmg = abilityResult.attackResults.reduce((sum, r) => sum + r.hpDamage, 0);
-      if (totalHpDmg > 0) {
-        const moraleResult = this.morale.onHeavyDamage(this.world, defenderId, totalHpDmg);
-        if (moraleResult) {
-          this.onMoraleChange?.(moraleResult);
-          if (moraleResult.newState === "fleeing") {
-            this.statusEffects.apply(this.world, defenderId, "fleeing");
+    if (!isAllAllies) {
+      // Check kills
+      const targetHealth = this.world.getComponent<HealthComponent>(defenderId, "health");
+      if (targetHealth && targetHealth.current <= 0) {
+        this.handleDeath(defenderId, attackerId);
+        this.triggerAllyMoraleChecks(defenderId);
+        this.triggerEnemyKillBoost(attackerId);
+        this.fireOnKillPassives(attackerId, defenderId);
+      } else {
+        // Morale check from total damage
+        const totalHpDmg = abilityResult.attackResults.reduce((sum, r) => sum + r.hpDamage, 0);
+        if (totalHpDmg > 0) {
+          const moraleResult = this.morale.onHeavyDamage(this.world, defenderId, totalHpDmg);
+          if (moraleResult) {
+            this.onMoraleChange?.(moraleResult);
+            if (moraleResult.newState === "fleeing") {
+              this.statusEffects.apply(this.world, defenderId, "fleeing");
+            }
           }
         }
       }
+    }
+
+    if (ability.returnToStoredPositionAfterExecute && storedPosition) {
+      this.setEntityPosition(attackerId, storedPosition.q, storedPosition.r, storedPosition.elevation);
     }
 
     this.pendingContinuation = () => {
@@ -942,10 +1123,33 @@ export class CombatManager {
     );
   }
 
+  /** Apply all delayed effects scheduled for end of this entity's turn (e.g. Overclock self-stun). */
+  private processDelayedEffectsForEntity(entityId: EntityId): void {
+    const toApply = this.pendingDelayedEffects.filter((e) => e.sourceEntityId === entityId);
+    this.pendingDelayedEffects = this.pendingDelayedEffects.filter((e) => e.sourceEntityId !== entityId);
+    for (const d of toApply) {
+      const turns = (d.params.turns as number) ?? 1;
+      switch (d.effectType) {
+        case "cc_stun":
+          this.statusEffects.apply(this.world, d.targetEntityId, "stun", turns);
+          break;
+        case "cc_root":
+          this.statusEffects.apply(this.world, d.targetEntityId, "root", turns);
+          break;
+        case "cc_daze":
+          this.statusEffects.apply(this.world, d.targetEntityId, "daze", turns);
+          break;
+        default:
+          break;
+      }
+    }
+  }
+
   /** End the current player unit's turn and advance. */
   private endPlayerUnitTurn(): void {
-    // Convert remaining AP to stamina recovery (1 AP → 2 stamina recovered)
     if (this.selectedUnit) {
+      this.processDelayedEffectsForEntity(this.selectedUnit);
+      // Convert remaining AP to stamina recovery (1 AP → 2 stamina recovered)
       const leftoverAP = this.apManager.remaining;
       if (leftoverAP > 0) {
         const stamina = this.world.getComponent<StaminaComponent>(this.selectedUnit, "stamina");
@@ -963,11 +1167,15 @@ export class CombatManager {
     this.undoInfo = null;
     this.playerTurnState = "awaitingInput";
 
-    const newRound = this.turnOrder.advance();
-    if (newRound) {
-      this.turnOrder.calculateOrder(this.world);
-    }
+    this.advanceToNextTurn();
+  }
 
+  /** Process delayed effects for the current entity, advance turn order, begin next turn. */
+  private advanceToNextTurn(): void {
+    const entry = this.turnOrder.current();
+    if (entry) this.processDelayedEffectsForEntity(entry.entityId);
+    const newRound = this.turnOrder.advance();
+    if (newRound) this.turnOrder.calculateOrder(this.world);
     this.beginCurrentTurn();
   }
 
@@ -990,11 +1198,14 @@ export class CombatManager {
     // Tick ability cooldowns
     this.tickAbilityCooldowns(entityId);
 
-    // Fire turn-start passives
-    const passiveResults = this.passiveResolver.onTurnStart(this.world, entityId);
-    for (const pr of passiveResults) {
+    // Fire turn-start passives (grants applied below for player, after reset)
+    const turnStartOut = this.passiveResolver.onTurnStart(this.world, entityId);
+    for (const pr of turnStartOut.results) {
       this.onPassiveTriggered?.(entityId, pr.abilityName, pr.effect);
     }
+
+    // Refresh auras (R3: caster-centered radius effects)
+    refreshAuras(this.world, this.grid, this.statusEffects, (id) => this.isEnemyEntity(id));
 
     // Passive morale recovery
     this.morale.passiveRecovery(this.world, entityId);
@@ -1010,11 +1221,8 @@ export class CombatManager {
         this.handleDeath(entityId);
         this.pendingContinuation = () => {
           if (!this.checkBattleEnd()) {
-            // Trigger ally morale checks for bleed death
             this.triggerAllyMoraleChecks(entityId);
-            const newRound = this.turnOrder.advance();
-            if (newRound) this.turnOrder.calculateOrder(this.world);
-            this.beginCurrentTurn();
+            this.advanceToNextTurn();
           }
         };
         this.onActionComplete?.();
@@ -1028,9 +1236,7 @@ export class CombatManager {
     if (this.statusEffects.hasEffect(this.world, entityId, "stun")) {
       this.onTurnSkipped?.(entityId, "Stunned");
       this.pendingContinuation = () => {
-        const newRound = this.turnOrder.advance();
-        if (newRound) this.turnOrder.calculateOrder(this.world);
-        this.beginCurrentTurn();
+        this.advanceToNextTurn();
       };
       this.onActionComplete?.();
       return;
@@ -1051,8 +1257,23 @@ export class CombatManager {
       this.setPhase("playerTurn");
       this.selectedUnit = entityId;
       this.apManager.resetForTurn();
+      const reactionAp = this.reactionApByEntity.get(entityId) ?? 0;
+      if (reactionAp > 0) {
+        this.apManager.refund(reactionAp);
+        this.reactionApByEntity.delete(entityId);
+      }
       this.applyDazeAPPenalty(entityId);
+      const apBonusPct = this.statusEffects.getApBonusPercent(this.world, entityId);
+      if (apBonusPct > 0) {
+        this.apManager.addAp(Math.floor(MAX_AP * apBonusPct / 100));
+      }
       this.resetMPForUnit(entityId);
+      const reactionMp = this.reactionMpByEntity.get(entityId) ?? 0;
+      if (reactionMp > 0) {
+        this.mpManager.add(reactionMp);
+        this.reactionMpByEntity.delete(entityId);
+      }
+      this.applyTriggerGrants(entityId, turnStartOut.grants, true);
       this.calculateMoveRange(entityId);
       this.setPlayerState("awaitingInput");
     }
@@ -1128,7 +1349,7 @@ export class CombatManager {
       }
 
       case "activateStance": {
-        if (action.combatSkill?.isGenerated && action.combatSkill.generatedAbility) {
+        if (action.combatSkill && getExecutableAbility(action.combatSkill)) {
           this.executeStanceCombatSkill(entityId, action.combatSkill);
         } else {
           this.executeStanceEnemy(entityId, action.skill);
@@ -1151,11 +1372,7 @@ export class CombatManager {
 
     this.pendingContinuation = () => {
       if (!this.checkBattleEnd()) {
-        const newRound = this.turnOrder.advance();
-        if (newRound) {
-          this.turnOrder.calculateOrder(this.world);
-        }
-        this.beginCurrentTurn();
+        this.advanceToNextTurn();
       }
     };
 
@@ -1184,9 +1401,7 @@ export class CombatManager {
         this.handleDeath(entityId, zocAttacker);
         this.pendingContinuation = () => {
           if (!this.checkBattleEnd()) {
-            const newRound = this.turnOrder.advance();
-            if (newRound) this.turnOrder.calculateOrder(this.world);
-            this.beginCurrentTurn();
+            this.advanceToNextTurn();
           }
         };
         this.onActionComplete?.();
@@ -1217,9 +1432,7 @@ export class CombatManager {
       this.handleDeath(entityId);
       this.pendingContinuation = () => {
         if (!this.checkBattleEnd()) {
-          const newRound = this.turnOrder.advance();
-          if (newRound) this.turnOrder.calculateOrder(this.world);
-          this.beginCurrentTurn();
+          this.advanceToNextTurn();
         }
       };
       this.onActionComplete?.();
@@ -1231,8 +1444,7 @@ export class CombatManager {
 
   /** Execute an enemy attack with morale/status handling. */
   private executeEnemyAttack(entityId: EntityId, targetId: EntityId, skill?: SkillDef, combatSkill?: CombatSkill): void {
-    // Route generated abilities through AbilityExecutor
-    if (combatSkill?.isGenerated && combatSkill.generatedAbility) {
+    if (combatSkill && getExecutableAbility(combatSkill)) {
       this.executeGeneratedAbility(entityId, targetId, combatSkill);
       return;
     }
@@ -1253,7 +1465,10 @@ export class CombatManager {
     } else {
       result = this.damageCalc.resolveSkillAttack(this.world, entityId, targetId, useSkill);
     }
-    this.onAttackResult?.(result, entityId, targetId);
+    this.onAttackResult?.(result, entityId, targetId, useSkill.name);
+    if (!result.hit) {
+      this.fireOnDodgePassives(targetId, entityId, useSkill.name);
+    }
     for (const eff of result.appliedEffects) {
       this.onStatusApplied?.(targetId, eff);
     }
@@ -1269,6 +1484,9 @@ export class CombatManager {
         if (mr.newState === "fleeing") {
           this.statusEffects.apply(this.world, targetId, "fleeing");
         }
+      }
+      if (result.hpDamage > 0) {
+        this.fireOnTakeDamagePassives(targetId, entityId, result.hpDamage);
       }
     }
   }
@@ -1319,7 +1537,7 @@ export class CombatManager {
       const equip = this.world.getComponent<EquipmentComponent>(entityId, "equipment");
       const armor = this.world.getComponent<ArmorComponent>(entityId, "armor");
       const cc = this.world.getComponent<CharacterClassComponent>(entityId, "characterClass");
-      const fleeClassDef = cc ? getClassDefNew(cc.classId) : undefined;
+      const fleeClassDef = cc ? getClassDefOptional(cc.classId) : undefined;
       const fleeArmorReduction = fleeClassDef ? getClassArmorMPReduction(fleeClassDef) : 0;
       const fleeMP = getEffectiveMP(stats?.movementPoints ?? DEFAULT_MP, armor?.body?.id, armor?.head?.id, equip?.offHand ?? undefined, fleeArmorReduction);
       const enemies = isEnemy ? this.getPlayerUnits() : this.getEnemyUnits();
@@ -1370,9 +1588,7 @@ export class CombatManager {
 
     this.pendingContinuation = () => {
       if (!this.checkBattleEnd()) {
-        const newRound = this.turnOrder.advance();
-        if (newRound) this.turnOrder.calculateOrder(this.world);
-        this.beginCurrentTurn();
+        this.advanceToNextTurn();
       }
     };
     this.onActionComplete?.();
@@ -1386,7 +1602,7 @@ export class CombatManager {
     const equip = this.world.getComponent<EquipmentComponent>(entityId, "equipment");
     const armor = this.world.getComponent<ArmorComponent>(entityId, "armor");
     const cc = this.world.getComponent<CharacterClassComponent>(entityId, "characterClass");
-    const classDef = cc ? getClassDefNew(cc.classId) : undefined;
+    const classDef = cc ? getClassDefOptional(cc.classId) : undefined;
     const armorMPReduction = classDef ? getClassArmorMPReduction(classDef) : 0;
     const baseMP = stats?.movementPoints ?? DEFAULT_MP;
     const effectiveMP = getEffectiveMP(baseMP, armor?.body?.id, armor?.head?.id, equip?.offHand ?? undefined, armorMPReduction);
@@ -1403,7 +1619,7 @@ export class CombatManager {
     const base = skillAPCost(skill, weapon);
     const cc = this.world.getComponent<CharacterClassComponent>(entityId, "characterClass");
     if (!cc) return base;
-    const classDef = getClassDefNew(cc.classId);
+    const classDef = getClassDefOptional(cc.classId);
     if (!classDef) return base;
     const discount = getClassAPDiscount(classDef, weapon, skill.rangeType);
     return Math.max(1, base - discount);
@@ -1418,8 +1634,7 @@ export class CombatManager {
 
   /** Public: get AP cost for a CombatSkill. */
   getCombatSkillAPCost(cs: CombatSkill): number {
-    if (cs.isGenerated) return cs.apCost;
-    if (!cs.skillDef) return cs.apCost;
+    if (getExecutableAbility(cs) || !cs.skillDef) return cs.apCost;
     return this.getSkillAPCost(cs.skillDef);
   }
 
@@ -1530,12 +1745,39 @@ export class CombatManager {
 
   /** Fire on-kill passives for the killer and refund AP. */
   private fireOnKillPassives(killerId: EntityId, killedId: EntityId): void {
-    const { results, apRefund } = this.passiveResolver.onKill(this.world, killerId, killedId);
-    if (apRefund > 0) {
-      this.apManager.refund(apRefund);
-    }
+    const { results, grants } = this.passiveResolver.onKill(this.world, killerId, killedId);
+    const isCurrent = this.turnOrder.current()?.entityId === killerId;
+    this.applyTriggerGrants(killerId, grants, isCurrent);
     for (const pr of results) {
       this.onPassiveTriggered?.(killerId, pr.abilityName, pr.effect);
+    }
+  }
+
+  /** Emit damage:dodged and fire on-dodge passives for the defender who dodged. */
+  private fireOnDodgePassives(dodgerId: EntityId, attackerId: EntityId, source: string): void {
+    this.eventBus.emit("damage:dodged", { attackerId, dodgerId, source });
+    const { results, grants } = this.passiveResolver.onDodge(this.world, dodgerId, attackerId);
+    const isCurrent = this.turnOrder.current()?.entityId === dodgerId;
+    this.applyTriggerGrants(dodgerId, grants, isCurrent);
+    for (const pr of results) {
+      this.onPassiveTriggered?.(dodgerId, pr.abilityName, pr.effect);
+    }
+  }
+
+  /** Fire on-take-damage passives (reflect, root attacker, etc.) and apply reflected damage. */
+  private fireOnTakeDamagePassives(victimId: EntityId, attackerId: EntityId, hpDamage: number): void {
+    const reactive = this.passiveResolver.onDamageTaken(this.world, victimId, hpDamage, attackerId);
+    for (const pr of reactive.results) {
+      this.onPassiveTriggered?.(victimId, pr.abilityName, pr.effect);
+    }
+    if (reactive.reflectDamage > 0) {
+      const attackerHealth = this.world.getComponent<HealthComponent>(attackerId, "health");
+      if (attackerHealth) {
+        attackerHealth.current = Math.max(0, attackerHealth.current - reactive.reflectDamage);
+        if (attackerHealth.current <= 0) {
+          this.handleDeath(attackerId, victimId);
+        }
+      }
     }
   }
 
@@ -1647,7 +1889,7 @@ export class CombatManager {
     // Validate class restrictions
     const cc = this.world.getComponent<CharacterClassComponent>(entityId, "characterClass");
     if (cc) {
-      const classDef = getClassDefNew(cc.classId);
+      const classDef = getClassDefOptional(cc.classId);
       if (classDef) {
         if (slot === "mainHand") {
           try {

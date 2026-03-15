@@ -67,6 +67,20 @@ import type { MoraleComponent } from "@entities/components/Morale";
 import type { AIType } from "@entities/components/AIBehavior";
 import type { SpriteCharType } from "@rendering/SpriteAnimator";
 import type { SpriteRefComponent } from "@entities/components/SpriteRef";
+import { getClass, getArchetypeAbilitySlots } from "@data/ruleset/RulesetLoader";
+import { buildDemoBattleLog } from "../audit/buildDemoBattleLog";
+
+/** Window extensions for browser automation (audit log capture). */
+declare global {
+  interface Window {
+    __autoRunBattle?: boolean;
+    __battleEnded?: boolean;
+    __battleVictory?: boolean;
+    __battleTurnLog?: string[];
+    __battleTurnCount?: number;
+    __battleAuditLog?: string;
+  }
+}
 
 // ── Terrain configs ──
 
@@ -350,6 +364,10 @@ export class DemoBattle {
   private levelUpModal: LevelUpModal;
   private saveData: SaveData | null = null;
   private scenarioId: string = "";
+  /** Scenario used for this battle (for audit log when __autoRunBattle). */
+  private initialScenario: ScenarioDef | null = null;
+  /** Entity ID → display name for turn log (same order as HeadlessBattle). */
+  private auditEntityNames = new Map<EntityId, string>();
 
   // ── AI mode ──
   private aiMode = false;
@@ -402,6 +420,7 @@ export class DemoBattle {
       }
     }
     this.scenarioId = scenario.id;
+    this.initialScenario = scenario;
 
     // Game state
     this.world = new World();
@@ -418,6 +437,14 @@ export class DemoBattle {
 
     // Spawn units from scenario
     this.spawnFromScenario(scenario);
+
+    // Entity ID → name for audit turn log (same order as HeadlessBattle)
+    let pi = 0;
+    let ei = 0;
+    for (const u of scenario.units) {
+      const id = u.team === "player" ? this.playerIds[pi++]! : this.enemyIds[ei++]!;
+      this.auditEntityNames.set(id, u.name);
+    }
 
     // Add ability components for player units from roster data
     if (this.incomingSaveData?.roster) {
@@ -516,6 +543,11 @@ export class DemoBattle {
     });
     this.uiManager.root.appendChild(this.aiBtn);
 
+    if (window.__autoRunBattle) {
+      this.aiMode = true;
+      this.aiBtn.classList.add("ai-active");
+    }
+
     // Settings gear button (top-left)
     this.createSettingsButton();
 
@@ -532,6 +564,40 @@ export class DemoBattle {
 
     // Wire up events
     this.wireEvents();
+
+    // When running under automation, collect turn log and expose audit log on battle end
+    if (window.__autoRunBattle) {
+      window.__battleTurnLog = [];
+      let turnNumber = 0;
+      this.combat.onTurnAdvance = (entityId: EntityId) => {
+        turnNumber++;
+        window.__battleTurnCount = turnNumber;
+        const name = this.auditEntityNames.get(entityId) ?? `Entity ${entityId}`;
+        window.__battleTurnLog!.push(`--- Turn ${turnNumber}: ${name}'s turn ---`);
+      };
+      this.combat.onUnitMoved = (entityId: EntityId, path: Array<{ q: number; r: number }>) => {
+        const name = this.auditEntityNames.get(entityId) ?? `Entity ${entityId}`;
+        const tiles = path.length > 0 ? path.length - 1 : 0;
+        const dest = path.length > 0 ? path[path.length - 1]! : null;
+        const to = dest ? `[${dest.q},${dest.r}]` : "[]";
+        window.__battleTurnLog!.push(`  ${name} moves ${tiles} tile(s) to ${to}`);
+      };
+      this.combat.onAttackResult = (result, attackerId, defenderId, skillName) => {
+        const attacker = this.auditEntityNames.get(attackerId) ?? `Entity ${attackerId}`;
+        const defender = this.auditEntityNames.get(defenderId) ?? `Entity ${defenderId}`;
+        const skill = skillName ?? "Basic Attack";
+        const hitMiss = result.hit ? "hit" : "miss";
+        const crit = result.critical ? ", critical" : "";
+        const dmg = result.hit ? `, ${result.hpDamage} HP damage` : "";
+        const killed = result.targetKilled ? ", target killed" : "";
+        const effects = result.appliedEffects.length > 0 ? `, effects: ${result.appliedEffects.join(", ")}` : "";
+        window.__battleTurnLog!.push(`  ${attacker} attacks ${defender} with ${skill}: ${hitMiss}${dmg}${crit}${killed}${effects}`);
+      };
+      this.combat.onTurnSkipped = (entityId: EntityId, reason: string) => {
+        const name = this.auditEntityNames.get(entityId) ?? `Entity ${entityId}`;
+        window.__battleTurnLog!.push(`  ${name} skips turn (${reason})`);
+      };
+    }
 
     // Center camera on grid, offset for bottom-heavy UI
     // Bottom UI (action bar + info panel) ≈ 220px, top UI (turn order) ≈ 40px
@@ -835,6 +901,18 @@ export class DemoBattle {
     // Turn skipped popup
     this.combat.onTurnSkipped = (entityId, reason) => {
       this.showTextPopup(entityId, reason, "#999999");
+    };
+
+    // CP earned (move, attack, ability) — update roster and show popup above unit
+    this.combat.onCPEarned = (entityId, amount) => {
+      if (this.incomingSaveData?.roster) {
+        const idx = this.playerIds.indexOf(entityId);
+        if (idx >= 0 && this.incomingSaveData.roster[idx]) {
+          const m = this.incomingSaveData.roster[idx]!;
+          m.classPoints = (m.classPoints ?? 0) + amount;
+        }
+      }
+      this.showCPPopup(entityId, amount);
     };
 
     // Action complete — start draining animation queue
@@ -1292,6 +1370,25 @@ export class DemoBattle {
     popup.addEventListener("animationend", () => popup.remove());
   }
 
+  /** Show "+N CP" briefly above unit when they earn class points from an action. */
+  private showCPPopup(entityId: EntityId, amount: number): void {
+    const pos = this.world.getComponent<PositionComponent>(entityId, "position");
+    if (!pos) return;
+
+    const worldPos = hexToPixel(this.layout, pos.q, pos.r);
+    const tileElev = (this.grid.get(pos.q, pos.r)?.elevation ?? 0) * LAYER_HEIGHT;
+    const screenPos = this.camera.worldToScreen(worldPos.x, worldPos.y, tileElev);
+
+    const popup = document.createElement("div");
+    popup.className = "damage-popup cp-popup";
+    popup.textContent = `+${amount} CP`;
+    popup.style.left = `${screenPos.x}px`;
+    popup.style.top = `${screenPos.y - 24}px`;
+
+    this.uiManager.root.appendChild(popup);
+    popup.addEventListener("animationend", () => popup.remove());
+  }
+
   private showDamagePopup(entityId: EntityId, result: AttackResult): void {
     const pos = this.world.getComponent<PositionComponent>(entityId, "position");
     if (!pos) return;
@@ -1529,7 +1626,61 @@ export class DemoBattle {
 
   // ── Battle end flow ──
 
+  /** Build roster abilities from scenario (same as test/headless) for audit log. */
+  private buildRosterAbilitiesForAudit(scenario: ScenarioDef): Map<number, string[]> {
+    const map = new Map<number, string[]>();
+    let playerIndex = 0;
+    for (const unit of scenario.units) {
+      if (unit.team !== "player") continue;
+      const classId = unit.classId;
+      if (!classId) {
+        playerIndex++;
+        continue;
+      }
+      const rulesetClass = getClass(classId);
+      if (rulesetClass?.archetypes.length) {
+        const arch = rulesetClass.archetypes[0]!;
+        const slots = getArchetypeAbilitySlots(classId, arch.id);
+        const abilityIds = slots.map((s) => s.abilityId);
+        if (abilityIds.length > 0) map.set(playerIndex, abilityIds);
+      }
+      playerIndex++;
+    }
+    return map;
+  }
+
   private handleBattleEnd(victory: boolean): void {
+    window.__battleEnded = true;
+    window.__battleVictory = victory;
+
+    // Build canonical audit log for browser automation (same format as headless)
+    if (window.__autoRunBattle && this.initialScenario) {
+      const scenario = this.initialScenario;
+      const turnsElapsed = window.__battleTurnCount ?? 0;
+      const playerSurvivors = this.playerIds
+        .filter((id) => {
+          const h = this.world.getComponent<HealthComponent>(id, "health");
+          return h && h.current > 0;
+        })
+        .map((id) => {
+          const team = this.world.getComponent<{ type: "team"; team: string; name: string }>(id, "team");
+          const health = this.world.getComponent<HealthComponent>(id, "health");
+          return { entityId: id, name: team?.name ?? String(id), hpRemaining: health?.current ?? 0 };
+        });
+      const rosterAbilities = this.buildRosterAbilitiesForAudit(scenario);
+      const mode = typeof window !== "undefined" && typeof URLSearchParams !== "undefined" && new URLSearchParams(window.location.search).get("visible") === "1" ? "browser-visible" : "browser";
+      const result = {
+        victory,
+        turnsElapsed,
+        playerSurvivors,
+        playerDeaths: this.playerIds.length - playerSurvivors.length,
+        enemyKills: this.combat.killCount,
+        actionTracker: this.combat.actionTracker,
+        turnLog: window.__battleTurnLog ?? [],
+      };
+      window.__battleAuditLog = buildDemoBattleLog(scenario, rosterAbilities, 42, result, mode);
+    }
+
     // Disable AI mode
     this.aiMode = false;
     this.aiBtn.classList.remove("ai-active");

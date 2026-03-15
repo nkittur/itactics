@@ -3,6 +3,7 @@ import { RNG } from "@utils/RNG";
 import { World } from "@entities/World";
 import { HexGrid, TerrainType } from "@hex/HexGrid";
 import { DamageCalculator, type AttackResult } from "@combat/DamageCalculator";
+import { StatusEffectManager } from "@combat/StatusEffectManager";
 import type { EntityId } from "@entities/Entity";
 
 // ── RNG tests (kept from Phase 1) ──
@@ -231,6 +232,9 @@ function spawnTestUnit(
     });
   }
 
+  // Required for status-effect dodge modifier tests
+  world.addComponent(id, { type: "statusEffects", effects: [] });
+
   return id;
 }
 
@@ -439,6 +443,121 @@ describe("DamageCalculator (weapon-based)", () => {
     const result = calc.resolveMelee(world, noStats, defender);
     expect(result.hit).toBe(false);
     expect(result.hitChance).toBe(0);
+  });
+});
+
+// ── R1: Evasion / dodge in hit resolution ──
+
+describe("DamageCalculator (evasion / dodge)", () => {
+  it("defender dodge stat reduces hit chance (preview)", () => {
+    const world = new World();
+    const grid = createTestGrid();
+
+    const attacker = spawnTestUnit(world, { melee: 70, weapon: "arming_sword" });
+    const lowDodge = spawnTestUnit(world, { defense: 10, hp: 200 });
+    const highDodge = spawnTestUnit(world, { defense: 50, hp: 200 });
+
+    const calc = new DamageCalculator(new RNG(42), grid);
+
+    const previewLow = calc.previewMelee(world, attacker, lowDodge);
+    const previewHigh = calc.previewMelee(world, attacker, highDodge);
+
+    // Hit chance = meleeSkill + weaponBonus - dodge (arming_sword +5)
+    // Low: 70 + 5 - 10 = 65
+    // High: 70 + 5 - 50 = 25 (clamped to 5-95)
+    expect(previewLow.hitChance).toBe(65);
+    expect(previewHigh.hitChance).toBe(25);
+    expect(previewHigh.hitChance).toBeLessThan(previewLow.hitChance);
+  });
+
+  it("defender dodge stat reduces hit rate over many resolveMelee trials", () => {
+    const world = new World();
+    const grid = createTestGrid();
+
+    const attacker = spawnTestUnit(world, { melee: 60, weapon: "arming_sword" });
+    const lowDodge = spawnTestUnit(world, { defense: 10, hp: 200 });
+    const highDodge = spawnTestUnit(world, { defense: 45, hp: 200 });
+
+    let hitsLow = 0;
+    let hitsHigh = 0;
+    const trials = 2000;
+
+    for (let seed = 1; seed <= trials; seed++) {
+      const healthLow = world.getComponent<{ current: number; max: number }>(lowDodge, "health")!;
+      const healthHigh = world.getComponent<{ current: number; max: number }>(highDodge, "health")!;
+      healthLow.current = 200;
+      healthHigh.current = 200;
+
+      const calc = new DamageCalculator(new RNG(seed), grid);
+      if (calc.resolveMelee(world, attacker, lowDodge).hit) hitsLow++;
+      if (calc.resolveMelee(world, attacker, highDodge).hit) hitsHigh++;
+    }
+
+    expect(hitsHigh).toBeLessThan(hitsLow);
+    const rateLow = hitsLow / trials;
+    const rateHigh = hitsHigh / trials;
+    expect(rateLow - rateHigh).toBeGreaterThan(0.15);
+  });
+
+  it("dodge buff from status effect reduces hit chance (preview)", () => {
+    const world = new World();
+    const grid = createTestGrid();
+    const rng = new RNG(42);
+    const sem = new StatusEffectManager(rng);
+    const calc = new DamageCalculator(rng, grid);
+    calc.setStatusEffectManager(sem);
+
+    const attacker = spawnTestUnit(world, { melee: 70, weapon: "arming_sword" });
+    const defender = spawnTestUnit(world, { defense: 10, hp: 200 });
+
+    const previewBefore = calc.previewMelee(world, attacker, defender);
+    expect(previewBefore.hitChance).toBe(65);
+
+    sem.applyDynamic(world, defender, {
+      id: "buff_dodge",
+      name: "Evasion",
+      duration: 2,
+      modifiers: { dodge: 20 },
+    });
+
+    const previewAfter = calc.previewMelee(world, attacker, defender);
+    // 70 + 5 - (10 + 20) = 45
+    expect(previewAfter.hitChance).toBe(45);
+    expect(previewAfter.hitChance).toBeLessThan(previewBefore.hitChance);
+  });
+
+  it("dodge buff from status effect reduces hit rate in resolveMelee", () => {
+    const world = new World();
+    const grid = createTestGrid();
+    const sem = new StatusEffectManager(new RNG(999));
+
+    const attacker = spawnTestUnit(world, { melee: 60, weapon: "arming_sword" });
+    const noBuff = spawnTestUnit(world, { defense: 15, hp: 200 });
+    const withBuff = spawnTestUnit(world, { defense: 15, hp: 200 });
+    sem.applyDynamic(world, withBuff, {
+      id: "buff_dodge",
+      name: "Evasion",
+      duration: 99,
+      modifiers: { dodge: 25 },
+    });
+
+    let hitsNoBuff = 0;
+    let hitsWithBuff = 0;
+    const trials = 2000;
+
+    for (let seed = 1; seed <= trials; seed++) {
+      const h1 = world.getComponent<{ current: number; max: number }>(noBuff, "health")!;
+      const h2 = world.getComponent<{ current: number; max: number }>(withBuff, "health")!;
+      h1.current = 200;
+      h2.current = 200;
+
+      const calc = new DamageCalculator(new RNG(seed), grid);
+      calc.setStatusEffectManager(sem);
+      if (calc.resolveMelee(world, attacker, noBuff).hit) hitsNoBuff++;
+      if (calc.resolveMelee(world, attacker, withBuff).hit) hitsWithBuff++;
+    }
+
+    expect(hitsWithBuff).toBeLessThan(hitsNoBuff);
   });
 });
 

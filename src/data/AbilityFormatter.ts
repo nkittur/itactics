@@ -21,6 +21,11 @@ function fmtEffect(e: EffectPrimitive): string {
     case "stance_counter": return "counter";
     case "stance_overwatch": return "overwatch";
     case "res_apRefund":   return `apRef(${p["amount"]})`;
+    case "grant_ap":       return `+${p["amount"]} AP`;
+    case "apply_status":   return `status(${p["statusId"]},${p["turns"]}t)`;
+    case "apply_status_self": return `status_self(${p["statusId"]},${p["turns"]}t)`;
+    case "apply_status_to_attacker": return `status_to_attacker(${p["statusId"]},${p["turns"]}t)`;
+    case "dmg_to_attacker": return `dmg_attacker(${p["amount"]})`;
     case "heal_pctDmg":    return `heal(${p["pct"]}%dmg)`;
     default: return e.type;
   }

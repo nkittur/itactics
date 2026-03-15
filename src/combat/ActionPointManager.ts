@@ -36,6 +36,11 @@ export class ActionPointManager {
     return allowed;
   }
 
+  /** Grant AP this turn (e.g. Overclock double AP). Not capped by refund limit; cap at 2× MAX_AP so double turn is possible. */
+  addAp(amount: number): void {
+    this.current = Math.min(MAX_AP * 2, this.current + amount);
+  }
+
   get remaining(): number {
     return this.current;
   }

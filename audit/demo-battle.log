@@ -1,0 +1,80 @@
+# Demo battle audit log
+
+Run at: 2026-03-15T14:54:47.793Z
+Mode: headless
+Scenario: tutorial — Tutorial
+Grid: 10x8
+Seed: 42
+
+## Player units (scenario)
+- **Swordsman** (berserker) | HP 12 | abilities: 12 [berserker_berserker_blood_fury_bloodletting, berserker_berserker_blood_fury_pain_conversion, berserker_berserker_blood_fury_wound_pride, berserker_berserker_blood_fury_berserker_s_bargain, berserker_berserker_blood_fury_crimson_surge…]
+- **Axeman** (berserker) | HP 14 | abilities: 12 [berserker_berserker_blood_fury_bloodletting, berserker_berserker_blood_fury_pain_conversion, berserker_berserker_blood_fury_wound_pride, berserker_berserker_blood_fury_berserker_s_bargain, berserker_berserker_blood_fury_crimson_surge…]
+- **Spearman** (ironbloom_warden) | HP 10 | abilities: 12 [ironbloom_warden_ironbloom_warden_thornwall_barkskin, ironbloom_warden_ironbloom_warden_thornwall_thorn_coat, ironbloom_warden_ironbloom_warden_thornwall_root_stance, ironbloom_warden_ironbloom_warden_thornwall_ironwood, ironbloom_warden_ironbloom_warden_thornwall_briar_lash…]
+
+## Enemy units (scenario)
+- Brigand | HP 10 | melee 42
+- Raider | HP 11 | melee 45
+- Thug | HP 8 | melee 38
+
+## Result
+- **Victory:** true
+- **Turns:** 22
+- **Player survivors:** 2
+  - Swordsman: 11 HP
+  - Axeman: 14 HP
+- **Player deaths:** 1
+- **Enemy kills:** 3
+
+## Action tracker (entity → actions, kills)
+- entity e2: 2 actions, 0 kills
+- Swordsman (id=e0): 4 actions, 0 kills
+- Axeman (id=e1): 1 actions, 0 kills
+
+## Turn-by-turn log
+
+```
+--- Turn 1: Spearman's turn ---
+  Spearman moves 3 tile(s) to [5,6]
+--- Turn 2: Swordsman's turn ---
+  Swordsman moves 2 tile(s) to [4,1]
+--- Turn 3: Brigand's turn ---
+  Brigand moves 2 tile(s) to [5,1]
+  Brigand attacks Swordsman with Puncture: miss
+--- Turn 4: Axeman's turn ---
+  Axeman moves 2 tile(s) to [4,2]
+  Axeman attacks Brigand with Split Shield: miss
+--- Turn 5: Raider's turn ---
+  Raider moves 1 tile(s) to [6,5]
+  Raider attacks Spearman with Split Shield: miss
+--- Turn 6: Thug's turn ---
+  Thug moves 1 tile(s) to [6,6]
+  Thug attacks Spearman with Attack: miss
+--- Turn 7: Spearman's turn ---
+--- Turn 8: Swordsman's turn ---
+  Swordsman attacks Brigand with Hemorrhagic Frenzy: hit, 2 HP damage
+--- Turn 9: Brigand's turn ---
+  Brigand attacks Swordsman with Puncture: miss
+--- Turn 10: Thug's turn ---
+  Thug attacks Spearman with Attack: miss
+--- Turn 11: Axeman's turn ---
+  Axeman attacks Brigand with Split Shield: miss
+--- Turn 12: Raider's turn ---
+  Raider attacks Spearman with Split Shield: hit, 9 HP damage
+--- Turn 13: Spearman's turn ---
+--- Turn 14: Swordsman's turn ---
+  Swordsman attacks Brigand with Hemorrhagic Frenzy: hit, 2 HP damage
+  Swordsman moves 2 tile(s) to [6,2]
+--- Turn 15: Axeman's turn ---
+  Axeman moves 3 tile(s) to [6,4]
+  Axeman attacks Raider with Hemorrhagic Frenzy: miss
+--- Turn 16: Raider's turn ---
+  Raider attacks Spearman with Attack: hit, 5 HP damage, target killed
+--- Turn 17: Swordsman's turn ---
+  Swordsman moves 2 tile(s) to [7,4]
+  Swordsman attacks Raider with Hemorrhagic Frenzy: hit, 1 HP damage
+--- Turn 18: Thug's turn ---
+  Thug moves 0 tile(s) to [7,5]
+  Thug attacks Swordsman with Puncture: hit, 1 HP damage
+--- Turn 19: Swordsman's turn ---
+  Swordsman attacks Thug with Hemorrhagic Frenzy: hit, 6 HP damage
+```

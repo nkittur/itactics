@@ -31,6 +31,8 @@ export interface HeadlessBattleResult {
   playerDeaths: number;
   enemyKills: number;
   actionTracker: BattleActionTracker;
+  /** Turn-by-turn log lines for audit (moves, attacks, outcomes). */
+  turnLog: string[];
 }
 
 // ── Terrain configs (same as DemoBattle) ──
@@ -261,7 +263,18 @@ export function runHeadlessBattle(
     }
   }
 
-  // Create combat manager (headless — no rendering callbacks)
+  // Entity ID → display name for turn log
+  const entityIdToName = new Map<EntityId, string>();
+  let pi = 0;
+  let ei = 0;
+  for (const u of scenario.units) {
+    const id = u.team === "player" ? playerIds[pi++]! : enemyIds[ei++]!;
+    entityIdToName.set(id, u.name);
+  }
+
+  const turnLog: string[] = [];
+  let turnNumber = 0;
+
   const combat = new CombatManager(world, grid, seed);
 
   let victory = false;
@@ -270,6 +283,37 @@ export function runHeadlessBattle(
   combat.onBattleEnd = (v: boolean) => {
     victory = v;
     battleEnded = true;
+  };
+
+  combat.onTurnAdvance = (entityId: EntityId) => {
+    turnNumber++;
+    const name = entityIdToName.get(entityId) ?? `Entity ${entityId}`;
+    turnLog.push(`--- Turn ${turnNumber}: ${name}'s turn ---`);
+  };
+
+  combat.onUnitMoved = (entityId: EntityId, path: Array<{ q: number; r: number }>) => {
+    const name = entityIdToName.get(entityId) ?? `Entity ${entityId}`;
+    const tiles = path.length > 0 ? path.length - 1 : 0;
+    const dest = path.length > 0 ? path[path.length - 1]! : null;
+    const to = dest ? `[${dest.q},${dest.r}]` : "[]";
+    turnLog.push(`  ${name} moves ${tiles} tile(s) to ${to}`);
+  };
+
+  combat.onAttackResult = (result, attackerId, defenderId, skillName) => {
+    const attacker = entityIdToName.get(attackerId) ?? `Entity ${attackerId}`;
+    const defender = entityIdToName.get(defenderId) ?? `Entity ${defenderId}`;
+    const skill = skillName ?? "Basic Attack";
+    const hitMiss = result.hit ? "hit" : "miss";
+    const crit = result.critical ? ", critical" : "";
+    const dmg = result.hit ? `, ${result.hpDamage} HP damage` : "";
+    const killed = result.targetKilled ? ", target killed" : "";
+    const effects = result.appliedEffects.length > 0 ? `, effects: ${result.appliedEffects.join(", ")}` : "";
+    turnLog.push(`  ${attacker} attacks ${defender} with ${skill}: ${hitMiss}${dmg}${crit}${killed}${effects}`);
+  };
+
+  combat.onTurnSkipped = (entityId: EntityId, reason: string) => {
+    const name = entityIdToName.get(entityId) ?? `Entity ${entityId}`;
+    turnLog.push(`  ${name} skips turn (${reason})`);
   };
 
   // Start combat
@@ -306,5 +350,6 @@ export function runHeadlessBattle(
     playerDeaths: playerIds.length - survivors.length,
     enemyKills: combat.killCount,
     actionTracker: combat.actionTracker,
+    turnLog,
   };
 }
