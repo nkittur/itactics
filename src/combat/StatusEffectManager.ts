@@ -507,7 +507,7 @@ export class StatusEffectManager {
             name: ("name" in def ? def.name : effectId),
             remainingTurns: duration,
             modifiers: { ...("modifiers" in def ? def.modifiers : {}) },
-            sourceId,
+            sourceId: sourceId ?? undefined,
           });
         }
       } else if (stackBehavior === "intensity") {
@@ -522,7 +522,7 @@ export class StatusEffectManager {
             name: ("name" in def ? def.name : effectId),
             remainingTurns: duration,
             modifiers: { ...("modifiers" in def ? def.modifiers : {}), _stacks: 1 },
-            sourceId,
+            sourceId: sourceId ?? undefined,
           });
         }
       } else {
@@ -533,7 +533,7 @@ export class StatusEffectManager {
             name: ("name" in def ? def.name : effectId),
             remainingTurns: duration,
             modifiers: { ...("modifiers" in def ? def.modifiers : {}) },
-            sourceId,
+            sourceId: sourceId ?? undefined,
           });
         } else {
           const existing = comp.effects
@@ -555,7 +555,7 @@ export class StatusEffectManager {
           name: ("name" in def ? def.name : effectId),
           remainingTurns: duration,
           modifiers: { ...("modifiers" in def ? def.modifiers : {}) },
-          sourceId,
+          sourceId: sourceId ?? undefined,
         });
       }
     }

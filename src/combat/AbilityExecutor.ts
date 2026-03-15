@@ -846,8 +846,8 @@ export class AbilityExecutor {
     const pos = world.getComponent<PositionComponent>(entityId, "position");
     if (!pos) return;
 
-    let destQ: number;
-    let destR: number;
+    let destQ = pos.q;
+    let destR = pos.r;
 
     if (targetQ != null && targetR != null) {
       destQ = targetQ;
