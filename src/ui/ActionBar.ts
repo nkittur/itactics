@@ -79,7 +79,9 @@ export class ActionBar {
     for (const skill of this.skills) {
       const btn = document.createElement("button");
       btn.className = "skill-btn";
-      btn.textContent = skill.name;
+      // Weapon skills (e.g. Puncture, Stun): label so it's clear they're from the weapon
+      const isWeaponSkill = skill.skillDef && !skill.isBasicAttack;
+      btn.textContent = isWeaponSkill ? `${skill.name} (Weapon)` : skill.name;
       btn.title = skill.description;
 
       // Tier color border for generated or ruleset abilities

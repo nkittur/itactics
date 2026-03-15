@@ -17,6 +17,7 @@ import {
   getArchetypeAbilitySlots,
   buildSkillTreeFromArchetype,
   setRulesetById,
+  PLAYABLE_CLASS_IDS,
 } from "@data/ruleset/RulesetLoader";
 import { generateContracts } from "@data/ContractData";
 
@@ -95,21 +96,69 @@ function createStarterUnit(
   };
 }
 
+/** Starter roster: always these three playable classes (no Berserker/Bladesinger). */
+const STARTER_CLASS_IDS = [
+  "chronoweaver",
+  "ironbloom_warden",
+  "echo_dancer",
+] as const;
+
 function createNewGame(): SaveData {
   setAbilityRegistry({});
 
   return {
     version: 1,
     roster: [
-      createStarterUnit("Aldric", "bladesinger", "short_sword", "swordsman"),
-      createStarterUnit("Gunnar", "berserker", "axe", "knight-templar"),
-      createStarterUnit("Erik", "echo_dancer", "dagger", "soldier"),
+      createStarterUnit("Aldric", STARTER_CLASS_IDS[0], "short_sword", "swordsman"),
+      createStarterUnit("Gunnar", STARTER_CLASS_IDS[1], "hand_axe", "knight-templar"),
+      createStarterUnit("Erik", STARTER_CLASS_IDS[2], "dagger", "soldier"),
     ],
     currentScenarioIndex: 0,
     gold: 200,
     stash: [],
     abilityRegistry: {},
   };
+}
+
+const PLAYABLE_SET = new Set<string>(PLAYABLE_CLASS_IDS);
+
+/** Replace non-playable class IDs in roster with playable ones and rebuild skill tree. Returns true if any member was changed. */
+function migrateRosterToPlayableClasses(saveData: SaveData): boolean {
+  let changed = false;
+  for (let i = 0; i < saveData.roster.length; i++) {
+    const m = saveData.roster[i]!;
+    const classId = m.classId ?? "";
+    if (!classId || PLAYABLE_SET.has(classId)) continue;
+
+    const playableId = PLAYABLE_CLASS_IDS[i % PLAYABLE_CLASS_IDS.length]!;
+    const rulesetClass = getRulesetClass(playableId);
+    if (!rulesetClass?.archetypes.length) continue;
+
+    const arch = rulesetClass.archetypes[0]!;
+    const newClassId = rulesetClass.id;
+    const skillTree = buildSkillTreeFromArchetype(newClassId, arch.id);
+    const slots = getArchetypeAbilitySlots(newClassId, arch.id);
+
+    saveData.roster[i] = {
+      ...m,
+      classId: newClassId,
+      archetypeId: arch.id,
+      abilities: slots.map((s) => s.abilityId),
+      skillTree: skillTree ?? m.skillTree,
+      unlockedNodes: skillTree ? [] : (m.unlockedNodes ?? []),
+    };
+    changed = true;
+  }
+  return changed;
+}
+
+/** Set every roster member's unlockedNodes to all node IDs (for ?debug=1 testing). */
+function applyDebugUnlockAllSkills(saveData: SaveData): void {
+  for (const m of saveData.roster) {
+    if (m.skillTree?.nodes.length) {
+      m.unlockedNodes = m.skillTree.nodes.map((n) => n.nodeId);
+    }
+  }
 }
 
 async function init() {
@@ -123,6 +172,8 @@ async function init() {
   const urlParams = new URLSearchParams(window.location.search);
   const demoBattle = urlParams.get("demoBattle") === "1";
   const autoRun = urlParams.get("auto") === "1";
+  /** When true, all roster members get every skill in their tree unlocked (for testing). Use ?debug=1 */
+  const debugUnlockAllSkills = urlParams.get("debug") === "1";
   if (autoRun) {
     (window as unknown as { __autoRunBattle?: boolean }).__autoRunBattle = true;
   }
@@ -139,6 +190,15 @@ async function init() {
 
   if (saveData) {
     setItemRegistry(saveData.itemRegistry ?? {});
+
+    // Migrate roster: replace non-playable classes with playable ones (fixes old saves)
+    const didMigrate = migrateRosterToPlayableClasses(saveData);
+    if (didMigrate) await saveGame(saveData);
+
+    // Debug: unlock all skills for every roster member so they have full trees in battle
+    if (debugUnlockAllSkills) {
+      applyDebugUnlockAllSkills(saveData);
+    }
 
     // Check save compatibility — detect stale class IDs
     const validClasses = new Set(getAllCharacterClasses());
@@ -165,6 +225,8 @@ async function init() {
   if (!saveData) {
     // New game: create starter roster + show management
     const starterSave = createNewGame();
+    migrateRosterToPlayableClasses(starterSave);
+    if (debugUnlockAllSkills) applyDebugUnlockAllSkills(starterSave);
     await saveGame(starterSave);
     canvas.style.display = "none";
     new ManagementScreen(starterSave);

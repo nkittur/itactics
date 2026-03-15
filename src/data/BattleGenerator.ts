@@ -8,15 +8,15 @@ import type { BalanceParams } from "../simulation/CampaignSimulator";
 import { getAllWeapons, getWeapon } from "./WeaponData";
 import { getAllArmors } from "./ArmorData";
 import { getAllShields } from "./ShieldData";
+import { PLAYABLE_CLASS_IDS } from "./ruleset/RulesetLoader";
 
 const ENEMY_NAMES = [
   "Brigand", "Raider", "Thug", "Marauder", "Sellsword",
   "Cutthroat", "Ruffian", "Highwayman", "Outlaw", "Bandit",
 ];
 
-const ENEMY_CLASSES = [
-  "berserker", "ironbloom_warden", "hexblade", "bladesinger", "echo_dancer", "monk",
-];
+/** Use playable classes only so enemies match the skill-tree roster. */
+const ENEMY_CLASSES = [...PLAYABLE_CLASS_IDS];
 
 const ENEMY_SPRITES: SpriteCharType[] = [
   "skeleton", "armored-skeleton", "orc", "armored-orc", "elite-orc",

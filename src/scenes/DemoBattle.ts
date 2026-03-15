@@ -709,7 +709,18 @@ export class DemoBattle {
       }
 
       // Normal handling (move, etc.)
-      this.combat.handleHexTap(q, r);
+      const handled = this.combat.handleHexTap(q, r);
+      // If tap did nothing and hex has an enemy, show enemy detail (desktop: click to inspect)
+      if (!handled) {
+        const tile = this.grid.get(q, r);
+        const occupant = tile?.occupant;
+        if (occupant) {
+          const team = this.world.getComponent<{ type: "team"; team: string }>(occupant, "team");
+          if (team?.team === "enemy") {
+            this.showEnemyDetail(q, r);
+          }
+        }
+      }
     };
 
     // Long-press -> Enemy detail panel (stays open until next tap)

@@ -286,7 +286,7 @@ export class CombatManager {
     const weaponId = equip?.mainHand ?? "unarmed";
     const weapon = this.getWeaponDef(this.selectedUnit);
 
-    // Static weapon skills
+    // Static weapon skills (Attack, Puncture, Stun, etc.)
     const staticSkills = getSkillsForWeapon(weaponId);
     const result: CombatSkill[] = staticSkills.map(s => wrapSkillDef(s, weapon));
 
