@@ -367,6 +367,16 @@ export class CombatManager {
       : this.getEffectiveAPCost(this.selectedUnit, cs.skillDef!, this.getWeaponDef(this.selectedUnit));
     if (!this.apManager.canAfford(apCost)) return hexes;
 
+    // Party-wide (e.g. Temporal Surge): confirm by clicking self or any ally
+    if (cs.rulesetAbility?.targeting.type === "tgt_all_allies") {
+      hexes.add(`${pos.q},${pos.r}`);
+      for (const allyId of this.getPlayerUnits()) {
+        const ap = this.world.getComponent<PositionComponent>(allyId, "position");
+        if (ap) hexes.add(`${ap.q},${ap.r}`);
+      }
+      return hexes;
+    }
+
     const range = cs.range;
 
     if (cs.targetType === "self") {
@@ -469,6 +479,8 @@ export class CombatManager {
           this.executeStanceCombatSkill(this.selectedUnit, cs);
         } else if (cs.targetType === "enemy" && tile?.occupant) {
           this.executeAttack(this.selectedUnit, tile.occupant);
+        } else if (getExecutableAbility(cs) && cs.rulesetAbility?.targeting.type === "tgt_all_allies") {
+          this.executeGeneratedAbility(this.selectedUnit, this.selectedUnit, cs);
         }
         return true;
       } else {
