@@ -943,6 +943,7 @@ export class DemoBattle {
     // Phase changed
     this.combat.onPhaseChange = (phase) => {
       if (phase === "enemyTurn") {
+        this.actionBar.setSkillDetail(null);
         this.actionBar.setVisible(false);
         this.actionBar.clearSkills();
         this.undoButton.setVisible(false);
@@ -957,6 +958,7 @@ export class DemoBattle {
         }
         this.refreshUI();
       } else if (phase === "battleEnd") {
+        this.actionBar.setSkillDetail(null);
         this.actionBar.setVisible(false);
         this.actionBar.clearSkills();
         this.undoButton.setVisible(false);
@@ -989,6 +991,7 @@ export class DemoBattle {
         this.showMoveAndAttackOverlays();
         this.populateActionBarSkills();
         this.actionBar.setSkillActive(null);
+        this.actionBar.setSkillDetail(null);
         // AI mode: auto-play the turn
         if (this.aiMode) {
           this.scheduleAITurn();
@@ -996,6 +999,9 @@ export class DemoBattle {
       } else if (state === "skillTargeting") {
         this.showSkillTargetOverlays();
         this.actionBar.setSkillActive(this.combat.pendingSkill?.id ?? null);
+        this.actionBar.setSkillDetail(this.combat.pendingSkill ?? null);
+      } else {
+        this.actionBar.setSkillDetail(null);
       }
 
       this.refreshUI();

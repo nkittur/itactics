@@ -11,6 +11,7 @@ const TIER_COLORS: Record<number, string> = {
 
 export class ActionBar {
   private container: HTMLDivElement;
+  private skillDetailStrip: HTMLDivElement;
   private skillSection: HTMLDivElement;
   private separator: HTMLDivElement;
   private actionSection: HTMLDivElement;
@@ -24,23 +25,33 @@ export class ActionBar {
 
   constructor(root: HTMLDivElement) {
     this.container = document.createElement("div");
-    this.container.className = "action-bar";
+    this.container.className = "action-bar-wrapper";
     root.appendChild(this.container);
+
+    // Strip along bottom showing selected skill name + description (for mobile tap)
+    this.skillDetailStrip = document.createElement("div");
+    this.skillDetailStrip.className = "action-bar-skill-detail";
+    this.skillDetailStrip.setAttribute("aria-live", "polite");
+    this.container.appendChild(this.skillDetailStrip);
+
+    const barEl = document.createElement("div");
+    barEl.className = "action-bar";
+    this.container.appendChild(barEl);
 
     // Skill section (left side, dynamically populated)
     this.skillSection = document.createElement("div");
     this.skillSection.className = "action-bar-skills";
-    this.container.appendChild(this.skillSection);
+    barEl.appendChild(this.skillSection);
 
     // Separator between skills and actions
     this.separator = document.createElement("div");
     this.separator.className = "action-separator";
-    this.container.appendChild(this.separator);
+    barEl.appendChild(this.separator);
 
     // Action section (right side, static)
     this.actionSection = document.createElement("div");
     this.actionSection.className = "action-bar-actions";
-    this.container.appendChild(this.actionSection);
+    barEl.appendChild(this.actionSection);
 
     this.addActionButton("wait", "Wait", "#5a5a7a");
     this.addActionButton("endTurn", "End", "#7a5a3a");
@@ -133,6 +144,25 @@ export class ActionBar {
     this.skills = [];
     this.activeSkillId = null;
     this.separator.style.display = "none";
+  }
+
+  /** Show skill name and description along the bottom (e.g. when tapped on mobile). Pass null to hide. */
+  setSkillDetail(skill: CombatSkill | null): void {
+    if (!skill) {
+      this.skillDetailStrip.textContent = "";
+      this.skillDetailStrip.classList.remove("action-bar-skill-detail-visible");
+      return;
+    }
+    this.skillDetailStrip.innerHTML = "";
+    const nameEl = document.createElement("span");
+    nameEl.className = "action-bar-skill-detail-name";
+    nameEl.textContent = skill.name;
+    const descEl = document.createElement("span");
+    descEl.className = "action-bar-skill-detail-desc";
+    descEl.textContent = skill.description;
+    this.skillDetailStrip.appendChild(nameEl);
+    this.skillDetailStrip.appendChild(descEl);
+    this.skillDetailStrip.classList.add("action-bar-skill-detail-visible");
   }
 
   setVisible(visible: boolean): void {
