@@ -70,7 +70,7 @@ import type { SpriteRefComponent } from "@entities/components/SpriteRef";
 import { getClass, getArchetypeAbilitySlots } from "@data/ruleset/RulesetLoader";
 import { buildDemoBattleLog } from "../audit/buildDemoBattleLog";
 
-/** Window extensions for browser automation (audit log capture). */
+/** Window extensions for browser automation (audit log capture, LLM playtest). */
 declare global {
   interface Window {
     __autoRunBattle?: boolean;
@@ -79,6 +79,23 @@ declare global {
     __battleTurnLog?: string[];
     __battleTurnCount?: number;
     __battleAuditLog?: string;
+    /** Structured game log for Playwright/LLM: each element is a JSON string. */
+    __gameLogBuffer?: string[];
+    /** Automation API when ?automation=1: hexTap, clickSkill, wait, endTurn, getState. */
+    __gameAutomation?: {
+      hexTap: (q: number, r: number) => void;
+      clickSkill: (name: string) => boolean;
+      wait: () => void;
+      endTurn: () => void;
+      getState: () => {
+        phase: string;
+        playerState: string;
+        currentUnitName: string | null;
+        apRemaining: number;
+        skillNames: string[];
+        logTail: string[];
+      };
+    };
   }
 }
 
@@ -374,6 +391,9 @@ export class DemoBattle {
   private aiBtn: HTMLButtonElement = null!;
   private aiTurnTimer: ReturnType<typeof setTimeout> | null = null;
 
+  /** No-op until ?automation=1; then logs to console [GAME_LOG] and __gameLogBuffer. */
+  private gameLog: (obj: object) => void = () => {};
+
   // ── Speed toggle ──
   private speedMultiplier = 1;
   private speedBtn: HTMLButtonElement;
@@ -599,6 +619,69 @@ export class DemoBattle {
       };
     }
 
+    // Structured game log for LLM/Playwright (?automation=1): console [GAME_LOG] + buffer
+    if (this.isAutomationEnabled()) {
+      const GAME_LOG_MAX = 200;
+      if (!window.__gameLogBuffer) window.__gameLogBuffer = [];
+      this.gameLog = (obj: object) => {
+        const line = JSON.stringify(obj);
+        window.__gameLogBuffer!.push(line);
+        if (window.__gameLogBuffer!.length > GAME_LOG_MAX) window.__gameLogBuffer!.shift();
+        console.log("[GAME_LOG]", line);
+      };
+
+      const prevTurnAdvance = this.combat.onTurnAdvance;
+      this.combat.onTurnAdvance = (entityId: EntityId) => {
+        prevTurnAdvance?.(entityId);
+        this.gameLog({
+          event: "turn_advance",
+          unitName: this.getEntityName(entityId),
+          ap: this.combat.apRemaining,
+          phase: this.combat.phase,
+        });
+      };
+
+      const prevAttackResult = this.combat.onAttackResult;
+      this.combat.onAttackResult = (result, attackerId, defenderId, skillName) => {
+        prevAttackResult?.(result, attackerId, defenderId, skillName);
+        this.gameLog({
+          event: "attack",
+          attackerName: this.getEntityName(attackerId),
+          defenderName: this.getEntityName(defenderId),
+          skillName: skillName ?? "Attack",
+          hit: result.hit,
+          hpDamage: result.hpDamage,
+          targetKilled: result.targetKilled,
+        });
+      };
+
+      const prevStatusApplied = this.combat.onStatusApplied;
+      this.combat.onStatusApplied = (entityId, effectId) => {
+        prevStatusApplied?.(entityId, effectId);
+        this.gameLog({
+          event: "status_applied",
+          targetName: this.getEntityName(entityId),
+          effectId,
+        });
+      };
+
+      const prevPhaseChange = this.combat.onPhaseChange;
+      this.combat.onPhaseChange = (phase) => {
+        prevPhaseChange?.(phase);
+        this.gameLog({ event: "phase", phase });
+      };
+
+      this.combat.onAbilityExecuted = (skillName, casterId, targetId, summary) => {
+        this.gameLog({
+          event: "skill_used",
+          skillName,
+          casterName: this.getEntityName(casterId),
+          targetName: targetId ? this.getEntityName(targetId) : null,
+          summary,
+        });
+      };
+    }
+
     // Center camera on grid, offset for bottom-heavy UI
     // Bottom UI (action bar + info panel) ≈ 220px, top UI (turn order) ≈ 40px
     // Shift camera target down-screen so grid appears centered in usable area
@@ -663,6 +746,14 @@ export class DemoBattle {
   private moveDuration(): number { return this.BASE_MOVE_MS / this.speedMultiplier; }
   private lungeDuration(): number { return this.BASE_LUNGE_MS / this.speedMultiplier; }
   private panDuration(): number { return this.BASE_PAN_MS / this.speedMultiplier; }
+
+  private getEntityName(id: EntityId): string {
+    return this.auditEntityNames.get(id) ?? `Entity ${id}`;
+  }
+
+  private isAutomationEnabled(): boolean {
+    return typeof window !== "undefined" && new URLSearchParams(window.location.search).get("automation") === "1";
+  }
 
   // ── Event wiring ──
 
@@ -2006,6 +2097,36 @@ export class DemoBattle {
     this.combat.start();
     this.refreshUI();
     this.sceneManager.startRenderLoop();
+
+    // Expose automation API for Playwright/LLM when ?automation=1
+    if (this.isAutomationEnabled()) {
+      window.__gameAutomation = {
+        hexTap: (q: number, r: number) => {
+          if (!this.animPlaying) this.combat.handleHexTap(q, r);
+        },
+        clickSkill: (name: string): boolean => {
+          const skills = this.combat.getAvailableSkills();
+          const match = skills.find((s) => s.name === name || s.name.startsWith(name));
+          if (!match) return false;
+          if (!this.animPlaying) this.combat.activateSkill(match);
+          return true;
+        },
+        wait: () => {
+          if (!this.animPlaying) this.combat.handleAction("wait");
+        },
+        endTurn: () => {
+          if (!this.animPlaying) this.combat.handleAction("endTurn");
+        },
+        getState: () => ({
+          phase: this.combat.phase,
+          playerState: this.combat.playerTurnState,
+          currentUnitName: this.combat.selectedUnit ? this.getEntityName(this.combat.selectedUnit) : null,
+          apRemaining: this.combat.apRemaining,
+          skillNames: this.combat.getAvailableSkills().map((s) => s.name),
+          logTail: (window.__gameLogBuffer ?? []).slice(-50),
+        }),
+      };
+    }
 
     // Auto-save after first turn setup
     this.autoSave();

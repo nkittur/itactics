@@ -215,6 +215,13 @@ export class CombatManager {
     defenderId: EntityId,
   ) => void;
   onStanceActivated?: (entityId: EntityId, stanceId: string) => void;
+  /** For LLM/playtest: ability just executed (name, caster, target if any, short result summary). */
+  onAbilityExecuted?: (
+    skillName: string,
+    casterId: EntityId,
+    targetId: EntityId | null,
+    summary: string,
+  ) => void;
   onPassiveTriggered?: (entityId: EntityId, passiveName: string, effect: string) => void;
   /** Called when a player unit earns CP from an action (move, attack, ability). */
   onCPEarned?: (entityId: EntityId, amount: number) => void;
@@ -767,6 +774,11 @@ export class CombatManager {
 
     this.onAttackResult?.(result, attackerId, defenderId, skill?.name);
 
+    const atkSummary = result.hit
+      ? `${result.hpDamage} damage${result.targetKilled ? ", killed" : ""}`
+      : "miss";
+    this.onAbilityExecuted?.(skill?.name ?? "Attack", attackerId, defenderId, atkSummary);
+
     if (!result.hit) {
       this.fireOnDodgePassives(defenderId, attackerId, skill?.name ?? "melee");
     }
@@ -922,6 +934,19 @@ export class CombatManager {
     // Start cooldown
     if (ability.cost.cooldown > 0) {
       this.startAbilityCooldown(attackerId, ability.uid, ability.cost.cooldown);
+    }
+
+    if (isAllAllies) {
+      const allyCount = this.getPlayerUnits().length;
+      this.onAbilityExecuted?.(cs.name, attackerId, null, `applied to ${allyCount} allies`);
+    } else {
+      const summary =
+        abilityResult.appliedEffects?.length > 0
+          ? abilityResult.appliedEffects.join(", ")
+          : abilityResult.attackResults?.length
+            ? `${abilityResult.attackResults[0]!.hpDamage} damage`
+            : "ok";
+      this.onAbilityExecuted?.(cs.name, attackerId, defenderId, summary);
     }
 
     if (!isAllAllies) {

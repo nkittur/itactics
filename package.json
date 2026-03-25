@@ -10,7 +10,9 @@
     "test:watch": "vitest",
     "test:headless": "vitest run tests/demo-battle.test.ts",
     "demo": "npx tsx scripts/run-demo-battle.ts",
-    "test:browser": "node scripts/run-browser-battle.mjs"
+    "test:browser": "node scripts/run-browser-battle.mjs",
+    "playtest:loop": "npx tsx scripts/playtest-loop.ts",
+    "playtest:llm": "node scripts/llm-playtest-runner.mjs"
   },
   "dependencies": {
     "@babylonjs/core": "^7.0.0",
