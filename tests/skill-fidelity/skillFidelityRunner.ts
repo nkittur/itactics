@@ -401,6 +401,171 @@ export function runSkillFidelityTest(abilityDef: RulesetAbilityDef): SkillFideli
         });
         break;
       }
+      case "debuff_stat": {
+        const stat = (params.stat as string) ?? "meleeSkill";
+        const amount = (params.amount as number) ?? 10;
+        const turns = (params.turns as number) ?? 2;
+        const debuffId = `debuff_${stat}`;
+        const hasDebuff = sem.hasEffect(world, target, debuffId);
+        checks.push({
+          name: "debuff_stat status",
+          passed: hasDebuff,
+          expected: `target has ${debuffId}`,
+          actual: hasDebuff ? `has ${debuffId}` : `no ${debuffId}`,
+        });
+        if (hasDebuff) {
+          const comp = world.getComponent<{ effects: Array<{ id: string; modifiers: Record<string, number>; remainingTurns: number }> }>(target, "statusEffects");
+          const eff = comp?.effects.find((e) => e.id === debuffId);
+          const value = eff?.modifiers[stat];
+          checks.push({
+            name: "debuff_stat amount",
+            passed: value === -amount,
+            expected: String(-amount),
+            actual: String(value ?? "missing"),
+          });
+          checks.push({
+            name: "debuff_stat duration",
+            passed: eff?.remainingTurns === turns,
+            expected: String(turns),
+            actual: String(eff?.remainingTurns ?? "missing"),
+          });
+        }
+        break;
+      }
+      case "dmg_spell": {
+        const ok = result.attackResults.length >= 1;
+        checks.push({
+          name: "dmg_spell result",
+          passed: ok,
+          expected: "at least one attack result",
+          actual: result.attackResults.length ? "has result" : "no result",
+        });
+        if (result.attackResults.length >= 1) {
+          const dmg = result.attackResults[0]!.hpDamage;
+          const hit = result.attackResults[0]!.hit;
+          const maxReasonable = 2000;
+          checks.push({
+            name: "dmg_spell damage non-negative and bounded",
+            passed: dmg >= 0 && dmg <= maxReasonable,
+            expected: `0 <= hpDamage <= ${maxReasonable}`,
+            actual: `hpDamage = ${dmg}, hit = ${hit}`,
+          });
+        }
+        break;
+      }
+      case "debuff_vuln": {
+        const turns = (params.turns as number) ?? 2;
+        const hasVuln = sem.hasEffect(world, target, "vulnerable");
+        checks.push({
+          name: "debuff_vuln status",
+          passed: hasVuln,
+          expected: "target has vulnerable",
+          actual: hasVuln ? "has vulnerable" : "no vulnerable",
+        });
+        if (hasVuln) {
+          const comp = world.getComponent<{ effects: Array<{ id: string; remainingTurns: number }> }>(target, "statusEffects");
+          const eff = comp?.effects.find((e) => e.id === "vulnerable");
+          checks.push({
+            name: "debuff_vuln duration",
+            passed: eff?.remainingTurns === turns,
+            expected: String(turns),
+            actual: String(eff?.remainingTurns ?? "missing"),
+          });
+        }
+        break;
+      }
+      case "dmg_multihit": {
+        const hits = (params.hits as number) ?? 2;
+        const ok = result.attackResults.length >= 1;
+        checks.push({
+          name: "dmg_multihit result count",
+          passed: ok,
+          expected: `at least 1 attack result (hits=${hits})`,
+          actual: `${result.attackResults.length} attack result(s)`,
+        });
+        const maxReasonable = 2000;
+        for (let i = 0; i < result.attackResults.length; i++) {
+          const dmg = result.attackResults[i]!.hpDamage;
+          checks.push({
+            name: `dmg_multihit hit[${i}] bounded`,
+            passed: dmg >= 0 && dmg <= maxReasonable,
+            expected: `0 <= hpDamage <= ${maxReasonable}`,
+            actual: `hpDamage = ${dmg}`,
+          });
+        }
+        break;
+      }
+      case "dmg_execute": {
+        const ok = result.attackResults.length >= 1;
+        checks.push({
+          name: "dmg_execute result",
+          passed: ok,
+          expected: "at least one attack result",
+          actual: result.attackResults.length ? "has result" : "no result",
+        });
+        if (result.attackResults.length >= 1) {
+          const dmg = result.attackResults[0]!.hpDamage;
+          const hit = result.attackResults[0]!.hit;
+          const maxReasonable = 2000;
+          checks.push({
+            name: "dmg_execute damage non-negative and bounded",
+            passed: dmg >= 0 && dmg <= maxReasonable,
+            expected: `0 <= hpDamage <= ${maxReasonable}`,
+            actual: `hpDamage = ${dmg}, hit = ${hit}`,
+          });
+        }
+        break;
+      }
+      case "buff_dmgReduce": {
+        const pct = (params.percent as number) ?? (params.pct as number) ?? 20;
+        const turns = (params.turns as number) ?? 2;
+        const hasReduce = sem.hasEffect(world, attacker, "dmg_reduce");
+        checks.push({
+          name: "buff_dmgReduce status",
+          passed: hasReduce,
+          expected: "attacker has dmg_reduce",
+          actual: hasReduce ? "has dmg_reduce" : "no dmg_reduce",
+        });
+        if (hasReduce) {
+          const comp = world.getComponent<{ effects: Array<{ id: string; modifiers: Record<string, number>; remainingTurns: number }> }>(attacker, "statusEffects");
+          const eff = comp?.effects.find((e) => e.id === "dmg_reduce");
+          const storedPct = eff?.modifiers._reducePct;
+          checks.push({
+            name: "buff_dmgReduce amount",
+            passed: storedPct === pct,
+            expected: String(pct),
+            actual: String(storedPct ?? "missing"),
+          });
+          checks.push({
+            name: "buff_dmgReduce duration",
+            passed: eff?.remainingTurns === turns,
+            expected: String(turns),
+            actual: String(eff?.remainingTurns ?? "missing"),
+          });
+        }
+        break;
+      }
+      case "grant_ap": {
+        const amount = (params.amount as number) ?? 0;
+        checks.push({
+          name: "grant_ap amount",
+          passed: result.grantAp === amount,
+          expected: `grantAp === ${amount}`,
+          actual: `grantAp === ${result.grantAp ?? "undefined"}`,
+        });
+        break;
+      }
+      case "disp_dash": {
+        const attackerPos = world.getComponent<{ q: number; r: number }>(attacker, "position");
+        const moved = attackerPos !== null && (attackerPos.q !== 0 || attackerPos.r !== 0);
+        checks.push({
+          name: "disp_dash attacker moved",
+          passed: moved,
+          expected: "attacker moved from (0, 0)",
+          actual: attackerPos ? `(${attackerPos.q}, ${attackerPos.r})` : "no position",
+        });
+        break;
+      }
       default:
         checks.push({
           name: `effect ${type}`,
@@ -413,6 +578,11 @@ export function runSkillFidelityTest(abilityDef: RulesetAbilityDef): SkillFideli
 
   // Run one tick so we can assert exact tick damage/heal (duration was already checked above)
   if (hasDot || hasHot) {
+    // Reduce HP before tick so HoT healing is visible (target starts at max HP)
+    if (hasHot && expectedTickHeal > 0) {
+      const health = world.getComponent<{ current: number; max: number }>(target, "health");
+      if (health) health.current = Math.max(1, health.max - expectedTickHeal);
+    }
     const hpBefore = world.getComponent<{ current: number }>(target, "health")?.current ?? 0;
     sem.tickTurnStart(world, target);
     const hpAfter = world.getComponent<{ current: number }>(target, "health")?.current ?? 0;

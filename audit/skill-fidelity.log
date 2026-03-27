@@ -1,8 +1,8 @@
 # Skill fidelity audit (pass 1)
-# Run: 2026-03-27T00:32:59.946Z
+# Run: 2026-03-27T00:41:38.025Z
 # Total testable: 2737
-# Passed: 2736
-# Failed: 1
+# Passed: 2737
+# Failed: 0
 
 ## PASS Quicken (chronoweaver_chronoweaver_accelerant_quicken)
   - ok effect apply_status
@@ -20,7 +20,7 @@
   - ok dmg_weapon damage non-negative and bounded
 
 ## PASS Overclock (chronoweaver_chronoweaver_accelerant_overclock)
-  - ok effect grant_ap
+  - ok grant_ap amount
   - ok cc_stun status
 
 ## PASS Infinite Loop (chronoweaver_chronoweaver_accelerant_infinite_loop)
@@ -33,7 +33,8 @@
   - ok debuff_armor duration
 
 ## PASS Wither Bolt (chronoweaver_chronoweaver_entropy_wither_bolt)
-  - ok effect dmg_spell
+  - ok dmg_spell result
+  - ok dmg_spell damage non-negative and bounded
   - ok dot_poison status
   - ok dot_poison tick damage
 
@@ -41,7 +42,8 @@
   - ok effect debuff_healReduce
 
 ## PASS Dust to Dust (chronoweaver_chronoweaver_entropy_dust_to_dust)
-  - ok effect dmg_execute
+  - ok dmg_execute result
+  - ok dmg_execute damage non-negative and bounded
 
 ## PASS Crumble (chronoweaver_chronoweaver_entropy_crumble)
   - ok debuff_armor status
@@ -50,7 +52,8 @@
 ## PASS Heat Death (chronoweaver_chronoweaver_entropy_heat_death)
   - ok channel_dmg status
   - ok channel_dmg dmgPerTurn
-  - ok effect dmg_execute
+  - ok dmg_execute result
+  - ok dmg_execute damage non-negative and bounded
   - ok channel_dmg tick damage
 
 ## PASS Rewind (chronoweaver_chronoweaver_paradox_rewind)
@@ -73,34 +76,41 @@
   - ok effect summon_unit
 
 ## PASS Grandfather (chronoweaver_chronoweaver_paradox_grandfather)
-  - ok effect debuff_stat
+  - ok debuff_stat status
+  - ok debuff_stat amount
+  - ok debuff_stat duration
 
 ## PASS Closed Timelike (chronoweaver_chronoweaver_paradox_closed_timelike)
   - ok heal_flat HP
   - ok effect transform_state
 
 ## PASS Barkskin (ironbloom_warden_ironbloom_warden_thornwall_barkskin)
-  - ok effect buff_dmgReduce
+  - ok buff_dmgReduce status
+  - ok buff_dmgReduce amount
+  - ok buff_dmgReduce duration
 
 ## PASS Root Stance (ironbloom_warden_ironbloom_warden_thornwall_root_stance)
-  - ok effect buff_dmgReduce
-  - ok effect debuff_stat
+  - ok buff_dmgReduce status
+  - ok buff_dmgReduce amount
+  - ok buff_dmgReduce duration
+  - ok debuff_stat status
+  - ok debuff_stat amount
+  - ok debuff_stat duration
   - ok effect cc_taunt
 
 ## PASS Briar Lash (ironbloom_warden_ironbloom_warden_thornwall_briar_lash)
 
 ## PASS World Tree (ironbloom_warden_ironbloom_warden_thornwall_world_tree)
-  - ok effect buff_dmgReduce
+  - ok buff_dmgReduce status
+  - ok buff_dmgReduce amount
+  - ok buff_dmgReduce duration
   - ok effect dmg_reflect
   - ok effect transform_state
 
-## FAIL Rejuvenate (ironbloom_warden_ironbloom_warden_overgrowth_rejuvenate)
+## PASS Rejuvenate (ironbloom_warden_ironbloom_warden_overgrowth_rejuvenate)
   - ok heal_hot status
   - ok heal_hot healPerTurn
-  - FAIL heal_hot tick heal
-      expected: 10 heal on tick
-      actual: 0 heal on tick
-  summary: heal_hot tick heal: expected 10 heal on tick, got 0 heal on tick
+  - ok heal_hot tick heal
 
 ## PASS Spore Shot (ironbloom_warden_ironbloom_warden_rot_herald_spore_shot)
   - ok dmg_weapon result
@@ -109,7 +119,8 @@
   - ok dot_poison tick damage
 
 ## PASS Decompose (ironbloom_warden_ironbloom_warden_rot_herald_decompose)
-  - ok effect dmg_execute
+  - ok dmg_execute result
+  - ok dmg_execute damage non-negative and bounded
 
 ## PASS Parasitic Vine (ironbloom_warden_ironbloom_warden_rot_herald_parasitic_vine)
   - ok channel_dmg status
@@ -118,11 +129,14 @@
   - ok channel_dmg tick damage
 
 ## PASS Cordyceps (ironbloom_warden_ironbloom_warden_rot_herald_cordyceps)
-  - ok effect debuff_stat
+  - ok debuff_stat status
+  - ok debuff_stat amount
+  - ok debuff_stat duration
   - ok effect summon_unit
 
 ## PASS The Spreading (ironbloom_warden_ironbloom_warden_rot_herald_the_spreading)
-  - ok effect dmg_execute
+  - ok dmg_execute result
+  - ok dmg_execute damage non-negative and bounded
   - ok dot_poison status
   - ok dot_poison tick damage
 
@@ -131,15 +145,18 @@
   - ok dmg_weapon damage non-negative and bounded
 
 ## PASS Shatter Point (echo_dancer_echo_dancer_resonance_shatter_point)
-  - ok effect dmg_execute
+  - ok dmg_execute result
+  - ok dmg_execute damage non-negative and bounded
 
 ## PASS Crystal Freq (echo_dancer_echo_dancer_resonance_crystal_freq)
-  - ok effect debuff_vuln
+  - ok debuff_vuln status
+  - ok debuff_vuln duration
 
 ## PASS Requiem (echo_dancer_echo_dancer_resonance_requiem)
   - ok channel_dmg status
   - ok channel_dmg dmgPerTurn
-  - ok effect dmg_execute
+  - ok dmg_execute result
+  - ok dmg_execute damage non-negative and bounded
   - ok channel_dmg tick damage
 
 ## PASS Muffle (echo_dancer_echo_dancer_silence_muffle)
@@ -166,7 +183,9 @@
   - ok effect transform_state
 
 ## PASS Tinnitus (echo_dancer_echo_dancer_cacophony_tinnitus)
-  - ok effect debuff_stat
+  - ok debuff_stat status
+  - ok debuff_stat amount
+  - ok debuff_stat duration
 
 ## PASS Brown Note (echo_dancer_echo_dancer_cacophony_brown_note)
   - ok cc_fear status
@@ -402,7 +421,7 @@
   - ok dmg_weapon damage non-negative and bounded
 
 ## PASS Whirlwind Step (bladesinger_bladesinger_sword_dance_whirlwind_step)
-  - ok effect disp_dash
+  - ok disp_dash attacker moved
   - ok dmg_weapon result
   - ok dmg_weapon damage non-negative and bounded
 
@@ -412,7 +431,8 @@
   - ok cc_stun status
 
 ## PASS Crescendo Strike (bladesinger_bladesinger_sword_dance_crescendo_strike)
-  - ok effect dmg_execute
+  - ok dmg_execute result
+  - ok dmg_execute damage non-negative and bounded
 
 ## PASS Blade Waltz (bladesinger_bladesinger_sword_dance_blade_waltz)
   - ok buff_stat status
@@ -426,7 +446,9 @@
 
 ## PASS The Endless Dance (bladesinger_bladesinger_sword_dance_the_endless_dance)
   - ok effect transform_state
-  - ok effect dmg_multihit
+  - ok dmg_multihit result count
+  - ok dmg_multihit hit[0] bounded
+  - ok dmg_multihit hit[1] bounded
 
 ## PASS Arcane Edge (bladesinger_bladesinger_spell_weave_arcane_edge)
   - ok dmg_weapon result
@@ -435,11 +457,13 @@
 ## PASS Spark Slash (bladesinger_bladesinger_spell_weave_spark_slash)
   - ok dmg_weapon result
   - ok dmg_weapon damage non-negative and bounded
-  - ok effect dmg_spell
+  - ok dmg_spell result
+  - ok dmg_spell damage non-negative and bounded
 
 ## PASS Force Bolt Slash (bladesinger_bladesinger_spell_weave_force_bolt_slash)
-  - ok effect dmg_spell
-  - ok effect disp_dash
+  - ok dmg_spell result
+  - ok dmg_spell damage non-negative and bounded
+  - ok disp_dash attacker moved
   - ok dmg_weapon result
   - ok dmg_weapon damage non-negative and bounded
 
@@ -448,7 +472,9 @@
   - ok dmg_weapon damage non-negative and bounded
 
 ## PASS Runic Barrage (bladesinger_bladesinger_spell_weave_runic_barrage)
-  - ok effect dmg_multihit
+  - ok dmg_multihit result count
+  - ok dmg_multihit hit[0] bounded
+  - ok dmg_multihit hit[1] bounded
 
 ## PASS Phase Cut (bladesinger_bladesinger_spell_weave_phase_cut)
   - ok effect disp_teleport
@@ -501,7 +527,9 @@
 
 ## PASS Masterwork Abomination (necrosurgeon_necrosurgeon_reanimator_masterwork_abomination)
   - ok effect summon_unit
-  - ok effect dmg_multihit
+  - ok dmg_multihit result count
+  - ok dmg_multihit hit[0] bounded
+  - ok dmg_multihit hit[1] bounded
 
 ## PASS Auxiliary Limb (necrosurgeon_necrosurgeon_fleshcraft_auxiliary_limb)
   - ok buff_stat status
@@ -509,7 +537,9 @@
 
 ## PASS Full Conversion (necrosurgeon_necrosurgeon_fleshcraft_full_conversion)
   - ok effect transform_state
-  - ok effect buff_dmgReduce
+  - ok buff_dmgReduce status
+  - ok buff_dmgReduce amount
+  - ok buff_dmgReduce duration
 
 ## PASS Adaptive Carapace (necrosurgeon_necrosurgeon_fleshcraft_adaptive_carapace)
   - ok dmg_weapon result
@@ -517,7 +547,9 @@
 
 ## PASS The Masterwork Self (necrosurgeon_necrosurgeon_fleshcraft_the_masterwork_self)
   - ok effect transform_state
-  - ok effect buff_dmgReduce
+  - ok buff_dmgReduce status
+  - ok buff_dmgReduce amount
+  - ok buff_dmgReduce duration
   - ok heal_hot status
   - ok heal_hot healPerTurn
 
@@ -526,13 +558,15 @@
   - ok dmg_weapon damage non-negative and bounded
 
 ## PASS Essence Bolt (necrosurgeon_necrosurgeon_soul_harvest_essence_bolt)
-  - ok effect dmg_spell
+  - ok dmg_spell result
+  - ok dmg_spell damage non-negative and bounded
 
 ## PASS Spectral Shell (necrosurgeon_necrosurgeon_soul_harvest_spectral_shell)
   - ok effect buff_shield
 
 ## PASS Soul Tap (necrosurgeon_necrosurgeon_soul_harvest_soul_tap)
-  - ok effect dmg_spell
+  - ok dmg_spell result
+  - ok dmg_spell damage non-negative and bounded
 
 ## PASS Essence Infusion (necrosurgeon_necrosurgeon_soul_harvest_essence_infusion)
   - ok buff_stat status
@@ -750,7 +784,8 @@
   - ok dmg_weapon damage non-negative and bounded
 
 ## PASS Crimson Bolt (blood_alchemist_blood_alchemist_sacrifice_crimson_bolt)
-  - ok effect dmg_spell
+  - ok dmg_spell result
+  - ok dmg_spell damage non-negative and bounded
 
 ## PASS Vital Surge (blood_alchemist_blood_alchemist_sacrifice_vital_surge)
   - ok buff_stat status
@@ -764,8 +799,12 @@
   - ok res_apRefund
 
 ## PASS Clot (blood_alchemist_blood_alchemist_hemomancy_clot)
-  - ok effect debuff_stat
-  - ok effect debuff_stat
+  - ok debuff_stat status
+  - ok debuff_stat amount
+  - ok debuff_stat duration
+  - ok debuff_stat status
+  - ok debuff_stat amount
+  - ok debuff_stat duration
 
 ## PASS Hemorrhage (blood_alchemist_blood_alchemist_hemomancy_hemorrhage)
   - ok dot_bleed status
@@ -775,11 +814,13 @@
 
 ## PASS Blood Lock (blood_alchemist_blood_alchemist_hemomancy_blood_lock)
   - ok cc_root status
-  - ok effect debuff_vuln
+  - ok debuff_vuln status
+  - ok debuff_vuln duration
 
 ## PASS Puppet String (blood_alchemist_blood_alchemist_hemomancy_puppet_string)
   - ok effect disp_pull
-  - ok effect dmg_spell
+  - ok dmg_spell result
+  - ok dmg_spell damage non-negative and bounded
 
 ## PASS Boil (blood_alchemist_blood_alchemist_hemomancy_boil)
   - ok dot_burn status
@@ -791,10 +832,12 @@
   - ok effect cc_charm
 
 ## PASS Hemorrhagic Burst (blood_alchemist_blood_alchemist_hemomancy_hemorrhagic_burst)
-  - ok effect dmg_spell
+  - ok dmg_spell result
+  - ok dmg_spell damage non-negative and bounded
 
 ## PASS Blood Tether (blood_alchemist_blood_alchemist_hemomancy_blood_tether)
-  - ok effect debuff_vuln
+  - ok debuff_vuln status
+  - ok debuff_vuln duration
 
 ## PASS Vascular Override (blood_alchemist_blood_alchemist_hemomancy_vascular_override)
   - ok dot_bleed status
@@ -803,7 +846,8 @@
   - ok dot_bleed tick damage
 
 ## PASS Life Draw (blood_alchemist_blood_alchemist_transfusion_life_draw)
-  - ok effect dmg_spell
+  - ok dmg_spell result
+  - ok dmg_spell damage non-negative and bounded
   - ok effect heal_pctDmg
 
 ## PASS Clot Seal (blood_alchemist_blood_alchemist_transfusion_clot_seal)
@@ -1132,7 +1176,7 @@
   - ok dmg_weapon damage non-negative and bounded
 
 ## PASS Overclock (nanomancer_nanomancer_replicator_overclock)
-  - ok effect grant_ap
+  - ok grant_ap amount
   - ok cc_stun status
 
 ## PASS Adaptive Platform (nanomancer_nanomancer_replicator_adaptive_platform)
@@ -1816,7 +1860,8 @@
   - ok dmg_weapon damage non-negative and bounded
 
 ## PASS Dust to Dust (sand_wraith_sand_wraith_erosion_dust_to_dust)
-  - ok effect dmg_execute
+  - ok dmg_execute result
+  - ok dmg_execute damage non-negative and bounded
 
 ## PASS Total Abrasion (sand_wraith_sand_wraith_erosion_total_abrasion)
   - ok dmg_weapon result
@@ -2291,7 +2336,7 @@
   - ok dmg_weapon damage non-negative and bounded
 
 ## PASS Overclock (warforged_warforged_overclock_overclock)
-  - ok effect grant_ap
+  - ok grant_ap amount
   - ok cc_stun status
 
 ## PASS Coolant Vent (warforged_warforged_overclock_coolant_vent)
@@ -2566,37 +2611,55 @@
   - ok effect transform_state
 
 ## PASS Hex: Weakness (hexblade_hexblade_curse_mark_hex_weakness)
-  - ok effect debuff_stat
+  - ok debuff_stat status
+  - ok debuff_stat amount
+  - ok debuff_stat duration
 
 ## PASS Hex: Slowmark (hexblade_hexblade_curse_mark_hex_slowmark)
-  - ok effect debuff_stat
+  - ok debuff_stat status
+  - ok debuff_stat amount
+  - ok debuff_stat duration
 
 ## PASS Hex: Vulnerability (hexblade_hexblade_curse_mark_hex_vulnerability)
-  - ok effect debuff_vuln
+  - ok debuff_vuln status
+  - ok debuff_vuln duration
 
 ## PASS Hex: Misfortune (hexblade_hexblade_curse_mark_hex_misfortune)
-  - ok effect debuff_stat
+  - ok debuff_stat status
+  - ok debuff_stat amount
+  - ok debuff_stat duration
 
 ## PASS Hex: Ruin (hexblade_hexblade_curse_mark_hex_ruin)
-  - ok effect debuff_stat
-  - ok effect debuff_vuln
+  - ok debuff_stat status
+  - ok debuff_stat amount
+  - ok debuff_stat duration
+  - ok debuff_vuln status
+  - ok debuff_vuln duration
 
 ## PASS Hex: Unraveling (hexblade_hexblade_curse_mark_hex_unraveling)
   - ok dot_poison status
   - ok dot_poison tick damage
 
 ## PASS Curse Explosion (hexblade_hexblade_curse_mark_curse_explosion)
-  - ok effect dmg_spell
+  - ok dmg_spell result
+  - ok dmg_spell damage non-negative and bounded
   - ok cc_stun status
 
 ## PASS Grand Hex (hexblade_hexblade_curse_mark_grand_hex)
-  - ok effect dmg_spell
-  - ok effect debuff_stat
-  - ok effect debuff_vuln
+  - ok dmg_spell result
+  - ok dmg_spell damage non-negative and bounded
+  - ok debuff_stat status
+  - ok debuff_stat amount
+  - ok debuff_stat duration
+  - ok debuff_vuln status
+  - ok debuff_vuln duration
 
 ## PASS Absolute Curse (hexblade_hexblade_curse_mark_absolute_curse)
-  - ok effect debuff_stat
-  - ok effect debuff_vuln
+  - ok debuff_stat status
+  - ok debuff_stat amount
+  - ok debuff_stat duration
+  - ok debuff_vuln status
+  - ok debuff_vuln duration
   - ok dot_poison status
   - ok effect cc_daze
   - ok dot_poison tick damage
@@ -2605,7 +2668,9 @@
   - ok effect summon_unit
 
 ## PASS Phantom Strike (hexblade_hexblade_spectral_arsenal_phantom_strike)
-  - ok effect dmg_multihit
+  - ok dmg_multihit result count
+  - ok dmg_multihit hit[0] bounded
+  - ok dmg_multihit hit[1] bounded
 
 ## PASS Arsenal Expansion (hexblade_hexblade_spectral_arsenal_arsenal_expansion)
   - ok effect summon_unit
@@ -2614,7 +2679,9 @@
   - ok effect buff_shield
 
 ## PASS Spectral Surge (hexblade_hexblade_spectral_arsenal_spectral_surge)
-  - ok effect dmg_multihit
+  - ok dmg_multihit result count
+  - ok dmg_multihit hit[0] bounded
+  - ok dmg_multihit hit[1] bounded
 
 ## PASS Spectral Clone (hexblade_hexblade_spectral_arsenal_spectral_clone)
   - ok effect summon_unit
@@ -3635,23 +3702,26 @@
   - ok buff_stat amount
 
 ## PASS Bull Rush (berserker_berserker_warpath_bull_rush)
-  - ok effect disp_dash
+  - ok disp_dash attacker moved
   - ok disp_push moved
   - ok disp_push distance
 
 ## PASS Titan Charge (berserker_berserker_warpath_titan_charge)
-  - ok effect disp_dash
+  - ok disp_dash attacker moved
   - ok dmg_weapon result
   - ok dmg_weapon damage non-negative and bounded
 
 ## PASS Warpath Stride (berserker_berserker_warpath_warpath_stride)
   - ok buff_stat status
   - ok buff_stat amount
-  - ok effect buff_dmgReduce
+  - ok buff_dmgReduce status
+  - ok buff_dmgReduce amount
+  - ok buff_dmgReduce duration
 
 ## PASS Chain Charge (berserker_berserker_warpath_chain_charge)
-  - ok effect disp_dash
-  - ok effect dmg_multihit
+  - ok disp_dash attacker moved
+  - ok dmg_multihit result count
+  - ok dmg_multihit hit[0] bounded
 
 ## PASS Rampage (berserker_berserker_warpath_rampage)
   - ok effect transform_state
@@ -3666,11 +3736,16 @@
 
 ## PASS Taunt (berserker_berserker_primal_howl_taunt)
   - ok effect cc_taunt
-  - ok effect debuff_stat
+  - ok debuff_stat status
+  - ok debuff_stat amount
+  - ok debuff_stat duration
 
 ## PASS Crushing Dominance (berserker_berserker_primal_howl_crushing_dominance)
-  - ok effect debuff_stat
-  - ok effect debuff_vuln
+  - ok debuff_stat status
+  - ok debuff_stat amount
+  - ok debuff_stat duration
+  - ok debuff_vuln status
+  - ok debuff_vuln duration
   - ok cc_silence status
 
 ## PASS Ankle Grab (warden_of_chains_warden_of_chains_shacklemaster_ankle_grab)
@@ -3998,7 +4073,7 @@
   - ok dmg_weapon damage non-negative and bounded
 
 ## PASS Overclock (electromancer_electromancer_surge_overclock)
-  - ok effect grant_ap
+  - ok grant_ap amount
   - ok cc_stun status
 
 ## PASS High Voltage (electromancer_electromancer_surge_high_voltage)
@@ -4881,7 +4956,7 @@
   - ok dmg_weapon damage non-negative and bounded
 
 ## PASS Overclock (technomancer_technomancer_mana_circuit_overclock)
-  - ok effect grant_ap
+  - ok grant_ap amount
   - ok cc_stun status
 
 ## PASS Signal Amplifier (technomancer_technomancer_mana_circuit_signal_amplifier)
@@ -5393,7 +5468,9 @@
   - ok dmg_weapon damage non-negative and bounded
 
 ## PASS Phantom Strike (illusionist_illusionist_phantasm_phantom_strike)
-  - ok effect dmg_multihit
+  - ok dmg_multihit result count
+  - ok dmg_multihit hit[0] bounded
+  - ok dmg_multihit hit[1] bounded
 
 ## PASS Illusory Wound (illusionist_illusionist_phantasm_illusory_wound)
   - ok dmg_weapon result
@@ -5421,7 +5498,9 @@
 
 ## PASS Full Conversion (illusionist_illusionist_phantasm_full_conversion)
   - ok effect transform_state
-  - ok effect buff_dmgReduce
+  - ok buff_dmgReduce status
+  - ok buff_dmgReduce amount
+  - ok buff_dmgReduce duration
 
 ## PASS Unshakeable Phantom (illusionist_illusionist_phantasm_unshakeable_phantom)
   - ok dmg_weapon result
@@ -7253,7 +7332,8 @@
 ## PASS Requiem (bard_bard_dirge_requiem)
   - ok channel_dmg status
   - ok channel_dmg dmgPerTurn
-  - ok effect dmg_execute
+  - ok dmg_execute result
+  - ok dmg_execute damage non-negative and bounded
   - ok channel_dmg tick damage
 
 ## PASS The Last Lullaby (bard_bard_dirge_the_last_lullaby)
@@ -7271,7 +7351,9 @@
 ## PASS Iron Stance (monk_monk_iron_fist_iron_stance)
   - ok buff_stat status
   - ok buff_stat amount
-  - ok effect debuff_stat
+  - ok debuff_stat status
+  - ok debuff_stat amount
+  - ok debuff_stat duration
 
 ## PASS Rising Uppercut (monk_monk_iron_fist_rising_uppercut)
   - ok dmg_weapon result
@@ -7281,10 +7363,14 @@
 ## PASS Body Blow (monk_monk_iron_fist_body_blow)
   - ok dmg_weapon result
   - ok dmg_weapon damage non-negative and bounded
-  - ok effect debuff_stat
+  - ok debuff_stat status
+  - ok debuff_stat amount
+  - ok debuff_stat duration
 
 ## PASS Hundred Fists (monk_monk_iron_fist_hundred_fists)
-  - ok effect dmg_multihit
+  - ok dmg_multihit result count
+  - ok dmg_multihit hit[0] bounded
+  - ok dmg_multihit hit[1] bounded
 
 ## PASS Armor Crack (monk_monk_iron_fist_armor_crack)
   - ok dmg_weapon result
@@ -7325,11 +7411,15 @@
   - ok dmg_weapon damage non-negative and bounded
 
 ## PASS Still Water (monk_monk_flowing_water_still_water)
-  - ok effect buff_dmgReduce
+  - ok buff_dmgReduce status
+  - ok buff_dmgReduce amount
+  - ok buff_dmgReduce duration
   - ok effect stance_counter
 
 ## PASS Current Strike (monk_monk_flowing_water_current_strike)
-  - ok effect dmg_multihit
+  - ok dmg_multihit result count
+  - ok dmg_multihit hit[0] bounded
+  - ok dmg_multihit hit[1] bounded
 
 ## PASS River's Fury (monk_monk_flowing_water_river_s_fury)
   - ok effect stance_counter
@@ -7342,14 +7432,16 @@
   - ok effect stance_counter
 
 ## PASS Ki Bolt (monk_monk_inner_fire_ki_bolt)
-  - ok effect dmg_spell
+  - ok dmg_spell result
+  - ok dmg_spell damage non-negative and bounded
 
 ## PASS Focus (monk_monk_inner_fire_focus)
   - ok buff_stat status
   - ok buff_stat amount
 
 ## PASS Ki Blast (monk_monk_inner_fire_ki_blast)
-  - ok effect dmg_spell
+  - ok dmg_spell result
+  - ok dmg_spell damage non-negative and bounded
 
 ## PASS Inner Flame (monk_monk_inner_fire_inner_flame)
   - ok buff_stat status
@@ -7364,7 +7456,8 @@
 
 ## PASS Transcendent Ki (monk_monk_inner_fire_transcendent_ki)
   - ok effect transform_state
-  - ok effect dmg_spell
+  - ok dmg_spell result
+  - ok dmg_spell damage non-negative and bounded
   - ok buff_stat status
   - ok buff_stat amount
 
@@ -8183,9 +8276,13 @@
   - ok dmg_weapon damage non-negative and bounded
 
 ## PASS Grand Hex (witch_witch_coven_grand_hex)
-  - ok effect dmg_spell
-  - ok effect debuff_stat
-  - ok effect debuff_vuln
+  - ok dmg_spell result
+  - ok dmg_spell damage non-negative and bounded
+  - ok debuff_stat status
+  - ok debuff_stat amount
+  - ok debuff_stat duration
+  - ok debuff_vuln status
+  - ok debuff_vuln duration
 
 ## PASS Hex Storm (witch_witch_coven_hex_storm)
   - ok dmg_weapon result
@@ -8276,7 +8373,8 @@
   - ok dmg_weapon damage non-negative and bounded
 
 ## PASS Mark Target (ranger_ranger_dead_eye_mark_target)
-  - ok effect debuff_vuln
+  - ok debuff_vuln status
+  - ok debuff_vuln duration
 
 ## PASS Flint Nock (ranger_ranger_dead_eye_flint_nock)
   - ok dmg_weapon result
@@ -8285,7 +8383,9 @@
 ## PASS Scope In (ranger_ranger_dead_eye_scope_in)
   - ok buff_stat status
   - ok buff_stat amount
-  - ok effect debuff_stat
+  - ok debuff_stat status
+  - ok debuff_stat amount
+  - ok debuff_stat duration
 
 ## PASS Tungsten Tip (ranger_ranger_dead_eye_tungsten_tip)
   - ok dmg_weapon result
@@ -8304,7 +8404,8 @@
 ## PASS One Shot, One Soul (ranger_ranger_dead_eye_one_shot_one_soul)
   - ok dmg_weapon result
   - ok dmg_weapon damage non-negative and bounded
-  - ok effect dmg_execute
+  - ok dmg_execute result
+  - ok dmg_execute damage non-negative and bounded
 
 ## PASS Snare Trap (ranger_ranger_trapper_snare_trap)
   - ok effect trap_place
@@ -8312,7 +8413,9 @@
 
 ## PASS Tripwire (ranger_ranger_trapper_tripwire)
   - ok effect trap_place
-  - ok effect debuff_stat
+  - ok debuff_stat status
+  - ok debuff_stat amount
+  - ok debuff_stat duration
 
 ## PASS Bait Pile (ranger_ranger_trapper_bait_pile)
   - ok effect trap_place
@@ -8320,7 +8423,9 @@
 
 ## PASS Spike Pit (ranger_ranger_trapper_spike_pit)
   - ok effect trap_place
-  - ok effect debuff_stat
+  - ok debuff_stat status
+  - ok debuff_stat amount
+  - ok debuff_stat duration
   - ok dot_bleed status
   - ok dot_bleed dmgPerTurn
   - ok dot_bleed duration
@@ -8341,7 +8446,8 @@
   - ok dmg_weapon damage non-negative and bounded
 
 ## PASS Flanking Fang (ranger_ranger_beastmaster_archer_flanking_fang)
-  - ok effect debuff_vuln
+  - ok debuff_vuln status
+  - ok debuff_vuln duration
   - ok dmg_weapon result
   - ok dmg_weapon damage non-negative and bounded
 
@@ -8351,7 +8457,8 @@
 ## PASS Arrow + Claw (ranger_ranger_beastmaster_archer_arrow_claw)
   - ok dmg_weapon result
   - ok dmg_weapon damage non-negative and bounded
-  - ok effect debuff_vuln
+  - ok debuff_vuln status
+  - ok debuff_vuln duration
 
 ## PASS Alpha Call (ranger_ranger_beastmaster_archer_alpha_call)
   - ok buff_stat status
@@ -8362,7 +8469,9 @@
   - ok buff_stat amount
 
 ## PASS Wild Volley (ranger_ranger_beastmaster_archer_wild_volley)
-  - ok effect dmg_multihit
+  - ok dmg_multihit result count
+  - ok dmg_multihit hit[0] bounded
+  - ok dmg_multihit hit[1] bounded
   - ok cc_root status
 
 ## PASS Hunt as One (ranger_ranger_beastmaster_archer_hunt_as_one)
@@ -8480,9 +8589,13 @@
   - ok dmg_weapon damage non-negative and bounded
 
 ## PASS Grand Hex (warlock_warlock_hex_weaver_grand_hex)
-  - ok effect dmg_spell
-  - ok effect debuff_stat
-  - ok effect debuff_vuln
+  - ok dmg_spell result
+  - ok dmg_spell damage non-negative and bounded
+  - ok debuff_stat status
+  - ok debuff_stat amount
+  - ok debuff_stat duration
+  - ok debuff_vuln status
+  - ok debuff_vuln duration
 
 ## PASS Inevitable Doom (warlock_warlock_hex_weaver_inevitable_doom)
   - ok dmg_weapon result
@@ -9668,7 +9781,9 @@
   - ok dmg_weapon damage non-negative and bounded
 
 ## PASS Current Strike (tideborn_tideborn_riptide_current_strike)
-  - ok effect dmg_multihit
+  - ok dmg_multihit result count
+  - ok dmg_multihit hit[0] bounded
+  - ok dmg_multihit hit[1] bounded
 
 ## PASS Undertow (tideborn_tideborn_riptide_undertow)
   - ok dmg_weapon result
@@ -10856,7 +10971,8 @@
   - ok dmg_weapon damage non-negative and bounded
 
 ## PASS Decompose (gardener_of_flesh_gardener_of_flesh_compost_decompose)
-  - ok effect dmg_execute
+  - ok dmg_execute result
+  - ok dmg_execute damage non-negative and bounded
 
 ## PASS Nutrient Absorption (gardener_of_flesh_gardener_of_flesh_compost_nutrient_absorption)
   - ok dmg_weapon result
