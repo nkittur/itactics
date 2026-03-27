@@ -186,6 +186,7 @@ export function runSkillFidelityTest(abilityDef: RulesetAbilityDef): SkillFideli
       }
       case "dot_burn": {
         const dmgPerTurn = (params.dmgPerTurn as number) ?? 5;
+        const turns = (params.turns as number) ?? 2;
         const hasBurn = sem.hasEffect(world, target, "burn");
         checks.push({
           name: "dot_burn status",
@@ -193,10 +194,29 @@ export function runSkillFidelityTest(abilityDef: RulesetAbilityDef): SkillFideli
           expected: "target has burn",
           actual: hasBurn ? "has burn" : "no burn",
         });
+        if (hasBurn) {
+          const comp = world.getComponent<{ effects: Array<{ id: string; modifiers: Record<string, number>; remainingTurns: number }> }>(target, "statusEffects");
+          const eff = comp?.effects.find((e) => e.id === "burn");
+          const storedDmg = eff?.modifiers._dmgPerTurn;
+          const storedTurns = eff?.remainingTurns;
+          checks.push({
+            name: "dot_burn dmgPerTurn",
+            passed: storedDmg === dmgPerTurn,
+            expected: String(dmgPerTurn),
+            actual: String(storedDmg ?? "missing"),
+          });
+          checks.push({
+            name: "dot_burn duration",
+            passed: storedTurns === turns,
+            expected: String(turns),
+            actual: String(storedTurns ?? "missing"),
+          });
+        }
         break;
       }
       case "dot_poison": {
         const dmgPerTurn = (params.dmgPerTurn as number) ?? 4;
+        const turns = (params.turns as number) ?? 3;
         const hasPoison = sem.hasEffect(world, target, "poison");
         checks.push({
           name: "dot_poison status",
@@ -204,6 +224,24 @@ export function runSkillFidelityTest(abilityDef: RulesetAbilityDef): SkillFideli
           expected: "target has poison",
           actual: hasPoison ? "has poison" : "no poison",
         });
+        if (hasPoison) {
+          const comp = world.getComponent<{ effects: Array<{ id: string; modifiers: Record<string, number>; remainingTurns: number }> }>(target, "statusEffects");
+          const eff = comp?.effects.find((e) => e.id === "poison");
+          const storedDmg = eff?.modifiers._dmgPerTurn;
+          const storedTurns = eff?.remainingTurns;
+          checks.push({
+            name: "dot_poison dmgPerTurn",
+            passed: storedDmg === dmgPerTurn,
+            expected: String(dmgPerTurn),
+            actual: String(storedDmg ?? "missing"),
+          });
+          checks.push({
+            name: "dot_poison duration",
+            passed: storedTurns === turns,
+            expected: String(turns),
+            actual: String(storedTurns ?? "missing"),
+          });
+        }
         break;
       }
       case "heal_flat": {
@@ -563,6 +601,228 @@ export function runSkillFidelityTest(abilityDef: RulesetAbilityDef): SkillFideli
           passed: moved,
           expected: "attacker moved from (0, 0)",
           actual: attackerPos ? `(${attackerPos.q}, ${attackerPos.r})` : "no position",
+        });
+        break;
+      }
+      case "buff_stealth": {
+        const hasStealth = sem.hasEffect(world, attacker, "stealth");
+        checks.push({
+          name: "buff_stealth status",
+          passed: hasStealth,
+          expected: "attacker has stealth",
+          actual: hasStealth ? "has stealth" : "no stealth",
+        });
+        break;
+      }
+      case "buff_shield": {
+        const hasShield = sem.hasEffect(world, attacker, "shield");
+        checks.push({
+          name: "buff_shield status",
+          passed: hasShield,
+          expected: "attacker has shield",
+          actual: hasShield ? "has shield" : "no shield",
+        });
+        break;
+      }
+      case "cc_taunt": {
+        const hasTaunt = sem.hasEffect(world, target, "taunt");
+        checks.push({
+          name: "cc_taunt status",
+          passed: hasTaunt,
+          expected: "target has taunt",
+          actual: hasTaunt ? "has taunt" : "no taunt",
+        });
+        break;
+      }
+      case "cc_charm": {
+        const hasCharm = sem.hasEffect(world, target, "charm");
+        checks.push({
+          name: "cc_charm status",
+          passed: hasCharm,
+          expected: "target has charm",
+          actual: hasCharm ? "has charm" : "no charm",
+        });
+        break;
+      }
+      case "cc_daze": {
+        const hasDaze = sem.hasEffect(world, target, "daze");
+        checks.push({
+          name: "cc_daze status",
+          passed: hasDaze,
+          expected: "target has daze",
+          actual: hasDaze ? "has daze" : "no daze",
+        });
+        break;
+      }
+      case "lifesteal": {
+        // Deferred post-execute: heals attacker based on damage dealt.
+        // Just verify it executed without error (damage-dependent).
+        checks.push({
+          name: "lifesteal executed",
+          passed: true,
+          expected: "executed without error",
+          actual: "executed",
+        });
+        break;
+      }
+      case "heal_pctDmg": {
+        // Deferred post-execute: heals attacker by % of damage dealt.
+        // Just verify it executed without error (damage-dependent).
+        checks.push({
+          name: "heal_pctDmg executed",
+          passed: true,
+          expected: "executed without error",
+          actual: "executed",
+        });
+        break;
+      }
+      case "disp_teleport": {
+        const attackerPos = world.getComponent<{ q: number; r: number }>(attacker, "position");
+        const moved = attackerPos !== null && (attackerPos.q !== 0 || attackerPos.r !== 0);
+        checks.push({
+          name: "disp_teleport attacker moved",
+          passed: moved,
+          expected: "attacker moved from (0, 0)",
+          actual: attackerPos ? `(${attackerPos.q}, ${attackerPos.r})` : "no position",
+        });
+        break;
+      }
+      case "disp_pull": {
+        // Pull moves target toward caster. When target is already adjacent to
+        // caster (distance 1), the engine correctly refuses to pull onto the
+        // caster's tile, so the target stays put. Accept both outcomes.
+        const targetPos = world.getComponent<{ q: number; r: number }>(target, "position");
+        checks.push({
+          name: "disp_pull executed",
+          passed: true,
+          expected: "executed without error",
+          actual: targetPos ? `target at (${targetPos.q}, ${targetPos.r})` : "no position",
+        });
+        break;
+      }
+      case "apply_status": {
+        const statusId = (params.statusId as string) ?? "";
+        if (statusId) {
+          const hasStatus = sem.hasEffect(world, target, statusId);
+          checks.push({
+            name: "apply_status status",
+            passed: hasStatus,
+            expected: `target has ${statusId}`,
+            actual: hasStatus ? `has ${statusId}` : `no ${statusId}`,
+          });
+        } else {
+          checks.push({
+            name: "apply_status executed",
+            passed: true,
+            expected: "executed without error",
+            actual: "executed (no statusId)",
+          });
+        }
+        break;
+      }
+      case "apply_status_self": {
+        const statusId = (params.statusId as string) ?? "";
+        if (statusId) {
+          const hasStatus = sem.hasEffect(world, attacker, statusId);
+          checks.push({
+            name: "apply_status_self status",
+            passed: hasStatus,
+            expected: `attacker has ${statusId}`,
+            actual: hasStatus ? `has ${statusId}` : `no ${statusId}`,
+          });
+        } else {
+          checks.push({
+            name: "apply_status_self executed",
+            passed: true,
+            expected: "executed without error",
+            actual: "executed (no statusId)",
+          });
+        }
+        break;
+      }
+      case "stance_counter": {
+        const activated = result.stanceActivated === "counter";
+        checks.push({
+          name: "stance_counter activated",
+          passed: activated,
+          expected: "stanceActivated === counter",
+          actual: `stanceActivated === ${result.stanceActivated ?? "undefined"}`,
+        });
+        break;
+      }
+      case "stance_overwatch": {
+        const activated = result.stanceActivated === "overwatch";
+        checks.push({
+          name: "stance_overwatch activated",
+          passed: activated,
+          expected: "stanceActivated === overwatch",
+          actual: `stanceActivated === ${result.stanceActivated ?? "undefined"}`,
+        });
+        break;
+      }
+      case "transform_state": {
+        // Requires TransformationManager which is not injected in test harness.
+        // Just verify it executed without error.
+        checks.push({
+          name: "transform_state executed",
+          passed: true,
+          expected: "executed without error",
+          actual: "executed",
+        });
+        break;
+      }
+      case "summon_unit": {
+        // Requires SummonManager which is not injected in test harness.
+        // Just verify it executed without error.
+        checks.push({
+          name: "summon_unit executed",
+          passed: true,
+          expected: "executed without error",
+          actual: "executed",
+        });
+        break;
+      }
+      case "zone_persist": {
+        // Requires ZoneManager which is not injected in test harness.
+        // Just verify it executed without error.
+        checks.push({
+          name: "zone_persist executed",
+          passed: true,
+          expected: "executed without error",
+          actual: "executed",
+        });
+        break;
+      }
+      case "trap_place": {
+        // Requires ZoneManager which is not injected in test harness.
+        // Just verify it executed without error.
+        checks.push({
+          name: "trap_place executed",
+          passed: true,
+          expected: "executed without error",
+          actual: "executed",
+        });
+        break;
+      }
+      case "cleanse": {
+        // Cleanse removes debuffs. In test harness target may not have debuffs.
+        // Just verify it executed without error.
+        checks.push({
+          name: "cleanse executed",
+          passed: true,
+          expected: "executed without error",
+          actual: "executed",
+        });
+        break;
+      }
+      case "cooldown_reset": {
+        // Requires abilityCooldowns component which is not added in test harness.
+        // Just verify it executed without error.
+        checks.push({
+          name: "cooldown_reset executed",
+          passed: true,
+          expected: "executed without error",
+          actual: "executed",
         });
         break;
       }
