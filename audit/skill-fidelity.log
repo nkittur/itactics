@@ -1,5 +1,5 @@
 # Skill fidelity audit (pass 1)
-# Run: 2026-03-27T00:55:18.789Z
+# Run: 2026-03-27T01:00:46.896Z
 # Total testable: 2737
 # Passed: 2737
 # Failed: 0
@@ -41,7 +41,8 @@
   - ok dot_poison tick damage
 
 ## PASS Sap Vitality (chronoweaver_chronoweaver_entropy_sap_vitality)
-  - ok effect debuff_healReduce
+  - ok debuff_healReduce status
+  - ok debuff_healReduce duration
 
 ## PASS Dust to Dust (chronoweaver_chronoweaver_entropy_dust_to_dust)
   - ok dmg_execute result
@@ -69,7 +70,7 @@
   - ok cc_stun status
 
 ## PASS Causal Loop (chronoweaver_chronoweaver_paradox_causal_loop)
-  - ok effect dmg_reflect
+  - ok dmg_reflect status
 
 ## PASS Echo Cast (chronoweaver_chronoweaver_paradox_echo_cast)
   - ok res_apRefund
@@ -106,7 +107,7 @@
   - ok buff_dmgReduce status
   - ok buff_dmgReduce amount
   - ok buff_dmgReduce duration
-  - ok effect dmg_reflect
+  - ok dmg_reflect status
   - ok transform_state executed
 
 ## PASS Rejuvenate (ironbloom_warden_ironbloom_warden_overgrowth_rejuvenate)
@@ -7442,7 +7443,7 @@
 
 ## PASS Ocean's Wrath (monk_monk_flowing_water_ocean_s_wrath)
   - ok transform_state executed
-  - ok effect dmg_reflect
+  - ok dmg_reflect status
   - ok stance_counter activated
 
 ## PASS Ki Bolt (monk_monk_inner_fire_ki_bolt)

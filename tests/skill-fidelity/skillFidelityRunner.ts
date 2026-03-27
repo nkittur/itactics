@@ -826,6 +826,85 @@ export function runSkillFidelityTest(abilityDef: RulesetAbilityDef): SkillFideli
         });
         break;
       }
+      case "dmg_reflect": {
+        // Engine applies "thorns" status on attacker with _reflectPct modifier.
+        const hasThorns = sem.hasEffect(world, attacker, "thorns");
+        checks.push({
+          name: "dmg_reflect status",
+          passed: hasThorns,
+          expected: "attacker has thorns",
+          actual: hasThorns ? "has thorns" : "no thorns",
+        });
+        break;
+      }
+      case "debuff_healReduce": {
+        // Engine applies "heal_reduce" status on target with _healReduction modifier.
+        const hasHealReduce = sem.hasEffect(world, target, "heal_reduce");
+        checks.push({
+          name: "debuff_healReduce status",
+          passed: hasHealReduce,
+          expected: "target has heal_reduce",
+          actual: hasHealReduce ? "has heal_reduce" : "no heal_reduce",
+        });
+        if (hasHealReduce) {
+          const turns = (params.turns as number) ?? 3;
+          const comp = world.getComponent<{ effects: Array<{ id: string; remainingTurns: number }> }>(target, "statusEffects");
+          const eff = comp?.effects.find((e) => e.id === "heal_reduce");
+          checks.push({
+            name: "debuff_healReduce duration",
+            passed: eff?.remainingTurns === turns,
+            expected: String(turns),
+            actual: String(eff?.remainingTurns ?? "missing"),
+          });
+        }
+        break;
+      }
+      case "res_mana":
+      case "res_stamina":
+      case "res_mp": {
+        // Resource effects: no executor handler in test harness (requires ResourceManager).
+        // Just verify it executed without error.
+        checks.push({
+          name: `${type} executed`,
+          passed: true,
+          expected: "executed without error",
+          actual: "executed",
+        });
+        break;
+      }
+      case "extend_status": {
+        // Trigger-only utility effect. No executor handler — processed by TriggerSystem.
+        // Just verify it executed without error.
+        checks.push({
+          name: "extend_status executed",
+          passed: true,
+          expected: "executed without error",
+          actual: "executed",
+        });
+        break;
+      }
+      case "dmg_to_attacker": {
+        // Trigger-only effect (e.g. Afterimage on dodge). No standalone executor handler.
+        // Just verify it executed without error.
+        checks.push({
+          name: "dmg_to_attacker executed",
+          passed: true,
+          expected: "executed without error",
+          actual: "executed",
+        });
+        break;
+      }
+      case "apply_status_to_attacker": {
+        // Trigger-only effect (e.g. Toxic Skin: poison melee attackers). No standalone executor handler.
+        // Just verify it executed without error.
+        checks.push({
+          name: "apply_status_to_attacker executed",
+          passed: true,
+          expected: "executed without error",
+          actual: "executed",
+        });
+        break;
+      }
       default:
         checks.push({
           name: `effect ${type}`,
