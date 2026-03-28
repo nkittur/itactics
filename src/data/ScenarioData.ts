@@ -295,24 +295,24 @@ export const SCENARIOS: ScenarioDef[] = [
       { q: 8, r: 6, terrain: TerrainType.Forest, elevation: 0 },
     ],
     units: [
-      // Player (left side of bridge)
+      // Player (left side of bridge) — higher melee for reliable hits
       {
         q: 1, r: 3, team: "player", name: "Swordsman",
-        stats: { melee: 50, defense: 5, hp: 12, initiative: 100 },
+        stats: { melee: 60, defense: 5, hp: 12, initiative: 100 },
         weapon: "arming_sword", shield: "heater_shield",
         bodyArmor: "mail_hauberk", headArmor: "mail_coif",
         sprite: "swordsman", classId: "ironbloom_warden", bag: ["health_potion"],
       },
       {
         q: 1, r: 4, team: "player", name: "Axeman",
-        stats: { melee: 48, defense: 3, hp: 14, initiative: 90 },
+        stats: { melee: 58, defense: 3, hp: 14, initiative: 90 },
         weapon: "hand_axe", shield: "wooden_shield",
         bodyArmor: "leather_jerkin", headArmor: "leather_cap",
         sprite: "armored-axeman", classId: "ironbloom_warden", bag: ["health_potion"],
       },
       {
         q: 2, r: 3, team: "player", name: "Spearman",
-        stats: { melee: 45, defense: 6, hp: 10, initiative: 110 },
+        stats: { melee: 55, defense: 6, hp: 10, initiative: 110 },
         weapon: "spear", shield: "buckler",
         bodyArmor: "linen_tunic", headArmor: "hood",
         sprite: "knight-templar", classId: "ironbloom_warden", bag: ["health_potion"],
@@ -368,53 +368,53 @@ export const SCENARIOS: ScenarioDef[] = [
       { q: 3, r: 7, terrain: TerrainType.Swamp, elevation: 0 },
     ],
     units: [
-      // Player (left side)
+      // Player (left side) — higher melee for reliable hits vs shielded enemies
       {
         q: 1, r: 2, team: "player", name: "Swordsman",
-        stats: { melee: 50, defense: 5, hp: 12, initiative: 100 },
+        stats: { melee: 60, defense: 5, hp: 13, initiative: 100 },
         weapon: "arming_sword", shield: "heater_shield",
         bodyArmor: "mail_hauberk", headArmor: "mail_coif",
         sprite: "swordsman", classId: "ironbloom_warden", bag: ["health_potion"],
       },
       {
         q: 1, r: 4, team: "player", name: "Axeman",
-        stats: { melee: 48, defense: 3, hp: 14, initiative: 90 },
+        stats: { melee: 58, defense: 3, hp: 15, initiative: 90 },
         weapon: "hand_axe", shield: "wooden_shield",
         bodyArmor: "leather_jerkin", headArmor: "leather_cap",
         sprite: "armored-axeman", classId: "ironbloom_warden", bag: ["health_potion"],
       },
       {
         q: 1, r: 6, team: "player", name: "Spearman",
-        stats: { melee: 45, defense: 6, hp: 10, initiative: 110 },
+        stats: { melee: 55, defense: 6, hp: 11, initiative: 110 },
         weapon: "spear", shield: "buckler",
         bodyArmor: "linen_tunic", headArmor: "hood",
         sprite: "knight-templar", classId: "ironbloom_warden", bag: ["health_potion"],
       },
-      // Enemy (defending the mill)
+      // Enemy (defending the mill) — low dodge since shields provide most evasion
       {
         q: 6, r: 3, team: "enemy", name: "Brigand Fighter",
-        stats: { melee: 44, defense: 4, hp: 11, initiative: 90 },
+        stats: { melee: 44, defense: 0, hp: 11, initiative: 90 },
         weapon: "arming_sword", shield: "buckler",
         bodyArmor: "leather_jerkin", headArmor: "leather_cap",
         aiType: "defensive", sprite: "armored-skeleton",
       },
       {
         q: 6, r: 5, team: "enemy", name: "Brigand Fighter",
-        stats: { melee: 42, defense: 3, hp: 10, initiative: 88 },
+        stats: { melee: 42, defense: 0, hp: 10, initiative: 88 },
         weapon: "hand_axe", shield: "wooden_shield",
         bodyArmor: "leather_jerkin", headArmor: "hood",
         aiType: "defensive", sprite: "orc",
       },
       {
         q: 7, r: 5, team: "enemy", name: "Brigand Enforcer",
-        stats: { melee: 46, defense: 5, hp: 12, initiative: 85 },
+        stats: { melee: 46, defense: 0, hp: 12, initiative: 85 },
         weapon: "winged_mace", shield: "heater_shield",
         bodyArmor: "mail_hauberk", headArmor: "mail_coif",
         aiType: "defensive", sprite: "armored-orc",
       },
       {
         q: 7, r: 3, team: "enemy", name: "Brigand Bowman",
-        stats: { melee: 30, defense: 2, hp: 8, initiative: 105, rangedSkill: 45 },
+        stats: { melee: 30, defense: 0, hp: 8, initiative: 105, rangedSkill: 50 },
         weapon: "short_bow",
         bodyArmor: "linen_tunic", headArmor: "hood",
         aiType: "ranged", sprite: "skeleton-archer",
@@ -458,32 +458,32 @@ export const SCENARIOS: ScenarioDef[] = [
       { q: 2, r: 6, terrain: TerrainType.Forest, elevation: 0 },
     ],
     units: [
-      // Player (left side of the valley)
+      // Player (left side of the valley) — buffed for hard encounter
       {
         q: 1, r: 3, team: "player", name: "Swordsman",
-        stats: { melee: 52, defense: 6, hp: 13, initiative: 100 },
+        stats: { melee: 62, defense: 6, hp: 15, initiative: 100 },
         weapon: "arming_sword", shield: "heater_shield",
         bodyArmor: "mail_hauberk", headArmor: "mail_coif",
         sprite: "swordsman", classId: "ironbloom_warden", bag: ["health_potion"],
       },
       {
         q: 1, r: 5, team: "player", name: "Axeman",
-        stats: { melee: 50, defense: 4, hp: 15, initiative: 90 },
+        stats: { melee: 60, defense: 4, hp: 17, initiative: 90 },
         weapon: "hand_axe", shield: "wooden_shield",
         bodyArmor: "mail_hauberk", headArmor: "leather_cap",
         sprite: "armored-axeman", classId: "ironbloom_warden", bag: ["health_potion"],
       },
       {
         q: 1, r: 7, team: "player", name: "Spearman",
-        stats: { melee: 48, defense: 7, hp: 11, initiative: 110 },
+        stats: { melee: 57, defense: 7, hp: 13, initiative: 110 },
         weapon: "spear", shield: "buckler",
         bodyArmor: "leather_jerkin", headArmor: "hood",
         sprite: "knight-templar", classId: "ironbloom_warden", bag: ["health_potion"],
       },
-      // Enemy — Brigand Leader on the hill
+      // Enemy — Brigand Leader on the hill (no dodge, armor provides defense)
       {
         q: 7, r: 4, team: "enemy", name: "Brigand Leader",
-        stats: { melee: 55, defense: 7, hp: 16, initiative: 80, level: 3 },
+        stats: { melee: 55, defense: 0, hp: 16, initiative: 80, level: 3 },
         weapon: "longsword",
         bodyArmor: "coat_of_plates", headArmor: "nasal_helm",
         aiType: "defensive", sprite: "elite-orc",
@@ -491,30 +491,30 @@ export const SCENARIOS: ScenarioDef[] = [
       // 2 Raiders with hand axes
       {
         q: 8, r: 3, team: "enemy", name: "Raider",
-        stats: { melee: 46, defense: 3, hp: 11, initiative: 92 },
+        stats: { melee: 46, defense: 0, hp: 11, initiative: 92 },
         weapon: "hand_axe",
         bodyArmor: "leather_jerkin", headArmor: "leather_cap",
         aiType: "aggressive", sprite: "orc",
       },
       {
         q: 8, r: 6, team: "enemy", name: "Raider",
-        stats: { melee: 44, defense: 3, hp: 11, initiative: 88 },
+        stats: { melee: 44, defense: 0, hp: 11, initiative: 88 },
         weapon: "hand_axe",
         bodyArmor: "leather_jerkin", headArmor: "leather_cap",
         aiType: "aggressive", sprite: "orc",
       },
-      // 2 Thugs flanking
+      // 2 Thugs flanking (no shields = easier to hit)
       {
         q: 5, r: 2, team: "enemy", name: "Thug",
-        stats: { melee: 40, defense: 2, hp: 9, initiative: 100 },
-        weapon: "dagger", shield: "buckler",
+        stats: { melee: 40, defense: 0, hp: 9, initiative: 100 },
+        weapon: "dagger",
         bodyArmor: "linen_tunic",
         aiType: "aggressive", sprite: "skeleton",
       },
       {
         q: 5, r: 8, team: "enemy", name: "Thug",
-        stats: { melee: 40, defense: 2, hp: 9, initiative: 98 },
-        weapon: "dagger", shield: "buckler",
+        stats: { melee: 40, defense: 0, hp: 9, initiative: 98 },
+        weapon: "dagger",
         bodyArmor: "linen_tunic",
         aiType: "aggressive", sprite: "skeleton",
       },
