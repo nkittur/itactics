@@ -78,3 +78,30 @@ export function generateContracts(partyLevel: number, partySize: number, rng: ()
 
   return contracts;
 }
+
+export interface AdventureContractDef extends ContractDef {
+  adventureId: string;
+  scenarioCount: number;
+}
+
+/**
+ * Generate adventure contracts that reference multi-battle adventures.
+ * These appear alongside normal contracts in the management screen.
+ */
+export function generateAdventureContracts(): AdventureContractDef[] {
+  return [
+    {
+      id: "adventure_barrow_creek",
+      name: "The Barrow Creek Raid",
+      description: "3-battle campaign: clear brigands from Barrow Creek village. Escalating difficulty.",
+      difficulty: "normal",
+      enemyCount: 12, // total across all 3 battles
+      enemyLevel: 2,
+      reward: 500,
+      mapWidth: 12,
+      mapHeight: 10,
+      adventureId: "barrow_creek",
+      scenarioCount: 3,
+    },
+  ];
+}
