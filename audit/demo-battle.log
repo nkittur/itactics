@@ -1,6 +1,6 @@
 # Demo battle audit log
 
-Run at: 2026-03-28T20:33:58.737Z
+Run at: 2026-03-28T21:16:53.116Z
 Mode: headless
 Scenario: tutorial — Tutorial
 Grid: 10x8
@@ -17,16 +17,17 @@ Seed: 42
 - Thug | HP 8 | melee 38
 
 ## Result
-- **Victory:** false
-- **Turns:** 76
-- **Player survivors:** 0
-- **Player deaths:** 3
-- **Enemy kills:** 0
+- **Victory:** true
+- **Turns:** 39
+- **Player survivors:** 2
+  - Swordsman: 12 HP
+  - Axeman: 2 HP
+- **Player deaths:** 1
+- **Enemy kills:** 3
 
 ## Action tracker (entity → actions, kills)
-- entity e2: 3 actions, 0 kills
-- entity e0: 11 actions, 0 kills
-- entity e1: 12 actions, 0 kills
+- Swordsman (id=e0): 0 actions, 1 kills
+- Axeman (id=e1): 0 actions, 2 kills
 
 ## Turn-by-turn log
 
@@ -48,117 +49,72 @@ Seed: 42
   Thug moves 1 tile(s) to [6,6]
   Thug attacks Spearman with Attack: miss
 --- Turn 7: Spearman's turn ---
+  Spearman attacks Raider with Attack: hit, 2 HP damage
 --- Turn 8: Swordsman's turn ---
+  Swordsman attacks Brigand with Attack: miss
 --- Turn 9: Brigand's turn ---
-  Brigand attacks Swordsman with Puncture: hit, 2 HP damage
+  Brigand attacks Swordsman with Puncture: miss
 --- Turn 10: Thug's turn ---
   Thug attacks Spearman with Attack: miss
 --- Turn 11: Axeman's turn ---
-  Axeman attacks Brigand with Split Shield: miss
+  Axeman attacks Brigand with Split Shield: hit, 7 HP damage
 --- Turn 12: Raider's turn ---
-  Raider attacks Spearman with Split Shield: miss
+  Raider attacks Spearman with Split Shield: hit, 8 HP damage
 --- Turn 13: Spearman's turn ---
+  Spearman attacks Raider with Attack: hit, 2 HP damage
 --- Turn 14: Swordsman's turn ---
---- Turn 15: Brigand's turn ---
-  Brigand attacks Swordsman with Puncture: hit, 2 HP damage
---- Turn 16: Thug's turn ---
-  Thug attacks Spearman with Attack: miss
---- Turn 17: Axeman's turn ---
-  Axeman attacks Brigand with Split Shield: hit, 6 HP damage
---- Turn 18: Raider's turn ---
-  Raider attacks Spearman with Split Shield: hit, 6 HP damage
---- Turn 19: Spearman's turn ---
---- Turn 20: Swordsman's turn ---
---- Turn 21: Brigand's turn ---
-  Brigand attacks Swordsman with Puncture: miss
---- Turn 22: Thug's turn ---
-  Thug attacks Spearman with Attack: hit, 3 HP damage, critical, effects: bleed
---- Turn 23: Axeman's turn ---
---- Turn 24: Raider's turn ---
-  Raider attacks Spearman with Attack: miss
---- Turn 25: Brigand's turn ---
-  Brigand attacks Swordsman with Puncture: miss
---- Turn 26: Thug's turn ---
-  Thug moves 2 tile(s) to [4,5]
---- Turn 27: Axeman's turn ---
---- Turn 28: Raider's turn ---
-  Raider moves 3 tile(s) to [5,2]
+  Swordsman attacks Brigand with Attack: hit, 4 HP damage, critical, target killed
+--- Turn 15: Thug's turn ---
+  Thug attacks Spearman with Attack: hit, 3 HP damage, target killed
+--- Turn 16: Axeman's turn ---
+  Axeman moves 3 tile(s) to [6,4]
+  Axeman attacks Raider with Attack: miss
+--- Turn 17: Raider's turn ---
   Raider attacks Axeman with Split Shield: miss
---- Turn 29: Swordsman's turn ---
---- Turn 30: Brigand's turn ---
-  Brigand attacks Swordsman with Puncture: miss
---- Turn 31: Axeman's turn ---
---- Turn 32: Thug's turn ---
-  Thug moves 3 tile(s) to [3,2]
-  Thug attacks Swordsman with Puncture: hit, 1 HP damage, critical
---- Turn 33: Raider's turn ---
-  Raider attacks Axeman with Split Shield: hit, 4 HP damage
+--- Turn 18: Swordsman's turn ---
+  Swordsman moves 2 tile(s) to [6,2]
+--- Turn 19: Thug's turn ---
+  Thug moves 3 tile(s) to [6,3]
+  Thug attacks Swordsman with Puncture: miss
+--- Turn 20: Raider's turn ---
+  Raider attacks Axeman with Split Shield: hit, 5 HP damage, critical
+--- Turn 21: Axeman's turn ---
+  Axeman attacks Raider with Attack: miss
+--- Turn 22: Swordsman's turn ---
+  Swordsman attacks Thug with Attack: miss
+--- Turn 23: Thug's turn ---
+  Thug attacks Axeman with Attack: hit, 2 HP damage
+--- Turn 24: Raider's turn ---
+  Raider attacks Axeman with Attack: miss
+--- Turn 25: Axeman's turn ---
+  Axeman attacks Raider with Attack: miss
+--- Turn 26: Swordsman's turn ---
+  Swordsman attacks Thug with Attack: hit, 3 HP damage
+--- Turn 27: Thug's turn ---
+  Thug attacks Axeman with Attack: miss
+--- Turn 28: Raider's turn ---
+  Raider attacks Axeman with Attack: miss
+--- Turn 29: Axeman's turn ---
+  Axeman attacks Thug with Attack: miss
+--- Turn 30: Swordsman's turn ---
+  Swordsman attacks Thug with Attack: miss
+--- Turn 31: Thug's turn ---
+  Thug attacks Axeman with Attack: hit, 2 HP damage
+--- Turn 32: Raider's turn ---
+  Raider attacks Axeman with Attack: hit, 3 HP damage, critical
+--- Turn 33: Axeman's turn ---
+  Axeman attacks Thug with Attack: hit, 6 HP damage, target killed
 --- Turn 34: Swordsman's turn ---
---- Turn 35: Axeman's turn ---
---- Turn 36: Brigand's turn ---
-  Brigand attacks Swordsman with Puncture: miss
---- Turn 37: Thug's turn ---
-  Thug attacks Swordsman with Puncture: hit, 1 HP damage
+  Swordsman moves 2 tile(s) to [7,4]
+  Swordsman attacks Raider with Attack: miss
+--- Turn 35: Raider's turn ---
+  Raider attacks Axeman with Attack: miss
+--- Turn 36: Axeman's turn ---
+  Axeman attacks Raider with Attack: hit, 3 HP damage
+--- Turn 37: Swordsman's turn ---
+  Swordsman attacks Raider with Attack: hit, 3 HP damage
 --- Turn 38: Raider's turn ---
   Raider attacks Axeman with Attack: miss
---- Turn 39: Swordsman's turn ---
---- Turn 40: Axeman's turn ---
---- Turn 41: Brigand's turn ---
-  Brigand attacks Swordsman with Puncture: hit, 1 HP damage
---- Turn 42: Thug's turn ---
-  Thug attacks Swordsman with Puncture: hit, 1 HP damage
---- Turn 43: Raider's turn ---
-  Raider attacks Axeman with Attack: miss
---- Turn 44: Swordsman's turn ---
---- Turn 45: Axeman's turn ---
---- Turn 46: Brigand's turn ---
-  Brigand attacks Swordsman with Puncture: miss
---- Turn 47: Thug's turn ---
-  Thug attacks Swordsman with Puncture: miss
---- Turn 48: Raider's turn ---
-  Raider attacks Axeman with Attack: hit, 4 HP damage
---- Turn 49: Swordsman's turn ---
---- Turn 50: Axeman's turn ---
---- Turn 51: Brigand's turn ---
-  Brigand attacks Swordsman with Puncture: hit, 1 HP damage
---- Turn 52: Thug's turn ---
-  Thug attacks Swordsman with Puncture: miss
---- Turn 53: Raider's turn ---
-  Raider attacks Axeman with Attack: miss
---- Turn 54: Swordsman's turn ---
---- Turn 55: Axeman's turn ---
---- Turn 56: Brigand's turn ---
-  Brigand attacks Swordsman with Puncture: miss
---- Turn 57: Thug's turn ---
-  Thug attacks Swordsman with Puncture: hit, 1 HP damage
---- Turn 58: Raider's turn ---
-  Raider attacks Axeman with Attack: hit, 3 HP damage
---- Turn 59: Swordsman's turn ---
---- Turn 60: Axeman's turn ---
---- Turn 61: Brigand's turn ---
-  Brigand attacks Swordsman with Puncture: miss
---- Turn 62: Thug's turn ---
-  Thug attacks Swordsman with Puncture: hit, 1 HP damage
---- Turn 63: Raider's turn ---
-  Raider attacks Axeman with Attack: miss
---- Turn 64: Swordsman's turn ---
---- Turn 65: Axeman's turn ---
---- Turn 66: Brigand's turn ---
-  Brigand attacks Swordsman with Puncture: hit, 2 HP damage, target killed
---- Turn 67: Thug's turn ---
-  Thug attacks Axeman with Attack: hit, 1 HP damage
---- Turn 68: Raider's turn ---
-  Raider attacks Axeman with Attack: miss
---- Turn 69: Axeman's turn ---
---- Turn 70: Brigand's turn ---
-  Brigand attacks Axeman with Attack: miss
---- Turn 71: Thug's turn ---
-  Thug attacks Axeman with Attack: miss
---- Turn 72: Raider's turn ---
-  Raider attacks Axeman with Attack: miss
---- Turn 73: Axeman's turn ---
---- Turn 74: Brigand's turn ---
-  Brigand attacks Axeman with Attack: hit, 1 HP damage, effects: bleed
---- Turn 75: Thug's turn ---
-  Thug attacks Axeman with Attack: hit, 1 HP damage, target killed
+--- Turn 39: Axeman's turn ---
+  Axeman attacks Raider with Attack: hit, 3 HP damage, target killed
 ```
