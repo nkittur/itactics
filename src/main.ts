@@ -20,6 +20,7 @@ import {
   PLAYABLE_CLASS_IDS,
 } from "@data/ruleset/RulesetLoader";
 import { generateContracts } from "@data/ContractData";
+import { getScenario } from "@data/ScenarioData";
 
 function simpleRng(): number {
   return Math.random();
@@ -172,6 +173,8 @@ async function init() {
   const urlParams = new URLSearchParams(window.location.search);
   const demoBattle = urlParams.get("demoBattle") === "1";
   const autoRun = urlParams.get("auto") === "1";
+  /** Load a specific scenario by ID, e.g. ?scenario=barrow_creek_1 */
+  const scenarioParam = urlParams.get("scenario");
   /** When true, all roster members get every skill in their tree unlocked (for testing). Use ?debug=1 */
   const debugUnlockAllSkills = urlParams.get("debug") === "1";
   if (autoRun) {
@@ -179,7 +182,28 @@ async function init() {
   }
 
   let saveData: SaveData | null;
-  if (demoBattle) {
+  if (scenarioParam) {
+    // Direct scenario play: load a specific scenario by ID (e.g. ?scenario=barrow_creek_1)
+    const scenario = getScenario(scenarioParam);
+    if (!scenario) {
+      throw new Error(`Unknown scenario: ${scenarioParam}`);
+    }
+    // Create a fake contract that points to this scenario's dimensions
+    saveData = createNewGame();
+    saveData.pendingContract = {
+      id: scenario.id,
+      name: scenario.name,
+      description: scenario.description,
+      difficulty: "normal",
+      enemyCount: scenario.units.filter((u) => u.team === "enemy").length,
+      enemyLevel: 1,
+      reward: 200,
+      mapWidth: scenario.gridWidth,
+      mapHeight: scenario.gridHeight,
+    };
+    // Override: DemoBattle will use the scenario directly since it matches by ID
+    saveData.availableContracts = [];
+  } else if (demoBattle) {
     saveData = createNewGame();
     const contracts = generateContracts(1, saveData.roster.length, () => Math.random());
     saveData.pendingContract = contracts[0]!;

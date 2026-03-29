@@ -53,12 +53,12 @@ const WEIGHTS: Record<AIType, ScoreWeights> = {
     woundedTarget: 20,
   },
   defensive: {
-    threat: -15,
-    attack: 20,
+    threat: -8,
+    attack: 25,
     surround: 10,
-    terrain: 15,
-    zocPenalty: -30,
-    woundedTarget: 10,
+    terrain: 10,
+    zocPenalty: -20,
+    woundedTarget: 15,
   },
   ranged: {
     threat: -20,
@@ -401,7 +401,31 @@ function findAdjacentTarget(
   return bestTarget;
 }
 
-/** Get generated abilities usable by this entity (non-passive, off cooldown, weapon-compatible). */
+/** Effect types the AI can meaningfully execute as single-target actions. */
+const AI_USABLE_EFFECTS: Set<string> = new Set([
+  // Direct damage
+  "dmg_weapon", "dmg_execute", "dmg_multihit", "dmg_spell",
+  // DoTs
+  "dot_bleed", "dot_burn", "dot_poison",
+  // Crowd control
+  "cc_stun", "cc_root", "cc_daze", "cc_fear", "cc_silence", "cc_taunt", "cc_charm",
+  // Debuffs (applied to target)
+  "debuff_stat", "debuff_vuln", "debuff_armor", "debuff_healReduce",
+  // Displacement
+  "disp_push", "disp_pull",
+  // Stances (handled separately)
+  "stance_counter", "stance_overwatch",
+]);
+
+/** Targeting types the AI can handle (single-target or adjacent AOE). */
+const AI_USABLE_TARGETING: Set<string> = new Set([
+  "tgt_single_enemy",
+  "tgt_aoe_adjacent", // adjacent AOE works like melee attack
+  "tgt_self",         // self-buffs/stances handled in stance logic
+  "tgt_single_ally",  // ally buffs handled as self
+]);
+
+/** Get generated abilities usable by this entity (non-passive, off cooldown, weapon-compatible, AI-compatible). */
 function getUsableAbilities(
   world: World,
   entityId: EntityId,
@@ -422,6 +446,13 @@ function getUsableAbilities(
 
     // Check weapon requirement
     if (ability.weaponReq.length > 0 && !ability.weaponReq.includes(weapon.family)) continue;
+
+    // Skip abilities with targeting the AI can't handle (AOE lines, radius, all-enemies, etc.)
+    if (!AI_USABLE_TARGETING.has(ability.targeting.type)) continue;
+
+    // Skip abilities whose effects are all non-actionable for AI (zones, summons, traps, etc.)
+    const hasUsableEffect = ability.effects.some(e => AI_USABLE_EFFECTS.has(e.type));
+    if (!hasUsableEffect) continue;
 
     const cs = wrapGeneratedAbility(ability, weapon as any);
     results.push({ ability, cs });

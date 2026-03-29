@@ -430,11 +430,17 @@ export class DemoBattle {
         setAbilityRegistry(saveDataOrIndex.abilityRegistry);
       }
       if (saveDataOrIndex.pendingContract) {
-        scenario = generateBattle(
-          saveDataOrIndex.pendingContract,
-          saveDataOrIndex.roster,
-          () => Math.random(),
-        );
+        // Check if contract ID matches a predefined scenario (e.g. adventure battles)
+        const predefined = SCENARIOS.find((s) => s.id === saveDataOrIndex.pendingContract!.id);
+        if (predefined) {
+          scenario = predefined;
+        } else {
+          scenario = generateBattle(
+            saveDataOrIndex.pendingContract,
+            saveDataOrIndex.roster,
+            () => Math.random(),
+          );
+        }
       } else {
         scenario = SCENARIOS[0]!;
       }

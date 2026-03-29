@@ -19,10 +19,8 @@ import type { CharacterClassComponent } from "@entities/components/CharacterClas
 import { getClassHitBonus, getClassDamageBonus } from "@data/ClassData";
 import { getClassDefOptional } from "@data/ClassData";
 
-/** Armor values above this threshold get diminishing returns. */
-const SOFT_CAP = 10;
-/** Multiplier for armor above the soft cap. */
-const DIMINISH_RATE = 0.5;
+/** Maximum fraction of raw damage that armor can absorb. Guarantees minimum throughput. */
+const MAX_ARMOR_ABSORB_PCT = 0.5;
 
 export interface AttackPreview {
   hitChance: number;
@@ -73,8 +71,8 @@ export interface AttackResult {
  * 3. Critical hit: roll critChance + weapon.critChanceBonus; if crit, raw *= critMultiplier
  * 4. Calculate effective armor (physical: body+head+shield armor; magical: body+head magicResist + base MR)
  * 5. Apply armor piercing: flat first, then % ignore on remainder
- * 6. Soft-cap reduction: min(armor, SOFT_CAP) + max(0, armor - SOFT_CAP) * DIMINISH_RATE
- * 7. HP damage = max(1, rawDamage - reduction)
+ * 6. Cap armor reduction at MAX_ARMOR_ABSORB_PCT of raw damage (prevents armor from fully negating hits)
+ * 7. HP damage = max(1, rawDamage - cappedReduction)
  * 8. Apply vulnerability/dmg_reduce modifiers
  */
 export class DamageCalculator {
@@ -182,7 +180,9 @@ export class DamageCalculator {
     );
 
     // ── 7. HP damage ──
-    let hpDamage = Math.max(1, rawDamage - armorReduction);
+    // Cap armor absorption: armor can block at most MAX_ARMOR_ABSORB_PCT of raw damage
+    const cappedReduction = Math.min(armorReduction, Math.floor(rawDamage * MAX_ARMOR_ABSORB_PCT));
+    let hpDamage = Math.max(1, rawDamage - cappedReduction);
 
     // ── 8. Vulnerability + damage reduction ──
     if (this.statusEffects) {
@@ -503,7 +503,9 @@ export class DamageCalculator {
     );
 
     // ── 7. HP damage ──
-    let hpDamage = Math.max(1, rawDamage - armorReduction);
+    // Cap armor absorption: armor can block at most MAX_ARMOR_ABSORB_PCT of raw damage
+    const cappedReduction = Math.min(armorReduction, Math.floor(rawDamage * MAX_ARMOR_ABSORB_PCT));
+    let hpDamage = Math.max(1, rawDamage - cappedReduction);
 
     // ── 8. Vulnerability + damage reduction ──
     if (this.statusEffects) {
@@ -665,7 +667,7 @@ export class DamageCalculator {
    * Calculate armor reduction for a given damage type.
    * Physical: uses body.armor + head.armor + shield.armor
    * Magical: uses body.magicResist + head.magicResist + base magicResist
-   * Applies flat armorPiercing first, then % armorIgnore, then soft cap.
+   * Applies flat armorPiercing first, then % armorIgnore. Result is capped at caller site.
    */
   private calculateArmorReduction(
     damageType: DamageType,
@@ -695,11 +697,7 @@ export class DamageCalculator {
       effectiveArmor = Math.floor(effectiveArmor * (1 - armorIgnorePct));
     }
 
-    // Soft cap: linear up to SOFT_CAP, diminishing after
-    if (effectiveArmor <= SOFT_CAP) {
-      return effectiveArmor;
-    }
-    return SOFT_CAP + Math.floor((effectiveArmor - SOFT_CAP) * DIMINISH_RATE);
+    return effectiveArmor;
   }
 
   /** Apply weapon family status effects (extracted from resolveMelee). */
